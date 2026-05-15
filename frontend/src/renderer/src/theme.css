@@ -1,0 +1,115 @@
+/*
+ * Nexus dark theme — "Midnight Study"
+ *
+ * Warm-neutral deep base evokes the calm of a late-night planning session.
+ * Soft periwinkle accent ties the app together; each life pillar
+ * (calendar, tasks, habits, goals, projects, coach) carries its own hue
+ * drawn from the same muted, slightly-desaturated family so distinct
+ * features feel like rooms in one house rather than separate apps.
+ *
+ * Inspired by VSCode, Claude Desktop, and Discord dark themes.
+ */
+
+:root {
+    color-scheme: dark;
+
+    /* ===== Surfaces ===== */
+    --bg-app:        #16171b;  /* window background */
+    --bg-surface:    #1d1f24;  /* main panels, calendar canvas */
+    --bg-elevated:   #252830;  /* cards, popovers, modals */
+    --bg-hover:      #2d3038;  /* interactive hover */
+    --bg-active:     #363a44;  /* pressed / selected */
+    --bg-overlay:    rgba(0, 0, 0, 0.55);
+
+    /* ===== Borders / dividers ===== */
+    --border-subtle:  #23262d;
+    --border-default: #2d3038;
+    --border-strong:  #3c4049;
+    --border-focus:   var(--accent);
+
+    /* ===== Text ===== */
+    --text-primary:    #e8e9ed;
+    --text-secondary:  #a5a8b1;
+    --text-muted:      #6f727c;
+    --text-disabled:   #4a4d54;
+    --text-on-accent:  #ffffff;
+
+    /* ===== Primary accent (periwinkle indigo) ===== */
+    --accent:          #8b9aff;
+    --accent-hover:    #a3b0ff;
+    --accent-active:   #6f80f0;
+    --accent-muted:    rgba(139, 154, 255, 0.15);
+    --accent-border:   rgba(139, 154, 255, 0.40);
+
+    /* ===== Life-pillar feature hues ===== */
+    --pillar-calendar: #8b9aff;  /* indigo — events, time */
+    --pillar-task:     #6dd4a3;  /* mint   — completion */
+    --pillar-habit:    #f5b478;  /* amber  — daily warmth */
+    --pillar-goal:     #d49ce8;  /* orchid — aspiration */
+    --pillar-project:  #7cc7e0;  /* cyan   — execution */
+    --pillar-coach:    #ff9b85;  /* coral  — AI warmth */
+
+    /* ===== Status ===== */
+    --status-success: #6dd4a3;
+    --status-warning: #f5c772;
+    --status-danger:  #ed7a7a;
+    --status-info:    #8b9aff;
+
+    /* ===== Shadows ===== */
+    --shadow-sm: 0 1px 2px  rgba(0, 0, 0, 0.40);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.50);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.60);
+
+    /* ===== Radii ===== */
+    --radius-sm:   4px;
+    --radius-md:   8px;
+    --radius-lg:   12px;
+    --radius-pill: 999px;
+
+    /* ===== Typography ===== */
+    --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                 Roboto, 'Helvetica Neue', sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+                 'Liberation Mono', monospace;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg-app);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    user-select: none;
+}
+
+::selection {
+    background: var(--accent-muted);
+    color: var(--text-primary);
+}
+
+/* Subtle scrollbar for any scrollable region that opts in */
+.themed-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+.themed-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+.themed-scroll::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: var(--radius-pill);
+    border: 2px solid var(--bg-app);
+}
+.themed-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}

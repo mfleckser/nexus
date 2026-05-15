@@ -1,0 +1,127 @@
+#week-container {
+    display: grid;
+    grid-template-columns: 52px repeat(7, 1fr);
+    grid-template-rows: auto auto 1fr;
+    font-family: var(--font-sans);
+    height: 100%;
+    width: 100%;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    overflow: hidden;
+}
+
+.gutter-spacer {
+    grid-column: 1;
+    border-right: 1px solid var(--border-default);
+}
+
+.header-container {
+    grid-column: 2 / span 7;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    border-bottom: 1px solid var(--border-default);
+    padding: 8px 0;
+    background: var(--bg-surface);
+}
+
+.day-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: default;
+}
+
+.day-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+
+.date-num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--text-primary);
+}
+
+.today-header .day-name {
+    color: var(--accent);
+}
+
+.today-header .date-num {
+    background-color: var(--accent);
+    color: var(--text-on-accent);
+    font-weight: 600;
+}
+
+.all-day-gutter {
+    border-bottom: 1px solid var(--border-default);
+}
+
+.all-day-container {
+    grid-column: 2 / span 7;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    min-height: 24px;
+    border-bottom: 1px solid var(--border-default);
+}
+
+.all-day-cell {
+    border-right: 1px solid var(--border-subtle);
+}
+
+.all-day-cell:last-child {
+    border-right: none;
+}
+
+.day-events-scroll {
+    grid-column: 1 / span 8;
+    overflow-y: scroll;
+}
+
+.day-events-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.day-events {
+    display: grid;
+    grid-template-columns: 52px repeat(7, 1fr);
+}
+
+.hour-label {
+    height: 48px;
+    text-align: right;
+    padding-right: 8px;
+    padding-top: 2px;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
+    border-right: 1px solid var(--border-default);
+    transform: translateY(-6px);
+    cursor: default;
+}
+
+.hour-block {
+    height: 48px;
+    border-right: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background-color 0.1s;
+}
+
+.hour-block:last-child {
+    border-right: none;
+}
+
+.hour-block:hover {
+    background-color: var(--bg-hover);
+    cursor: pointer;
+}

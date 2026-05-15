@@ -1,0 +1,13 @@
+.home-shell {
+    width: 100%;
+    height: 100%;
+    padding: 16px;
+    background: var(--bg-app);
+    display: flex;
+}
+
+.home-shell > #week-container {
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+}
