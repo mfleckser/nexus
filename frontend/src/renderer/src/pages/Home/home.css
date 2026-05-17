@@ -5,3 +5,9 @@
     display: flex;
 }
 
+.home-calendar {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+}
+
