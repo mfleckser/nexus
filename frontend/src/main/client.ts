@@ -21,4 +21,9 @@ async function apiPost(path: string, body: any) {
     return res.data;
 }
 
-export { client, health, apiGet, apiPost }
+async function apiPut(path: string, body: any) {
+    const res = await client.put(path, body);
+    return res.data;
+}
+
+export { client, health, apiGet, apiPost, apiPut }

@@ -4,7 +4,7 @@ import { useState } from "react";
 
 
 function TaskView(): React.JSX.Element {
-    const {tasks, addTask} = useTasks();
+    const {tasks, addTask, updateTask} = useTasks();
     const [showForm, setShowForm] = useState(false);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
@@ -90,7 +90,11 @@ function TaskView(): React.JSX.Element {
                 <div className="task-list themed-scroll">
                     {tasks.map((t) => (
                         <div key={t.id} className={`task-row${t.status == "complete" ? " done" : ""}`}>
-                            <span className="task-check" aria-hidden />
+                            <span className="task-check" aria-hidden onClick={() => {
+                                const newStatus = t.status == "todo" ? "complete" : "todo";
+                                updateTask(t.id, {"status": newStatus});
+                                t.status = newStatus;
+                            }} />
                             <span className="task-label">{t.title}</span>
                         </div>
                     ))}

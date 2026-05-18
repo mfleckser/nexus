@@ -5,7 +5,8 @@ import { electronAPI } from '@electron-toolkit/preload'
 const api = {
   health: () => ipcRenderer.invoke("health"),
   apiGet: (path: string) => ipcRenderer.invoke("apiGet", path),
-  apiPost: (path: string, body: any) => ipcRenderer.invoke("apiPost", path, body)
+  apiPost: (path: string, body: any) => ipcRenderer.invoke("apiPost", path, body),
+  apiPut: (path: string, body: any) => ipcRenderer.invoke("apiPut", path, body),
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
