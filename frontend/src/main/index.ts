@@ -1,7 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { health } from './api'
+import { health, apiGet, apiPost } from './client'
 import icon from '../../resources/icon.png?asset'
 
 function createWindow(): void {
@@ -53,6 +53,8 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.handle("health", health)
+  ipcMain.handle("apiGet", (_, path) => apiGet(path))
+  ipcMain.handle("apiPost", (_, path, body) => apiPost(path, body))
 
   createWindow()
 
