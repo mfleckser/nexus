@@ -1,30 +1,95 @@
 import "./taskview.css"
+import { useTasks } from "../../hooks/useTasks"
+import { useState } from "react";
 
-type Task = {
-    id: string;
-    title: string;
-    done: boolean;
-};
-
-const placeholderTasks: Task[] = [
-    { id: "1", title: "Review weekly goals", done: false },
-    { id: "2", title: "Draft project workshop spec", done: false },
-    { id: "3", title: "Wire backend Flask scaffold", done: false },
-    { id: "4", title: "Sketch habit trigger model", done: false },
-    { id: "5", title: "Read LifeCoach pursuits notes", done: true },
-];
 
 function TaskView(): React.JSX.Element {
+    const {tasks, addTask} = useTasks();
+    const [showForm, setShowForm] = useState(false);
+    const [title, setTitle] = useState("");
+    const [description, setDescription] = useState("");
+    const [dueAt, setDueAt] = useState("");
+
+    const resetForm = () => {
+        setTitle("");
+        setDescription("");
+        setDueAt("");
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        addTask(title, description, dueAt);
+        resetForm();
+        setShowForm(false);
+    };
+
+    const handleCancel = () => {
+        resetForm();
+        setShowForm(false);
+    };
+
     return (
         <div id="task-container">
             <div id="task-panel">
                 <div className="task-header">
                     <span className="task-title">Tasks</span>
-                    <button className="task-add" aria-label="Add task">+</button>
+                    <button
+                        className="task-add"
+                        aria-label={showForm ? "Close add task" : "Add task"}
+                        onClick={() => setShowForm((v) => !v)}
+                    >
+                        {showForm ? "×" : "+"}
+                    </button>
                 </div>
+                {showForm && (
+                    <form className="task-form" onSubmit={handleSubmit}>
+                        <input
+                            className="task-form-input"
+                            type="text"
+                            placeholder="Task title"
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                            autoFocus
+                            required
+                        />
+                        <textarea
+                            className="task-form-input task-form-textarea"
+                            placeholder="Description (optional)"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            rows={2}
+                        />
+                        <label className="task-form-field">
+                            <span className="task-form-label">Due</span>
+                            <input
+                                className="task-form-input task-form-datetime"
+                                type="datetime-local"
+                                value={dueAt}
+                                onChange={(e) => setDueAt(e.target.value)}
+                            />
+                        </label>
+                        <div className="task-form-actions">
+                            <button
+                                type="button"
+                                className="task-form-btn task-form-btn-secondary"
+                                onClick={handleCancel}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                className="task-form-btn task-form-btn-primary"
+                                disabled={!title.trim()}
+                            >
+                                Add
+                            </button>
+                        </div>
+                    </form>
+                )}
                 <div className="task-list themed-scroll">
-                    {placeholderTasks.map((t) => (
-                        <div key={t.id} className={`task-row${t.done ? " done" : ""}`}>
+                    {tasks.map((t) => (
+                        <div key={t.id} className={`task-row${t.status == "complete" ? " done" : ""}`}>
                             <span className="task-check" aria-hidden />
                             <span className="task-label">{t.title}</span>
                         </div>

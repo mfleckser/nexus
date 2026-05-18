@@ -53,6 +53,13 @@ function Calendar(): React.JSX.Element {
     };
 
     function handleKeyPress(event) {
+        const active = document.activeElement;
+        if (active) {
+            const tag = active.tagName.toLowerCase();
+            if (tag === "input" || tag == "textarea" || (active as HTMLElement).isContentEditable) {
+                return;
+            }
+        }
         if (event.key === "ArrowLeft") {
             goPrev();
         } else if (event.key === "ArrowRight") {
