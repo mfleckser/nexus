@@ -258,6 +258,68 @@
     cursor: pointer;
 }
 
+.day-events {
+    position: relative;
+}
+
+.events-overlay {
+    position: absolute;
+    top: 0;
+    left: 52px;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    pointer-events: none;
+}
+
+.day-event-column {
+    position: relative;
+    pointer-events: none;
+}
+
+.event-chip {
+    position: absolute;
+    box-sizing: border-box;
+    background: var(--accent-muted);
+    border-left: 3px solid var(--pillar-calendar);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    color: var(--text-primary);
+    padding: 2px 6px;
+    font-size: 12px;
+    line-height: 1.2;
+    overflow: hidden;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: background-color 0.1s;
+}
+
+.event-chip:hover {
+    background: var(--accent);
+    color: var(--text-on-accent);
+}
+
+.event-chip-title {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.event-chip-time {
+    font-size: 10px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.event-chip:hover .event-chip-time {
+    color: var(--text-on-accent);
+    opacity: 0.85;
+}
+
 #month-container {
     flex: 1;
     min-height: 0;

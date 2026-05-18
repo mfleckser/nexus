@@ -1,6 +1,100 @@
 import { useEffect, useState } from "react";
 import "./calendar.css"
 
+type Event = {
+    id: string;
+    title: string;
+    start_at: Date;
+    end_at: Date;
+};
+
+const PX_PER_HOUR = 48;
+const PX_PER_MIN = PX_PER_HOUR / 60;
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+const at = (dayOffset: number, h: number, m: number = 0): Date => {
+    const d = new Date();
+    d.setDate(d.getDate() + dayOffset);
+    d.setHours(h, m, 0, 0);
+    return d;
+};
+
+// Dummy events anchored to today. start_at/end_at assumed same day (no multi-day).
+const DUMMY_EVENTS: Event[] = [
+    { id: "e1", title: "Standup", start_at: at(0, 9, 0), end_at: at(0, 10, 0) },
+    { id: "e2", title: "Deep work block", start_at: at(1, 13, 0), end_at: at(1, 16, 30) },
+    { id: "e3", title: "Design review", start_at: at(2, 10, 0), end_at: at(2, 11, 0) },
+    { id: "e4", title: "Coffee w/ Sam", start_at: at(2, 10, 30), end_at: at(2, 11, 30) },
+    { id: "e5", title: "Triage", start_at: at(3, 14, 0), end_at: at(3, 15, 0) },
+    { id: "e6", title: "1:1 Alex", start_at: at(3, 14, 15), end_at: at(3, 15, 15) },
+    { id: "e7", title: "Planning", start_at: at(3, 14, 30), end_at: at(3, 16, 0) },
+    { id: "e8", title: "Errand window", start_at: at(-1, 9, 15), end_at: at(-1, 10, 45) },
+];
+
+const fmtTime = (d: Date) => {
+    const h = d.getHours();
+    const m = d.getMinutes();
+    const hh = (h % 12) || 12;
+    const mm = m.toString().padStart(2, "0");
+    return `${hh}:${mm} ${h >= 12 ? "PM" : "AM"}`;
+};
+
+type PositionedEvent = { event: Event; col: number; colCount: number };
+
+const buildEventLayout = (events: Event[], weekStart: Date): PositionedEvent[][] => {
+    const byDay: Event[][] = Array.from({ length: 7 }, () => []);
+    const weekEnd = new Date(weekStart.getTime() + 7 * MS_PER_DAY);
+    for (const ev of events) {
+        if (ev.start_at >= weekEnd || ev.end_at <= weekStart) continue;
+        const dayIdx = Math.floor((ev.start_at.getTime() - weekStart.getTime()) / MS_PER_DAY);
+        if (dayIdx >= 0 && dayIdx < 7) byDay[dayIdx].push(ev);
+    }
+    return byDay.map(dayEvents => {
+        const sorted = [...dayEvents].sort((a, b) =>
+            a.start_at.getTime() - b.start_at.getTime() ||
+            b.end_at.getTime() - a.end_at.getTime()
+        );
+        // Group connected overlapping events (cluster), then assign cols greedily within cluster.
+        const result: PositionedEvent[] = [];
+        let cluster: Event[] = [];
+        let clusterEnd = -Infinity;
+        const flush = () => {
+            if (!cluster.length) return;
+            const cols: Event[][] = [];
+            const colByEvent = new Map<string, number>();
+            for (const ev of cluster) {
+                let placed = false;
+                for (let i = 0; i < cols.length; i++) {
+                    const last = cols[i][cols[i].length - 1];
+                    if (last.end_at <= ev.start_at) {
+                        cols[i].push(ev);
+                        colByEvent.set(ev.id, i);
+                        placed = true;
+                        break;
+                    }
+                }
+                if (!placed) {
+                    cols.push([ev]);
+                    colByEvent.set(ev.id, cols.length - 1);
+                }
+            }
+            const colCount = cols.length;
+            for (const ev of cluster) {
+                result.push({ event: ev, col: colByEvent.get(ev.id)!, colCount });
+            }
+            cluster = [];
+            clusterEnd = -Infinity;
+        };
+        for (const ev of sorted) {
+            if (ev.start_at.getTime() >= clusterEnd) flush();
+            cluster.push(ev);
+            clusterEnd = Math.max(clusterEnd, ev.end_at.getTime());
+        }
+        flush();
+        return result;
+    });
+};
+
 function Calendar(): React.JSX.Element {
     const today = new Date();
     const [focusedDay, setFocusedDay] = useState<Date>(() => {
@@ -24,9 +118,6 @@ function Calendar(): React.JSX.Element {
 
     const startOfWeek = (d: Date) =>
         new Date(d.getTime() - d.getDay() * 1000 * 60 * 60 * 24);
-
-    const startOfMonth = (d: Date) =>
-        new Date(d.getFullYear(), d.getMonth(), 1);
 
     const goPrev = () => {
         setFocusedDay(prev =>
@@ -172,6 +263,31 @@ function Calendar(): React.JSX.Element {
                                     ))}
                                 </>
                             ))}
+                            <div className="events-overlay">
+                                {buildEventLayout(DUMMY_EVENTS, startOfWeek(focusedDay)).map((dayEvents, dayIdx) => (
+                                    <div key={`col-${dayIdx}`} className="day-event-column">
+                                        {dayEvents.map(({ event, col, colCount }) => {
+                                            const startMin = event.start_at.getHours() * 60 + event.start_at.getMinutes();
+                                            const durMin = (event.end_at.getTime() - event.start_at.getTime()) / 60000;
+                                            return (
+                                                <div
+                                                    key={event.id}
+                                                    className="event-chip"
+                                                    style={{
+                                                        top: startMin * PX_PER_MIN,
+                                                        height: durMin * PX_PER_MIN,
+                                                        left: `${(col / colCount) * 100}%`,
+                                                        width: `${(1 / colCount) * 100}%`,
+                                                    }}
+                                                >
+                                                    <div className="event-chip-title">{event.title}</div>
+                                                    <div className="event-chip-time">{fmtTime(event.start_at)} – {fmtTime(event.end_at)}</div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>

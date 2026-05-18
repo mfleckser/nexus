@@ -7,6 +7,7 @@ const api = {
   apiGet: (path: string) => ipcRenderer.invoke("apiGet", path),
   apiPost: (path: string, body: any) => ipcRenderer.invoke("apiPost", path, body),
   apiPut: (path: string, body: any) => ipcRenderer.invoke("apiPut", path, body),
+  apiDelete: (path: string) => ipcRenderer.invoke("apiDelete", path),
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

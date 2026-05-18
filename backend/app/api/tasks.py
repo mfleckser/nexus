@@ -3,7 +3,8 @@ from flask import Blueprint, request, jsonify
 from app.services.task_service import (
     get_all_tasks,
     create_task,
-    update_task
+    update_task,
+    delete_task
 )
 
 tasks_bp = Blueprint("tasks", __name__)
@@ -25,3 +26,7 @@ def update(id):
     data = request.json
 
     return update_task(id, data)
+
+@tasks_bp.route("/tasks/<id>", methods=["DELETE"])
+def delete(id):
+    return delete_task(id)

@@ -1,15 +1,14 @@
 import Home from "./pages/Home/Home"
+import { TasksProvider } from "./hooks/useTasks"
 
 import "./theme.css"
 import "./root.css"
 
 function App(): React.JSX.Element {
-  const ipcHandle = (): void => window.electron.ipcRenderer.send('ping')
-
   return (
-    <>
-    <Home></Home>
-    </>
+    <TasksProvider>
+      <Home></Home>
+    </TasksProvider>
   )
 }
 

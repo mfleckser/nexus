@@ -26,4 +26,9 @@ async function apiPut(path: string, body: any) {
     return res.data;
 }
 
-export { client, health, apiGet, apiPost, apiPut }
+async function apiDelete(path: string) {
+    const res = await client.delete(path);
+    return res.data;
+}
+
+export { client, health, apiGet, apiPost, apiPut, apiDelete }

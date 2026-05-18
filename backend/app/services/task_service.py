@@ -10,7 +10,7 @@ def create_task(data: dict):
     res = supabase.table("tasks").insert({
         "title": data["title"],
         "description": data.get("description"),
-        "due_at": data.get("due_date"),
+        "due_at": data.get("due_at"),
     }).execute()
 
     return res.data[0]
@@ -25,4 +25,8 @@ def update_task(task_id: str, data: dict):
 
     res = supabase.table("tasks").update(updates).eq("id", task_id).execute()
 
-    return res.data
+    return res.data[0]
+
+def delete_task(task_id: str):
+    res = supabase.table("tasks").delete().eq("id", task_id).execute()
+    return res.data[0]

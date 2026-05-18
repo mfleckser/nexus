@@ -5,6 +5,7 @@ declare global {
             apiGet: (path: string) => Promise<any>,
             apiPost: (path: string, body: any) => Promise<any>
             apiPut: (path: string, body: any) => Promise<any>
+            apiDelete: (path: string) => Promise<any>
         }
     }
 }
@@ -25,4 +26,8 @@ function updateTask(id: string, data: any) {
     return window.api.apiPut(`/tasks/${id}`, data);
 }
 
-export { getTasks, addTask, updateTask }
+function deleteTask(id: string) {
+    return window.api.apiDelete(`/tasks/${id}`)
+}
+
+export { getTasks, addTask, updateTask, deleteTask }

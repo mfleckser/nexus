@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-class TaskStatus:
+class TaskStatus(StrEnum):
     TODO = "todo"
     ACTIVE = "active"
     COMPLETE = "complete"
