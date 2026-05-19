@@ -1,35 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./calendar.css"
-
-type Event = {
-    id: string;
-    title: string;
-    start_at: Date;
-    end_at: Date;
-};
+import { Event } from "@renderer/types";
+import { useEvents } from "@renderer/hooks/useEvents";
 
 const PX_PER_HOUR = 48;
 const PX_PER_MIN = PX_PER_HOUR / 60;
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
-
-const at = (dayOffset: number, h: number, m: number = 0): Date => {
-    const d = new Date();
-    d.setDate(d.getDate() + dayOffset);
-    d.setHours(h, m, 0, 0);
-    return d;
-};
-
-// Dummy events anchored to today. start_at/end_at assumed same day (no multi-day).
-const DUMMY_EVENTS: Event[] = [
-    { id: "e1", title: "Standup", start_at: at(0, 9, 0), end_at: at(0, 10, 0) },
-    { id: "e2", title: "Deep work block", start_at: at(1, 13, 0), end_at: at(1, 16, 30) },
-    { id: "e3", title: "Design review", start_at: at(2, 10, 0), end_at: at(2, 11, 0) },
-    { id: "e4", title: "Coffee w/ Sam", start_at: at(2, 10, 30), end_at: at(2, 11, 30) },
-    { id: "e5", title: "Triage", start_at: at(3, 14, 0), end_at: at(3, 15, 0) },
-    { id: "e6", title: "1:1 Alex", start_at: at(3, 14, 15), end_at: at(3, 15, 15) },
-    { id: "e7", title: "Planning", start_at: at(3, 14, 30), end_at: at(3, 16, 0) },
-    { id: "e8", title: "Errand window", start_at: at(-1, 9, 15), end_at: at(-1, 10, 45) },
-];
 
 const fmtTime = (d: Date) => {
     const h = d.getHours();
@@ -38,6 +14,82 @@ const fmtTime = (d: Date) => {
     const mm = m.toString().padStart(2, "0");
     return `${hh}:${mm} ${h >= 12 ? "PM" : "AM"}`;
 };
+
+type EventChipProps = {
+    event: Event
+};
+
+function EventChip({ event } : EventChipProps): React.JSX.Element {
+    const chipRef = useRef<HTMLDivElement>(null);
+    const parentRectRef = useRef<DOMRect | null>(null);
+    const grabOffsetRef = useRef({ x: 0, y: 0 });
+    const [dragging, setDragging] = useState(false);
+    const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
+
+    const dayIdx = event.start_at.getDay();
+    const baseTop = (60 * event.start_at.getHours() + event.start_at.getMinutes()) * PX_PER_MIN;
+    const duration = (event.end_at.getTime() - event.start_at.getTime()) / (1000 * 60);
+
+    function onMouseDown(e: React.MouseEvent) {
+        const chip = chipRef.current;
+        if (!chip) return;
+        const chipRect = chip.getBoundingClientRect();
+        const parent = chip.offsetParent as HTMLElement | null;
+        const parentRect = parent ? parent.getBoundingClientRect() : null;
+        parentRectRef.current = parentRect;
+        grabOffsetRef.current = {
+            x: e.clientX - chipRect.left,
+            y: e.clientY - chipRect.top,
+        };
+        setDragPos({
+            left: chipRect.left - (parentRect?.left ?? 0),
+            top: chipRect.top - (parentRect?.top ?? 0),
+        });
+        setDragging(true);
+    }
+
+    useEffect(() => {
+        if (!dragging) return;
+        function onMove(e: MouseEvent) {
+            const parentRect = parentRectRef.current;
+            if (!parentRect) return;
+            setDragPos({
+                left: e.clientX - parentRect.left - grabOffsetRef.current.x,
+                top: e.clientY - parentRect.top - grabOffsetRef.current.y,
+            });
+        }
+        function onUp() {
+            setDragging(false);
+            setDragPos(null);
+        }
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        return () => {
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+        };
+    }, [dragging]);
+
+    const style: React.CSSProperties = {
+        width: `${100 / 7}%`,
+        height: duration * PX_PER_MIN,
+        left: dragging && dragPos ? dragPos.left : `${dayIdx * 100 / 7}%`,
+        top: dragging && dragPos ? dragPos.top : baseTop,
+    };
+
+    return (
+        <div
+            ref={chipRef}
+            key={event.id}
+            className="event-chip"
+            onMouseDown={onMouseDown}
+            style={style}
+        >
+            <div className="event-chip-title">{event.title}</div>
+            <div className="event-chip-time">{fmtTime(event.start_at)} – {fmtTime(event.end_at)}</div>
+        </div>
+    )
+}
 
 type PositionedEvent = { event: Event; col: number; colCount: number };
 
@@ -101,6 +153,7 @@ function Calendar(): React.JSX.Element {
         return new Date(today.getTime() - today.getDay() * 1000 * 60 * 60 * 24)
     });
     const [viewType, setViewType] = useState("WEEK");
+    const {events} = useEvents();
 
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -186,6 +239,17 @@ function Calendar(): React.JSX.Element {
         return cells;
     })();
 
+    const calcCursorPos = (): React.CSSProperties => {
+        const now = new Date();
+        const left = now.getDay() * 100 / 7;
+        const top = (now.getHours() * 60 + now.getMinutes()) * PX_PER_MIN
+        
+        return {
+            left: `${left}%`,
+            top: top
+        }
+    }
+
     return (
         <div id="calendar-container">
             <div id="calendar-header">
@@ -264,29 +328,8 @@ function Calendar(): React.JSX.Element {
                                 </>
                             ))}
                             <div className="events-overlay">
-                                {buildEventLayout(DUMMY_EVENTS, startOfWeek(focusedDay)).map((dayEvents, dayIdx) => (
-                                    <div key={`col-${dayIdx}`} className="day-event-column">
-                                        {dayEvents.map(({ event, col, colCount }) => {
-                                            const startMin = event.start_at.getHours() * 60 + event.start_at.getMinutes();
-                                            const durMin = (event.end_at.getTime() - event.start_at.getTime()) / 60000;
-                                            return (
-                                                <div
-                                                    key={event.id}
-                                                    className="event-chip"
-                                                    style={{
-                                                        top: startMin * PX_PER_MIN,
-                                                        height: durMin * PX_PER_MIN,
-                                                        left: `${(col / colCount) * 100}%`,
-                                                        width: `${(1 / colCount) * 100}%`,
-                                                    }}
-                                                >
-                                                    <div className="event-chip-title">{event.title}</div>
-                                                    <div className="event-chip-time">{fmtTime(event.start_at)} – {fmtTime(event.end_at)}</div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                ))}
+                                {events.filter(e => startOfWeek(e.start_at).toDateString() === startOfWeek(focusedDay).toDateString()).map(event => <EventChip event={event} /> )}
+                                <div className="cursor-now" style={calcCursorPos()}></div>
                             </div>
                         </div>
                     </div>

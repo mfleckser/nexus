@@ -389,3 +389,21 @@
     color: var(--text-on-accent);
     font-weight: 600;
 }
+
+.cursor-now {
+    width: calc(100%/7);
+    height: 1px;
+    background-color: red;
+    position: absolute;
+}
+
+.cursor-now::before {
+    border-radius: 3px;
+    content: " ";
+    width: 6px;
+    height: 6px;
+    background-color: red;
+    position: absolute;
+    left: -3px;
+    top: -3px;
+}

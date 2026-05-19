@@ -40,6 +40,7 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
     const [title, setTitle] = useState(task.title);
     const [description, setDescription] = useState(task.description ?? "");
     const [dueAt, setDueAt] = useState(toDatetimeLocal(task.due_at));
+    const [complete, setComplete] = useState(task.status === "complete");
 
     useEffect(() => {
         if (!expanded) {
@@ -54,11 +55,11 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
         setDueAt(toDatetimeLocal(task.due_at));
     }, [task.id, task.title, task.description, task.due_at]);
 
-    const done = task.status === "complete";
 
     const handleCheck = (e: React.MouseEvent) => {
         e.stopPropagation();
-        onStatusChange(done ? "todo" : "complete");
+        onStatusChange(complete ? "todo" : "complete");
+        setComplete(prev => !prev);
     };
 
     const handleStartEdit = () => {
@@ -92,7 +93,7 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
     };
 
     return (
-        <div className={`task-row${done ? " done" : ""}${expanded ? " expanded" : ""}`}>
+        <div className={`task-row${complete ? " done" : ""}${expanded ? " expanded" : ""}`}>
             <div className="task-row-header" onClick={onToggle}>
                 <span className="task-check" aria-hidden onClick={handleCheck} />
                 <span className="task-label">{task.title}</span>
