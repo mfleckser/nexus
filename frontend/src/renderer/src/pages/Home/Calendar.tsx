@@ -26,6 +26,8 @@ function EventChip({ event } : EventChipProps): React.JSX.Element {
     const [dragging, setDragging] = useState(false);
     const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
 
+    const {updateEvent} = useEvents();
+
     const dayIdx = event.start_at.getDay();
     const baseTop = (60 * event.start_at.getHours() + event.start_at.getMinutes()) * PX_PER_MIN;
     const duration = (event.end_at.getTime() - event.start_at.getTime()) / (1000 * 60);
@@ -48,6 +50,25 @@ function EventChip({ event } : EventChipProps): React.JSX.Element {
         setDragging(true);
     }
 
+    function onMouseUp(e: MouseEvent) {
+        if (parentRectRef.current) {
+            // Set new day
+            const newDayIdx = 7 * (e.clientX - parentRectRef.current.left) / parentRectRef.current.width;
+            event.start_at.setDate(event.start_at.getDate() + newDayIdx - dayIdx);
+            event.end_at.setDate(event.end_at.getDate() + newDayIdx - dayIdx);
+
+            // Set new hour
+            const newHour = 24 * (e.clientY - parentRectRef.current.top - grabOffsetRef.current.y) / parentRectRef.current.height;
+            const roundedHour = Math.round(2 * newHour) / 2;
+            event.start_at.setHours(roundedHour, 60 * (roundedHour % 1));
+            event.end_at.setTime(event.start_at.getTime() + duration * 1000 * 60);
+
+            updateEvent(event.id, {start_at: event.start_at, end_at: event.end_at});
+        }
+        setDragging(false);
+        setDragPos(null);
+    }
+
     useEffect(() => {
         if (!dragging) return;
         function onMove(e: MouseEvent) {
@@ -58,15 +79,11 @@ function EventChip({ event } : EventChipProps): React.JSX.Element {
                 top: e.clientY - parentRect.top - grabOffsetRef.current.y,
             });
         }
-        function onUp() {
-            setDragging(false);
-            setDragPos(null);
-        }
         window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
+        window.addEventListener("mouseup", onMouseUp);
         return () => {
             window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", onUp);
+            window.removeEventListener("mouseup", onMouseUp);
         };
     }, [dragging]);
 

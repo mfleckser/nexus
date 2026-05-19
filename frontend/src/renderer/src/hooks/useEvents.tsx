@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { getEvents } from "@renderer/api/event";
+import { getEvents, updateEvent as apiUpdateEvent } from "@renderer/api/event";
 import { Event } from "@renderer/types";
 
 type EventsContextValue = {
@@ -26,8 +26,8 @@ export function EventsProvider({ children }: { children: ReactNode }) {
   }
 
   async function updateEvent(id: string, data: any) {
-    // await apiUpdateTask(id, data);
-    // setTasks(prev => prev.map(t => (t.id === id ? { ...t, ...data } : t)));
+    await apiUpdateEvent(id, data);
+    setEvents(prev => prev.map(e => (e.id === id ? { ...e, ...data } : e)));
   }
 
   async function deleteEvent(id: string) {

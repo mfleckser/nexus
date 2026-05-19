@@ -11,4 +11,8 @@ async function getEvents(): Promise<Event[]> {
     }));
 }
 
-export { getEvents }
+function updateEvent(id: string, data: any) {
+    return window.api.apiPut(`/event/${id}`, data);
+}
+
+export { getEvents, updateEvent }

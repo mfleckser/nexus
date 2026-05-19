@@ -2,7 +2,8 @@ from flask import Blueprint, request, jsonify
 
 from app.services.event_service import (
     get_all_events,
-    create_event
+    create_event,
+    update_event
 )
 
 events_bp = Blueprint("events", __name__)
@@ -13,8 +14,14 @@ def list():
 
 @events_bp.route("/events", methods=["POST"])
 def create():
-    data = request.data
+    data = request.json
 
     event = create_event(data)
 
     return jsonify(event), 201
+
+@events_bp.route("/event/<id>", methods=["PUT"])
+def update(id):
+    data = request.json
+
+    return update_event(id, data)
