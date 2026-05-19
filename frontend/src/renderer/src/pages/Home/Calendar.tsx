@@ -25,12 +25,13 @@ function EventChip({ event } : EventChipProps): React.JSX.Element {
     const grabOffsetRef = useRef({ x: 0, y: 0 });
     const [dragging, setDragging] = useState(false);
     const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
+    const [adjustingDuration, setAdjustingDuration] = useState(false);
+    const [duration, setDuration] = useState((event.end_at.getTime() - event.start_at.getTime()) / (1000 * 60));
 
     const {updateEvent} = useEvents();
 
     const dayIdx = event.start_at.getDay();
     const baseTop = (60 * event.start_at.getHours() + event.start_at.getMinutes()) * PX_PER_MIN;
-    const duration = (event.end_at.getTime() - event.start_at.getTime()) / (1000 * 60);
 
     function onMouseDown(e: React.MouseEvent) {
         const chip = chipRef.current;
@@ -50,6 +51,11 @@ function EventChip({ event } : EventChipProps): React.JSX.Element {
         setDragging(true);
     }
 
+    function snapTime(hour: number): {hour: number, minute: number} {
+        const roundedHour = Math.round(2 * hour) / 2;
+        return {hour: roundedHour, minute: 60 * (roundedHour % 1)};
+    }
+
     function onMouseUp(e: MouseEvent) {
         if (parentRectRef.current) {
             // Set new day
@@ -59,14 +65,38 @@ function EventChip({ event } : EventChipProps): React.JSX.Element {
 
             // Set new hour
             const newHour = 24 * (e.clientY - parentRectRef.current.top - grabOffsetRef.current.y) / parentRectRef.current.height;
-            const roundedHour = Math.round(2 * newHour) / 2;
-            event.start_at.setHours(roundedHour, 60 * (roundedHour % 1));
+            const roundedTime = snapTime(newHour);
+            event.start_at.setHours(roundedTime.hour, roundedTime.minute);
             event.end_at.setTime(event.start_at.getTime() + duration * 1000 * 60);
 
             updateEvent(event.id, {start_at: event.start_at, end_at: event.end_at});
         }
         setDragging(false);
         setDragPos(null);
+    }
+
+    function durationMouseDown(e: React.MouseEvent) {
+        e.stopPropagation();
+
+        const chip = chipRef.current;
+        if (!chip) return;
+        const parent = chip.offsetParent as HTMLElement | null;
+        const parentRect = parent ? parent.getBoundingClientRect() : null;
+        parentRectRef.current = parentRect;
+
+        setAdjustingDuration(true);
+    }
+
+    function durationMouseUp(e: MouseEvent) {
+        setAdjustingDuration(false);
+        if (parentRectRef.current) {
+            const startMins = 60 * event.start_at.getHours() + event.start_at.getMinutes();
+            const endMins = (e.clientY - parentRectRef.current.top) / PX_PER_MIN;
+            const roundedDuration = 30 * Math.round((endMins - startMins) / 30);
+            setDuration(roundedDuration);
+            event.end_at.setTime(event.start_at.getTime() + roundedDuration * 1000 * 60)
+            updateEvent(event.id, {end_at: event.end_at})
+        }
     }
 
     useEffect(() => {
@@ -87,6 +117,23 @@ function EventChip({ event } : EventChipProps): React.JSX.Element {
         };
     }, [dragging]);
 
+    useEffect(() => {
+        if (!adjustingDuration) return;
+        function onMove(e: MouseEvent) {
+            if (!parentRectRef.current) return;
+            const startMins = 60 * event.start_at.getHours() + event.start_at.getMinutes();
+            const endMins = (e.clientY - parentRectRef.current.top) / PX_PER_MIN;
+            setDuration(endMins - startMins);
+        }
+
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", durationMouseUp);
+        return () => {
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", durationMouseUp);
+        }
+    }, [adjustingDuration]);
+
     const style: React.CSSProperties = {
         width: `${100 / 7}%`,
         height: duration * PX_PER_MIN,
@@ -98,12 +145,13 @@ function EventChip({ event } : EventChipProps): React.JSX.Element {
         <div
             ref={chipRef}
             key={event.id}
-            className="event-chip"
+            className={`event-chip ${adjustingDuration ? "event-chip-adjusting" : ""}`}
             onMouseDown={onMouseDown}
             style={style}
         >
             <div className="event-chip-title">{event.title}</div>
             <div className="event-chip-time">{fmtTime(event.start_at)} – {fmtTime(event.end_at)}</div>
+            <div className="event-chip-duration-adjuster" onMouseDown={durationMouseDown}></div>
         </div>
     )
 }
@@ -345,7 +393,7 @@ function Calendar(): React.JSX.Element {
                                 </>
                             ))}
                             <div className="events-overlay">
-                                {events.filter(e => startOfWeek(e.start_at).toDateString() === startOfWeek(focusedDay).toDateString()).map(event => <EventChip event={event} /> )}
+                                {events.filter(e => startOfWeek(e.start_at).toDateString() === startOfWeek(focusedDay).toDateString()).map(event => <EventChip key={event.id} event={event} /> )}
                                 <div className="cursor-now" style={calcCursorPos()}></div>
                             </div>
                         </div>
