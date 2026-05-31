@@ -1,0 +1,26 @@
+[
+    {
+        "name": "exercise",
+        "color": "#3a9e72"
+    },
+    {
+        "name": "deep focus",
+        "color": "#4d63c9"
+    },
+    {
+        "name": "class",
+        "color": "#d65a5a"
+    },
+    {
+        "name": "work",
+        "color": "#b97fd0"
+    },
+    {
+        "name": "eat",
+        "color": "#e8b94f"
+    },
+    {
+        "name": "none",
+        "color": "#8a8a99"
+    }
+]

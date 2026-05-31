@@ -1,10 +1,11 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { getEvents, updateEvent as apiUpdateEvent } from "@renderer/api/event";
+import { getEvents, addEvent as apiAddEvent, updateEvent as apiUpdateEvent } from "@renderer/api/event";
 import { Event } from "@renderer/types";
+import { NewEventDraft } from "@renderer/pages/Home/NewEventPopover";
 
 type EventsContextValue = {
   events: Event[];
-  addEvent: (title: string, description: string | null, due_at: string | null) => Promise<void>;
+  addEvent: (draft: NewEventDraft) => Promise<void>;
   updateEvent: (id: string, data: any) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
 };
@@ -18,14 +19,14 @@ export function EventsProvider({ children }: { children: ReactNode }) {
     getEvents().then(setEvents);
   }, []);
 
-  async function addEvent(title: string, description: string | null, due_at: string | null) {
-    // const dueDate = due_at ? new Date(due_at) : null;
-    // await apiAddTask(title, description, dueDate);
-    // const fresh = await getTasks();
-    // setTasks(fresh);
+  async function addEvent(draft: NewEventDraft) {
+    await apiAddEvent(draft.title, draft.description, draft.start_at, new Date(draft.start_at.getTime() + draft.duration * 1000 * 60), draft.category);
+    const fresh = await getEvents();
+    setEvents(fresh);
   }
 
   async function updateEvent(id: string, data: any) {
+    if (id === "DRAFT") return;
     await apiUpdateEvent(id, data);
     setEvents(prev => prev.map(e => (e.id === id ? { ...e, ...data } : e)));
   }

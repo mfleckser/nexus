@@ -34,6 +34,29 @@
     transition: background-color 0.1s, border-color 0.1s;
 }
 
+.new-event-button {
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-md);
+    padding: 6px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.1s, border-color 0.1s;
+}
+
+.new-event-button:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.new-event-button:active {
+    background: var(--accent-active);
+    border-color: var(--accent-active);
+}
+
 .today-button:hover {
     background: var(--bg-hover);
     border-color: var(--border-strong);
@@ -281,7 +304,7 @@
 .event-chip {
     position: absolute;
     box-sizing: border-box;
-    background: var(--accent-muted);
+    background: color-mix(in srgb-linear, var(--chip-background) 30%, transparent 70%);
     border-left: 3px solid var(--pillar-calendar);
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-sm);
@@ -296,7 +319,7 @@
 }
 
 .event-chip:hover, .event-chip-adjusting {
-    background: var(--accent);
+    background: var(--chip-background);
     color: var(--text-on-accent);
 }
 

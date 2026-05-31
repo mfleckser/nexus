@@ -11,8 +11,18 @@ async function getEvents(): Promise<Event[]> {
     }));
 }
 
+function addEvent(title: string, description: string | null, start_at: Date, end_at: Date, category: string) {
+    return window.api.apiPost("/events", {
+        title: title,
+        description: description,
+        start_at: start_at,
+        end_at: end_at,
+        category: category
+    })
+}
+
 function updateEvent(id: string, data: any) {
     return window.api.apiPut(`/event/${id}`, data);
 }
 
-export { getEvents, updateEvent }
+export { getEvents, addEvent, updateEvent }

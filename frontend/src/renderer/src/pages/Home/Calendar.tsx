@@ -1,216 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./calendar.css"
-import { Event } from "@renderer/types";
 import { useEvents } from "@renderer/hooks/useEvents";
+import EventChip, { EventDraftChip } from "./EventChip";
+import NewEventPopover, { NewEventDraft } from "./NewEventPopover";
 
 const PX_PER_HOUR = 48;
 const PX_PER_MIN = PX_PER_HOUR / 60;
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
-
-const fmtTime = (d: Date) => {
-    const h = d.getHours();
-    const m = d.getMinutes();
-    const hh = (h % 12) || 12;
-    const mm = m.toString().padStart(2, "0");
-    return `${hh}:${mm} ${h >= 12 ? "PM" : "AM"}`;
-};
-
-type EventChipProps = {
-    event: Event
-};
-
-function EventChip({ event } : EventChipProps): React.JSX.Element {
-    const chipRef = useRef<HTMLDivElement>(null);
-    const parentRectRef = useRef<DOMRect | null>(null);
-    const grabOffsetRef = useRef({ x: 0, y: 0 });
-    const [dragging, setDragging] = useState(false);
-    const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
-    const [adjustingDuration, setAdjustingDuration] = useState(false);
-    const [duration, setDuration] = useState((event.end_at.getTime() - event.start_at.getTime()) / (1000 * 60));
-
-    const {updateEvent} = useEvents();
-
-    const dayIdx = event.start_at.getDay();
-    const baseTop = (60 * event.start_at.getHours() + event.start_at.getMinutes()) * PX_PER_MIN;
-
-    function onMouseDown(e: React.MouseEvent) {
-        const chip = chipRef.current;
-        if (!chip) return;
-        const chipRect = chip.getBoundingClientRect();
-        const parent = chip.offsetParent as HTMLElement | null;
-        const parentRect = parent ? parent.getBoundingClientRect() : null;
-        parentRectRef.current = parentRect;
-        grabOffsetRef.current = {
-            x: e.clientX - chipRect.left,
-            y: e.clientY - chipRect.top,
-        };
-        setDragPos({
-            left: chipRect.left - (parentRect?.left ?? 0),
-            top: chipRect.top - (parentRect?.top ?? 0),
-        });
-        setDragging(true);
-    }
-
-    function snapTime(hour: number): {hour: number, minute: number} {
-        const roundedHour = Math.round(2 * hour) / 2;
-        return {hour: roundedHour, minute: 60 * (roundedHour % 1)};
-    }
-
-    function onMouseUp(e: MouseEvent) {
-        if (parentRectRef.current) {
-            // Set new day
-            const newDayIdx = 7 * (e.clientX - parentRectRef.current.left) / parentRectRef.current.width;
-            event.start_at.setDate(event.start_at.getDate() + newDayIdx - dayIdx);
-            event.end_at.setDate(event.end_at.getDate() + newDayIdx - dayIdx);
-
-            // Set new hour
-            const newHour = 24 * (e.clientY - parentRectRef.current.top - grabOffsetRef.current.y) / parentRectRef.current.height;
-            const roundedTime = snapTime(newHour);
-            event.start_at.setHours(roundedTime.hour, roundedTime.minute);
-            event.end_at.setTime(event.start_at.getTime() + duration * 1000 * 60);
-
-            updateEvent(event.id, {start_at: event.start_at, end_at: event.end_at});
-        }
-        setDragging(false);
-        setDragPos(null);
-    }
-
-    function durationMouseDown(e: React.MouseEvent) {
-        e.stopPropagation();
-
-        const chip = chipRef.current;
-        if (!chip) return;
-        const parent = chip.offsetParent as HTMLElement | null;
-        const parentRect = parent ? parent.getBoundingClientRect() : null;
-        parentRectRef.current = parentRect;
-
-        setAdjustingDuration(true);
-    }
-
-    function durationMouseUp(e: MouseEvent) {
-        setAdjustingDuration(false);
-        if (parentRectRef.current) {
-            const startMins = 60 * event.start_at.getHours() + event.start_at.getMinutes();
-            const endMins = (e.clientY - parentRectRef.current.top) / PX_PER_MIN;
-            const roundedDuration = 30 * Math.round((endMins - startMins) / 30);
-            setDuration(roundedDuration);
-            event.end_at.setTime(event.start_at.getTime() + roundedDuration * 1000 * 60)
-            updateEvent(event.id, {end_at: event.end_at})
-        }
-    }
-
-    useEffect(() => {
-        if (!dragging) return;
-        function onMove(e: MouseEvent) {
-            const parentRect = parentRectRef.current;
-            if (!parentRect) return;
-            setDragPos({
-                left: e.clientX - parentRect.left - grabOffsetRef.current.x,
-                top: e.clientY - parentRect.top - grabOffsetRef.current.y,
-            });
-        }
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onMouseUp);
-        return () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", onMouseUp);
-        };
-    }, [dragging]);
-
-    useEffect(() => {
-        if (!adjustingDuration) return;
-        function onMove(e: MouseEvent) {
-            if (!parentRectRef.current) return;
-            const startMins = 60 * event.start_at.getHours() + event.start_at.getMinutes();
-            const endMins = (e.clientY - parentRectRef.current.top) / PX_PER_MIN;
-            setDuration(endMins - startMins);
-        }
-
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", durationMouseUp);
-        return () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", durationMouseUp);
-        }
-    }, [adjustingDuration]);
-
-    const style: React.CSSProperties = {
-        width: `${100 / 7}%`,
-        height: duration * PX_PER_MIN,
-        left: dragging && dragPos ? dragPos.left : `${dayIdx * 100 / 7}%`,
-        top: dragging && dragPos ? dragPos.top : baseTop,
-    };
-
-    return (
-        <div
-            ref={chipRef}
-            key={event.id}
-            className={`event-chip ${adjustingDuration ? "event-chip-adjusting" : ""}`}
-            onMouseDown={onMouseDown}
-            style={style}
-        >
-            <div className="event-chip-title">{event.title}</div>
-            <div className="event-chip-time">{fmtTime(event.start_at)} – {fmtTime(event.end_at)}</div>
-            <div className="event-chip-duration-adjuster" onMouseDown={durationMouseDown}></div>
-        </div>
-    )
-}
-
-type PositionedEvent = { event: Event; col: number; colCount: number };
-
-const buildEventLayout = (events: Event[], weekStart: Date): PositionedEvent[][] => {
-    const byDay: Event[][] = Array.from({ length: 7 }, () => []);
-    const weekEnd = new Date(weekStart.getTime() + 7 * MS_PER_DAY);
-    for (const ev of events) {
-        if (ev.start_at >= weekEnd || ev.end_at <= weekStart) continue;
-        const dayIdx = Math.floor((ev.start_at.getTime() - weekStart.getTime()) / MS_PER_DAY);
-        if (dayIdx >= 0 && dayIdx < 7) byDay[dayIdx].push(ev);
-    }
-    return byDay.map(dayEvents => {
-        const sorted = [...dayEvents].sort((a, b) =>
-            a.start_at.getTime() - b.start_at.getTime() ||
-            b.end_at.getTime() - a.end_at.getTime()
-        );
-        // Group connected overlapping events (cluster), then assign cols greedily within cluster.
-        const result: PositionedEvent[] = [];
-        let cluster: Event[] = [];
-        let clusterEnd = -Infinity;
-        const flush = () => {
-            if (!cluster.length) return;
-            const cols: Event[][] = [];
-            const colByEvent = new Map<string, number>();
-            for (const ev of cluster) {
-                let placed = false;
-                for (let i = 0; i < cols.length; i++) {
-                    const last = cols[i][cols[i].length - 1];
-                    if (last.end_at <= ev.start_at) {
-                        cols[i].push(ev);
-                        colByEvent.set(ev.id, i);
-                        placed = true;
-                        break;
-                    }
-                }
-                if (!placed) {
-                    cols.push([ev]);
-                    colByEvent.set(ev.id, cols.length - 1);
-                }
-            }
-            const colCount = cols.length;
-            for (const ev of cluster) {
-                result.push({ event: ev, col: colByEvent.get(ev.id)!, colCount });
-            }
-            cluster = [];
-            clusterEnd = -Infinity;
-        };
-        for (const ev of sorted) {
-            if (ev.start_at.getTime() >= clusterEnd) flush();
-            cluster.push(ev);
-            clusterEnd = Math.max(clusterEnd, ev.end_at.getTime());
-        }
-        flush();
-        return result;
-    });
-};
+const POPOVER_WIDTH = 320;
+const POPOVER_GAP = 8;
 
 function Calendar(): React.JSX.Element {
     const today = new Date();
@@ -218,7 +15,61 @@ function Calendar(): React.JSX.Element {
         return new Date(today.getTime() - today.getDay() * 1000 * 60 * 60 * 24)
     });
     const [viewType, setViewType] = useState("WEEK");
-    const {events} = useEvents();
+    const {events, addEvent} = useEvents();
+    const [popover, setPopover] = useState<{ anchor: { x: number; y: number }; start: Date; duration?: number } | null>(null);
+    const [eventDraft, setEventDraft] = useState<NewEventDraft | null>(null);
+
+    const clampPopoverAnchor = (x: number, y: number) => {
+        const margin = 12;
+        const maxX = window.innerWidth - POPOVER_WIDTH - margin;
+        const maxY = window.innerHeight - 360;
+        return {
+            x: Math.max(margin, Math.min(x, maxX)),
+            y: Math.max(margin, Math.min(y, maxY)),
+        };
+    };
+
+    const openNewEventAt = (start: Date, anchor: { x: number; y: number }, duration: number = 60) => {
+        setPopover({ anchor: clampPopoverAnchor(anchor.x, anchor.y), start, duration });
+    };
+
+    const handleSlotMouseMove = useCallback((ev: MouseEvent) => {
+        setEventDraft(prev => prev && ({...prev, duration: prev.duration + (ev.movementY / PX_PER_MIN)}));
+    }, []);
+
+    const handleSlotMouseDown = (day: number, hour: number) => (e: React.MouseEvent<HTMLDivElement>) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const minuteOffset = ((e.clientY - rect.top) / rect.height) * 60;
+        const snappedMinute = Math.round(minuteOffset / 30) * 30;
+        const base = startOfWeek(focusedDay);
+        const start = new Date(base.getFullYear(), base.getMonth(), base.getDate() + day, hour, snappedMinute);
+        setEventDraft({title: "", description: "", start_at: start, duration: 0, top: rect.top, category: "none"});
+        
+        window.addEventListener("mousemove", handleSlotMouseMove);
+    }
+
+    useEffect(() => window.removeEventListener("mousemove", handleSlotMouseMove), []);
+
+    const handleSlotMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!eventDraft) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const roundedDuration = eventDraft.duration ? Math.round(eventDraft.duration / 30) * 30 : 60;
+        openNewEventAt(eventDraft.start_at, { x: rect.right + POPOVER_GAP, y: eventDraft.top || rect.top }, roundedDuration);
+
+        window.removeEventListener("mousemove", handleSlotMouseMove);
+    }
+
+    const handleNewEventButton = (e: React.MouseEvent<HTMLButtonElement>) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const now = new Date();
+        now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0);
+        openNewEventAt(now, { x: rect.left, y: rect.bottom + POPOVER_GAP });
+    };
+
+    const handlePopoverSave = (draft: NewEventDraft) => {
+        addEvent(draft);
+        setPopover(null);
+    };
 
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -264,6 +115,7 @@ function Calendar(): React.JSX.Element {
     function handleKeyPress(event) {
         const active = document.activeElement;
         if (active) {
+            // Don't process keyboard shortcuts while typing
             const tag = active.tagName.toLowerCase();
             if (tag === "input" || tag == "textarea" || (active as HTMLElement).isContentEditable) {
                 return;
@@ -319,6 +171,7 @@ function Calendar(): React.JSX.Element {
         <div id="calendar-container">
             <div id="calendar-header">
                 <div className="header-left">
+                    <button className="new-event-button" onClick={handleNewEventButton}>+ New Event</button>
                     <button className="today-button" onClick={goToday}>Today</button>
                     <div className="nav-group">
                         <button className="nav-button" aria-label="Previous" onClick={goPrev}>‹</button>
@@ -388,17 +241,48 @@ function Calendar(): React.JSX.Element {
                                 <>
                                     <div key={`label-${hour}`} className="hour-label">{formatHour(hour)}</div>
                                     {[...Array(7).keys()].map(day => (
-                                        <div key={`${hour}-${day}`} className="hour-block" />
+                                        <div
+                                            key={`${hour}-${day}`}
+                                            className="hour-block"
+                                            onMouseDown={handleSlotMouseDown(day, hour)}
+                                            onMouseUp={handleSlotMouseUp}
+                                        />
                                     ))}
                                 </>
                             ))}
                             <div className="events-overlay">
-                                {events.filter(e => startOfWeek(e.start_at).toDateString() === startOfWeek(focusedDay).toDateString()).map(event => <EventChip key={event.id} event={event} /> )}
+                                {events.filter(e => startOfWeek(e.start_at).toDateString() === startOfWeek(focusedDay).toDateString())
+                                    .toSorted((a, b) => (a.start_at.getTime() - b.start_at.getTime()) || (b.end_at.getTime() - a.end_at.getTime()))
+                                    .map((event, idx, filteredEvents) => {
+                                    let cols = 0, colIdx = 0;
+                                    const start = event.start_at.getTime();
+                                    const end = event.end_at.getTime();
+                                    for (let i = 0; i < filteredEvents.length; i++) {
+                                        const e_start = filteredEvents[i].start_at.getTime();
+                                        const e_end = filteredEvents[i].end_at.getTime();
+                                        if ((e_start < start && e_end > start) || (e_start < end && e_end > end)) {
+                                            cols++;
+                                            if (idx > i) colIdx++;
+                                        }
+                                    }
+                                    return <EventChip key={event.id} event={event} cols={cols} colIdx={colIdx} />
+                                })}
+                                {eventDraft && <EventDraftChip draft={eventDraft} />}
                                 <div className="cursor-now" style={calcCursorPos()}></div>
                             </div>
                         </div>
                     </div>
                 </div>
+            )}
+            {popover && (
+                <NewEventPopover
+                    anchor={popover.anchor}
+                    initialStart={popover.start}
+                    initialDuration={popover.duration}
+                    onSave={handlePopoverSave}
+                    onClose={() => {setPopover(null); setEventDraft(null)}}
+                    setEventDraft={setEventDraft}
+                />
             )}
         </div>
     );

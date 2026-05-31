@@ -19,5 +19,6 @@ export type Event = {
     description: string | null,
     start_at: Date,
     end_at: Date,
-    all_day: boolean
+    all_day: boolean,
+    category: string | null
 }

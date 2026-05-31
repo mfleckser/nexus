@@ -188,11 +188,12 @@ type TaskGroupProps = {
     filterFunc: (t: Task) => boolean;
     expandedId: string | null;
     setExpandedId: (id: string | null) => void;
+    startClosed?: boolean;
 };
 
-function TaskGroup({ name, filterFunc, expandedId, setExpandedId }: TaskGroupProps): React.JSX.Element {
+function TaskGroup({ name, filterFunc, expandedId, setExpandedId, startClosed = false }: TaskGroupProps): React.JSX.Element {
     const { tasks, updateTask, deleteTask } = useTasks();
-    const [showTasks, setShowTasks] = useState(true);
+    const [showTasks, setShowTasks] = useState(!startClosed);
 
     const compareTasks = (a: Task, b: Task) => {
         return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -334,7 +335,7 @@ function TaskView(): React.JSX.Element {
                 <div className="task-list themed-scroll">
                     <TaskGroup
                         name="Overdue"
-                        filterFunc={t => t.due_at !== null && getDaysDiff(t) < 0}
+                        filterFunc={t => t.due_at !== null && getDaysDiff(t) < 0 && t.status !== "complete"}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                     />
@@ -349,16 +350,18 @@ function TaskView(): React.JSX.Element {
                         filterFunc={t => {if (t.due_at === null) return false; const diff = getDaysDiff(t); return diff >= 1 && diff <= 7;}}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
+                        startClosed
                     />
                     <TaskGroup
                         name="Future"
                         filterFunc={t => getDaysDiff(t) > 7}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
+                        startClosed
                     />
                     <TaskGroup
                         name="No Due Date"
-                        filterFunc={t => t.due_at === null}
+                        filterFunc={t => t.due_at === null && t.status != "complete"}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                     />

@@ -11,6 +11,7 @@ def create_event(data: dict):
         "description": data.get("description"),
         "start_at": data["start_at"],
         "end_at": data["end_at"],
+        "category": data.get("category"),
         "all_day": data.get("all_day")
     }).execute()
 
