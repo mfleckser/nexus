@@ -10,8 +10,14 @@ declare global {
     }
 }
 
-function getTasks() {
-    return window.api.apiGet("/tasks")
+async function getTasks() {
+    const raw = await window.api.apiGet("/tasks");
+    return raw.map((t: any) => ({
+        ...t,
+        created_at: new Date(t.created_at),
+        updated_at: new Date(t.updated_at),
+        due_at: t.due_at ? new Date(t.due_at) : null,
+    }));
 }
 
 function addTask(title: string, description: string | null, due_at: Date | null) {

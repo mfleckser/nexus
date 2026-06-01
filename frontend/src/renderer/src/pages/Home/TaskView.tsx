@@ -2,6 +2,7 @@ import "./taskview.css"
 import { useTasks } from "../../hooks/useTasks"
 import { useEffect, useState } from "react";
 import { Task } from "@renderer/types";
+import useNow from "@renderer/hooks/useNow";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -195,11 +196,7 @@ function TaskGroup({ name, filterFunc, expandedId, setExpandedId, startClosed = 
     const { tasks, updateTask, deleteTask } = useTasks();
     const [showTasks, setShowTasks] = useState(!startClosed);
 
-    const compareTasks = (a: Task, b: Task) => {
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    }
-
-    const filtered = tasks.filter(filterFunc).toSorted(compareTasks);
+    const filtered = tasks.filter(filterFunc).toSorted((a, b) => a.created_at.getTime() - b.created_at.getTime());
 
     return (
         <div className={`task-group${showTasks ? "" : " collapsed"}`}>
@@ -244,6 +241,7 @@ function TaskView(): React.JSX.Element {
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [dueAt, setDueAt] = useState("");
+    const now = useNow();
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
     const resetForm = () => {
@@ -268,7 +266,7 @@ function TaskView(): React.JSX.Element {
 
     const getDaysDiff = (task: Task) => {
         if (task.due_at === null) return 0;
-        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const today = new Date(now); today.setHours(0, 0, 0, 0);
         const due = new Date(task.due_at); due.setHours(0, 0, 0, 0);
         const diff = (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
         return diff;
