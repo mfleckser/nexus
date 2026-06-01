@@ -29,7 +29,6 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
     const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
     const [adjustingDuration, setAdjustingDuration] = useState(false);
     const [duration, setDuration] = useState((event.end_at.getTime() - event.start_at.getTime()) / (1000 * 60));
-    const [hovering, setHovering] = useState(false);
 
     useEffect(() => {
         setDuration((event.end_at.getTime() - event.start_at.getTime()) / (1000 * 60));

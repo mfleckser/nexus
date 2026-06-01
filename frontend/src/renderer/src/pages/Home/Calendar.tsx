@@ -254,7 +254,7 @@ function Calendar(): React.JSX.Element {
                                 {events.filter(e => startOfWeek(e.start_at).toDateString() === startOfWeek(focusedDay).toDateString())
                                     .toSorted((a, b) => (a.start_at.getTime() - b.start_at.getTime()) || (b.end_at.getTime() - a.end_at.getTime()))
                                     .map((event, idx, filteredEvents) => {
-                                    let cols = 0, colIdx = 0;
+                                    let cols = 1, colIdx = 0;
                                     const start = event.start_at.getTime();
                                     const end = event.end_at.getTime();
                                     for (let i = 0; i < filteredEvents.length; i++) {
@@ -268,7 +268,8 @@ function Calendar(): React.JSX.Element {
                                     return <EventChip key={event.id} event={event} cols={cols} colIdx={colIdx} />
                                 })}
                                 {eventDraft && <EventDraftChip draft={eventDraft} />}
-                                <div className="cursor-now" style={calcCursorPos()}></div>
+                                {startOfWeek(today).toDateString() === startOfWeek(focusedDay).toDateString() &&
+                                    <div className="cursor-now" style={calcCursorPos()}></div>}
                             </div>
                         </div>
                     </div>

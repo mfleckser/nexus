@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import "./newEventPopover.css";
 import categoryData from "./categories.json"
 
@@ -48,10 +48,20 @@ function NewEventPopover({
     const [customDuration, setCustomDuration] = useState(
         DURATION_PRESETS.includes(initialDuration) ? "" : String(initialDuration),
     );
+    const [top, setTop] = useState(anchor.y);
 
     useEffect(() => {
         titleRef.current?.focus();
     }, []);
+
+    useLayoutEffect(() => {
+        const el = rootRef.current;
+        if (!el) return;
+        const margin = 8;
+        const height = el.offsetHeight;
+        const maxTop = window.innerHeight - height - margin;
+        setTop(Math.max(margin, Math.min(anchor.y, maxTop)));
+    }, [anchor.y]);
 
     useEffect(() => {
         setEventDraft({title: title, description: description, start_at: getStartAt(), duration: duration, category: category});
@@ -106,7 +116,7 @@ function NewEventPopover({
 
     const style: React.CSSProperties = {
         left: anchor.x,
-        top: anchor.y,
+        top,
     };
 
     return (
