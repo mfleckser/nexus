@@ -3,6 +3,7 @@ import "./calendar.css"
 import { useEvents } from "@renderer/hooks/useEvents";
 import EventChip, { EventDraftChip } from "./EventChip";
 import NewEventPopover, { NewEventDraft } from "./NewEventPopover";
+import useNow from "@renderer/hooks/useNow";
 
 const PX_PER_HOUR = 48;
 const PX_PER_MIN = PX_PER_HOUR / 60;
@@ -11,6 +12,7 @@ const POPOVER_GAP = 8;
 
 function Calendar(): React.JSX.Element {
     const today = new Date();
+    const now = useNow();
     const [focusedDay, setFocusedDay] = useState<Date>(() => {
         return new Date(today.getTime() - today.getDay() * 1000 * 60 * 60 * 24)
     });
@@ -75,9 +77,9 @@ function Calendar(): React.JSX.Element {
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
     const isToday = (d: Date) =>
-        d.getDate() === today.getDate() &&
-        d.getMonth() === today.getMonth() &&
-        d.getFullYear() === today.getFullYear();
+        d.getDate() === now.getDate() &&
+        d.getMonth() === now.getMonth() &&
+        d.getFullYear() === now.getFullYear();
 
     const formatHour = (hour: number) => {
         if (hour === 0) return "";
@@ -105,7 +107,7 @@ function Calendar(): React.JSX.Element {
     };
 
     const goToday = () => {
-        setFocusedDay(today);
+        setFocusedDay(now);
     };
 
     const onViewChange = (v: string) => {
@@ -157,7 +159,6 @@ function Calendar(): React.JSX.Element {
     })();
 
     const calcCursorPos = (): React.CSSProperties => {
-        const now = new Date();
         const left = now.getDay() * 100 / 7;
         const top = (now.getHours() * 60 + now.getMinutes()) * PX_PER_MIN
         

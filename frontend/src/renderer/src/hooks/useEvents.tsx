@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { getEvents, addEvent as apiAddEvent, updateEvent as apiUpdateEvent } from "@renderer/api/event";
 import { Event } from "@renderer/types";
 import { NewEventDraft } from "@renderer/pages/Home/NewEventPopover";
+import useNow from "./useNow";
+import { sameSet } from "./utils";
 
 type EventsContextValue = {
   events: Event[];
@@ -14,10 +16,12 @@ const EventsContext = createContext<EventsContextValue | null>(null);
 
 export function EventsProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<Event[]>([]);
+  const now = useNow(10000);
 
   useEffect(() => {
-    getEvents().then(setEvents);
-  }, []);
+    getEvents().then(fresh =>
+      setEvents(prev => sameSet(fresh, prev) ? prev : fresh));
+  }, [now]);
 
   async function addEvent(draft: NewEventDraft) {
     await apiAddEvent(draft.title, draft.description, draft.start_at, new Date(draft.start_at.getTime() + draft.duration * 1000 * 60), draft.category);
