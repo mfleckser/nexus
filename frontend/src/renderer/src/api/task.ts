@@ -6,6 +6,8 @@ declare global {
             apiPost: (path: string, body: any) => Promise<any>
             apiPut: (path: string, body: any) => Promise<any>
             apiDelete: (path: string) => Promise<any>
+            onWindowFocus: (callback: () => void) => Promise<any>
+            clearFocusCallback: () => Promise<any>
         }
     }
 }

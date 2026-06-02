@@ -23,6 +23,8 @@ function createWindow(): void {
     mainWindow.show()
   })
 
+  mainWindow.on("focus", () => {mainWindow.webContents.send("window-focus")});
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
@@ -51,7 +53,6 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
   ipcMain.handle("health", health)
   ipcMain.handle("apiGet", (_, path) => apiGet(path))
   ipcMain.handle("apiPost", (_, path, body) => apiPost(path, body))

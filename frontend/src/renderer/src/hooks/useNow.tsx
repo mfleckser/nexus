@@ -5,8 +5,13 @@ export default function useNow(intervalMs: number = 60000): Date {
 
     useEffect(() => {
         const intervalId = setInterval(() => setNow(new Date()), intervalMs);
-        return () => clearInterval(intervalId);
+        return () => {clearInterval(intervalId)};
     }, [intervalMs]);
+
+    useEffect(() => {
+        window.api.onWindowFocus(() => setNow(new Date()));
+        return () => {window.api.clearFocusCallback()};
+    }, []);
 
     return now;
 }

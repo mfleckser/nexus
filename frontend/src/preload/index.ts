@@ -8,6 +8,8 @@ const api = {
   apiPost: (path: string, body: any) => ipcRenderer.invoke("apiPost", path, body),
   apiPut: (path: string, body: any) => ipcRenderer.invoke("apiPut", path, body),
   apiDelete: (path: string) => ipcRenderer.invoke("apiDelete", path),
+  onWindowFocus: (callback: () => void) => ipcRenderer.on("window-focus", (_) => callback()),
+  clearFocusCallback: () => ipcRenderer.removeAllListeners("window-focus")
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
