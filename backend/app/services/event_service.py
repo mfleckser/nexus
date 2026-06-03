@@ -1,5 +1,9 @@
 from app.extensions.supabase import supabase
+from app.extensions.cache import cache
 
+EVENTS_ALL_KEY = "events:all"
+
+@cache.cached(key_prefix=EVENTS_ALL_KEY)
 def get_all_events():
     res = supabase.table("events").select("*").execute()
 
@@ -15,6 +19,8 @@ def create_event(data: dict):
         "all_day": data.get("all_day")
     }).execute()
 
+    cache.delete(EVENTS_ALL_KEY)
+
     return res.data[0]
 
 def update_event(event_id: str, data: dict):
@@ -25,8 +31,11 @@ def update_event(event_id: str, data: dict):
 
     res = supabase.table("events").update(updates).eq("id", event_id).execute()
 
+    cache.delete(EVENTS_ALL_KEY)
+
     return res.data[0]
 
 def delete_event(event_id: str):
     res = supabase.table("events").delete().eq("id", event_id).execute()
+    cache.delete(EVENTS_ALL_KEY)
     return res.data[0]

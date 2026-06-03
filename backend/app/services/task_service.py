@@ -1,6 +1,10 @@
 from app.extensions.supabase import supabase
+from app.extensions.cache import cache
 from datetime import datetime, timezone
 
+TASKS_ALL_KEY = "tasks:all"
+
+@cache.cached(key_prefix=TASKS_ALL_KEY)
 def get_all_tasks():
     res = supabase.table("tasks").select("*").execute()
 
@@ -12,6 +16,8 @@ def create_task(data: dict):
         "description": data.get("description"),
         "due_at": data.get("due_at"),
     }).execute()
+
+    cache.delete(TASKS_ALL_KEY)
 
     return res.data[0]
 
@@ -25,8 +31,11 @@ def update_task(task_id: str, data: dict):
 
     res = supabase.table("tasks").update(updates).eq("id", task_id).execute()
 
+    cache.delete(TASKS_ALL_KEY)
+
     return res.data[0]
 
 def delete_task(task_id: str):
     res = supabase.table("tasks").delete().eq("id", task_id).execute()
+    cache.delete(TASKS_ALL_KEY)
     return res.data[0]
