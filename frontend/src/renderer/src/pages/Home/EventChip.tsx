@@ -43,6 +43,17 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
     const dayIdx = event.start_at.getDay();
     const baseTop = (60 * event.start_at.getHours() + event.start_at.getMinutes()) * PX_PER_MIN;
 
+    const handlePopoverSave = (draft: NewEventDraft) => {
+        updateEvent(event.id, {
+            title: draft.title,
+            description: draft.description,
+            start_at: draft.start_at,
+            end_at: new Date(draft.start_at.getTime() + draft.duration * 1000 * 60),
+            category: draft.category
+        });
+        setShowPopover(false);
+    }
+
     function onMouseDown(e: React.MouseEvent) {
         if (e.button !== 0) return;
         const chip = chipRef.current;
@@ -180,7 +191,7 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
                     initialTitle={event.title}
                     initialDescription={event.description || ""}
                     initialCategory={event.category || ""}
-                    onSave={(d) => {updateEvent(event.id, d)}}
+                    onSave={handlePopoverSave}
                     onClose={() => {setShowPopover(false)}}
                     onDelete={() => {setShowConfirmDelete(true)}}
                     setEventDraft={(d) => {}}

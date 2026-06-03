@@ -111,6 +111,15 @@
     background: var(--bg-active);
 }
 
+.sidebar-link.active {
+    background: var(--accent-muted);
+    color: var(--text-primary);
+}
+
+.sidebar-link.active:hover {
+    background: var(--accent-muted);
+}
+
 .sidebar-link-icon {
     flex-shrink: 0;
     color: var(--accent);
