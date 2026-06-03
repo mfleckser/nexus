@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
 import "./newEventPopover.css";
 import categoryData from "./categories.json"
 
-const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
+const DURATION_PRESETS = [30, 45, 60, 90, 120];
 
 const toDateInput = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -23,8 +24,12 @@ export type NewEventPopoverProps = {
     anchor: { x: number; y: number };
     initialStart: Date;
     initialDuration?: number;
+    initialTitle?: string;
+    initialDescription?: string;
+    initialCategory?: string;
     onSave: (draft: NewEventDraft) => void;
     onClose: () => void;
+    onDelete?: () => void;
     setEventDraft: (draft: NewEventDraft) => void;
 };
 
@@ -32,16 +37,20 @@ function NewEventPopover({
     anchor,
     initialStart,
     initialDuration = 60,
+    initialTitle = "",
+    initialDescription = "",
+    initialCategory = "",
     onSave,
     onClose,
+    onDelete,
     setEventDraft
 }: NewEventPopoverProps): React.JSX.Element {
     const rootRef = useRef<HTMLDivElement>(null);
     const titleRef = useRef<HTMLInputElement>(null);
 
-    const [title, setTitle] = useState("");
-    const [description, setDescription] = useState("");
-    const [category, setCategory] = useState("");
+    const [title, setTitle] = useState(initialTitle);
+    const [description, setDescription] = useState(initialDescription);
+    const [category, setCategory] = useState(initialCategory);
     const [dateStr, setDateStr] = useState(toDateInput(initialStart));
     const [timeStr, setTimeStr] = useState(toTimeInput(initialStart));
     const [duration, setDuration] = useState(initialDuration);
@@ -206,17 +215,23 @@ function NewEventPopover({
                     </div>
                 </div>
 
-                <div className="nep-actions">
-                    <button type="button" className="nep-btn nep-btn-secondary" onClick={onClose}>
-                        Cancel
-                    </button>
-                    <button
-                        type="submit"
-                        className="nep-btn nep-btn-primary"
-                        disabled={!title.trim()}
-                    >
-                        Save
-                    </button>
+                <div className="nep-bottom-row">
+                    {onDelete && <button type="button" className="nep-btn-delete" onClick={onDelete}>
+                        <Trash2 size={20}/>
+                    </button>}
+                    <div />
+                    <div className="nep-actions">
+                        <button type="button" className="nep-btn nep-btn-secondary" onClick={onClose}>
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            className="nep-btn nep-btn-primary"
+                            disabled={!title.trim()}
+                        >
+                            Save
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>

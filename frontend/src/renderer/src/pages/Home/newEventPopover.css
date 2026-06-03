@@ -1,6 +1,7 @@
 .new-event-popover {
     position: fixed;
     z-index: 100;
+    pointer-events: auto;
     width: 320px;
     background: var(--bg-elevated);
     border: 1px solid var(--border-default);
@@ -172,11 +173,29 @@
     flex: none;
 }
 
+.nep-bottom-row {
+    display: flex;
+    justify-content: space-between;
+}
+
 .nep-actions {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
     margin-top: 4px;
+}
+
+.nep-btn-delete {
+    background: none;
+    border: none;
+    color: var(--status-danger);
+    padding: 0 10px;
+    cursor: pointer;
+ }
+
+.nep-btn-delete:hover {
+    border-radius: var(--radius-md);
+    background-color: var(--bg-hover);
 }
 
 .nep-btn {

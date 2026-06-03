@@ -26,3 +26,7 @@ def update_event(event_id: str, data: dict):
     res = supabase.table("events").update(updates).eq("id", event_id).execute()
 
     return res.data[0]
+
+def delete_event(event_id: str):
+    res = supabase.table("events").delete().eq("id", event_id).execute()
+    return res.data[0]

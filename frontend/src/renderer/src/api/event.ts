@@ -22,7 +22,11 @@ function addEvent(title: string, description: string | null, start_at: Date, end
 }
 
 function updateEvent(id: string, data: any) {
-    return window.api.apiPut(`/event/${id}`, data);
+    return window.api.apiPut(`/events/${id}`, data);
 }
 
-export { getEvents, addEvent, updateEvent }
+function deleteEvent(id: string) {
+    return window.api.apiDelete(`/events/${id}`)
+}
+
+export { getEvents, addEvent, updateEvent, deleteEvent }

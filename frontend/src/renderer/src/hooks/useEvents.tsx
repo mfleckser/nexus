@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { getEvents, addEvent as apiAddEvent, updateEvent as apiUpdateEvent } from "@renderer/api/event";
+import { getEvents, addEvent as apiAddEvent, updateEvent as apiUpdateEvent, deleteEvent as apiDeleteEvent } from "@renderer/api/event";
 import { Event } from "@renderer/types";
 import { NewEventDraft } from "@renderer/pages/Home/NewEventPopover";
 import useNow from "./useNow";
@@ -36,8 +36,8 @@ export function EventsProvider({ children }: { children: ReactNode }) {
   }
 
   async function deleteEvent(id: string) {
-    // await apiDeleteTask(id);
-    // setTasks(prev => prev.filter(t => t.id !== id));
+    await apiDeleteEvent(id);
+    setEvents(prev => prev.filter(t => t.id !== id));
   }
 
   return (

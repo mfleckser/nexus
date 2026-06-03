@@ -71,6 +71,7 @@ function Calendar(): React.JSX.Element {
     const handlePopoverSave = (draft: NewEventDraft) => {
         addEvent(draft);
         setPopover(null);
+        setEventDraft(null);
     };
 
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

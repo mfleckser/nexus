@@ -1,11 +1,13 @@
 import { useEvents } from "@renderer/hooks/useEvents";
 import { useEffect, useRef, useState } from "react";
 import { Event } from "@renderer/types";
-import { NewEventDraft } from "./NewEventPopover";
+import NewEventPopover, { NewEventDraft } from "./NewEventPopover";
+import ConfirmDelete from "./ConfirmDelete";
 import categoryData from "./categories.json"
 
 const PX_PER_HOUR = 48;
 const PX_PER_MIN = PX_PER_HOUR / 60;
+const POPOVER_GAP = 8;
 
 const fmtTime = (d: Date) => {
     const h = d.getHours();
@@ -29,17 +31,20 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
     const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
     const [adjustingDuration, setAdjustingDuration] = useState(false);
     const [duration, setDuration] = useState((event.end_at.getTime() - event.start_at.getTime()) / (1000 * 60));
+    const [showPopover, setShowPopover] = useState(false);
+    const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
     useEffect(() => {
         setDuration((event.end_at.getTime() - event.start_at.getTime()) / (1000 * 60));
     }, [event])
 
-    const {updateEvent} = useEvents();
+    const {updateEvent, deleteEvent} = useEvents();
 
     const dayIdx = event.start_at.getDay();
     const baseTop = (60 * event.start_at.getHours() + event.start_at.getMinutes()) * PX_PER_MIN;
 
     function onMouseDown(e: React.MouseEvent) {
+        if (e.button !== 0) return;
         const chip = chipRef.current;
         if (!chip) return;
         const chipRect = chip.getBoundingClientRect();
@@ -150,17 +155,40 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
         "--chip-background": color,
     };
 
+    const rect = chipRef.current?.getBoundingClientRect();
+
     return (
-        <div
-            ref={chipRef}
-            key={event.id}
-            className={`event-chip ${adjustingDuration ? "event-chip-adjusting" : ""}`}
-            onMouseDown={onMouseDown}
-            style={style}
-        >
-            <div className="event-chip-title">{event.title}</div>
-            <div className="event-chip-time">{fmtTime(event.start_at)} – {fmtTime(event.end_at)}</div>
-            <div className="event-chip-duration-adjuster" onMouseDown={durationMouseDown}></div>
+        <div>
+            <div
+                ref={chipRef}
+                key={event.id}
+                className={`event-chip ${adjustingDuration ? "event-chip-adjusting" : ""}`}
+                onMouseDown={onMouseDown}
+                onClick={() => {setShowPopover(true)}}
+                onContextMenu={(e) => {e.stopPropagation(); alert("HI")}}
+                style={style}
+            >
+                <div className="event-chip-title">{event.title}</div>
+                <div className="event-chip-time">{fmtTime(event.start_at)} – {fmtTime(event.end_at)}</div>
+                <div className="event-chip-duration-adjuster" onMouseDown={durationMouseDown}></div>
+            </div>
+            {showPopover &&
+                <NewEventPopover
+                    anchor={{x: (rect?.right || 0) + POPOVER_GAP, y: rect?.top || 0}}
+                    initialStart={event.start_at}
+                    initialDuration={duration}
+                    initialTitle={event.title}
+                    initialDescription={event.description || ""}
+                    initialCategory={event.category || ""}
+                    onSave={(d) => {updateEvent(event.id, d)}}
+                    onClose={() => {setShowPopover(false)}}
+                    onDelete={() => {setShowConfirmDelete(true)}}
+                    setEventDraft={(d) => {}}
+                />}
+            {showConfirmDelete && <ConfirmDelete
+                onClose={() => {setShowConfirmDelete(false)}}
+                onDelete={() => {deleteEvent(event.id); setShowConfirmDelete(false)}}
+            />}
         </div>
     )
 }
