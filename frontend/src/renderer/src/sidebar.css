@@ -1,0 +1,128 @@
+.sidebar {
+    flex-shrink: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 6px;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border-default);
+    overflow: hidden;
+    /* transition: width 0.16s ease; */
+}
+
+.sidebar.collapsed {
+    width: 44px;
+}
+
+.sidebar.expanded {
+    width: 210px;
+}
+
+.sidebar-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 7px;
+    padding-bottom: 6px;
+    margin-bottom: 2px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding-left: 7px;
+    overflow: hidden;
+}
+
+.sidebar-logo {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+}
+
+.sidebar-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: background-color 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.sidebar-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-default);
+}
+
+.sidebar-toggle:active {
+    background: var(--bg-active);
+}
+
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 7px;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: var(--font-sans);
+    white-space: nowrap;
+    transition: background-color 0.1s, color 0.1s;
+}
+
+.sidebar-link:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.sidebar-link:active {
+    background: var(--bg-active);
+}
+
+.sidebar-link-icon {
+    flex-shrink: 0;
+    color: var(--accent);
+    opacity: 0.85;
+}
+
+.sidebar-link-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Collapsed: thin rail, icon-only. Padding unchanged so icons stay put. */
+.sidebar.collapsed .sidebar-link-label {
+    display: none;
+}

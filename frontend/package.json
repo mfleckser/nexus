@@ -24,7 +24,8 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "axios": "^1.16.1",
-    "lucide-react": "^1.17.0"
+    "lucide-react": "^1.17.0",
+    "react-router-dom": "^7.16.0"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
