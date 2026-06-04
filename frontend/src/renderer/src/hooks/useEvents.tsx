@@ -37,7 +37,7 @@ export function EventsProvider({ children }: { children: ReactNode }) {
 
   async function deleteEvent(id: string) {
     await apiDeleteEvent(id);
-    setEvents(prev => prev.filter(t => t.id !== id));
+    setEvents(prev => prev.filter(e => e.id !== id));
   }
 
   return (

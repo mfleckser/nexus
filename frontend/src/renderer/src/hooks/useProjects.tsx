@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { getProjects, addProject as apiAddProject } from "@renderer/api/projects";
+import { getProjects, addProject as apiAddProject, deleteProject as apiDeleteProject } from "@renderer/api/projects";
 import { Project } from "@renderer/types";
 import useNow from "./useNow";
 import { sameSet } from "./utils";
@@ -7,6 +7,7 @@ import { sameSet } from "./utils";
 type ProjectsContextValue = {
   projects: Project[];
   addProject: (title: string, description: string, type: string) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
 //   updateE: (id: string, data: any) => Promise<void>;
 //   deleteEvent: (id: string) => Promise<void>;
 };
@@ -28,6 +29,11 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
     setProjects(fresh);
   }
 
+  async function deleteProject(id: string) {
+    await apiDeleteProject(id);
+    setProjects(prev => prev.filter(p => p.id !== id))
+  }
+
 //   async function updateEvent(id: string, data: any) {
 //     if (id === "DRAFT") return;
 //     await apiUpdateEvent(id, data);
@@ -40,7 +46,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
 //   }
 
   return (
-    <ProjectsContext.Provider value={{ projects, addProject }}>
+    <ProjectsContext.Provider value={{ projects, addProject, deleteProject }}>
       {children}
     </ProjectsContext.Provider>
   );

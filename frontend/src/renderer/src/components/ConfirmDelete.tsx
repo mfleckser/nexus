@@ -4,9 +4,10 @@ import "./ConfirmDelete.css";
 type ConfirmDeleteProps = {
     onClose: () => void;
     onDelete: () => void;
+    itemName: string;
 };
 
-export default function ConfirmDelete({ onClose, onDelete } : ConfirmDeleteProps) {
+export default function ConfirmDelete({ onClose, onDelete, itemName } : ConfirmDeleteProps) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -27,9 +28,9 @@ export default function ConfirmDelete({ onClose, onDelete } : ConfirmDeleteProps
     return (
         <div className="cd-overlay" onMouseDown={onOverlayMouseDown}>
             <div className="cd-container" ref={containerRef} role="dialog" aria-modal="true">
-                <div className="cd-text">Delete event?</div>
+                <div className="cd-text">Delete {itemName}?</div>
                 <div className="cd-subtext">
-                    This event will be permanently removed. This can&apos;t be undone.
+                    This {itemName} will be permanently removed. This can&apos;t be undone.
                 </div>
                 <div className="cd-btns">
                     <button type="button" className="cd-btn cd-btn-cancel" onClick={onClose}>

@@ -14,4 +14,8 @@ function addProject(title: string, description: string, type: string) {
     return window.api.apiPost("/projects", {title, description, type});
 }
 
-export {getProjects, addProject};
+function deleteProject(id: string) {
+    return window.api.apiDelete(`/projects/${id}`)
+}
+
+export {getProjects, addProject, deleteProject};

@@ -1,0 +1,128 @@
+.pd-container {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-app);
+    font-family: var(--font-sans);
+    color: var(--text-primary);
+}
+
+.pd-header {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.pd-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    align-self: flex-start;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 4px 8px 4px 4px;
+    border-radius: var(--radius-sm);
+    transition: color 0.1s, background-color 0.1s;
+}
+
+.pd-back-link:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.pd-header-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.pd-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.2px;
+    color: var(--text-primary);
+    word-break: break-word;
+    border-left: 3px solid var(--pillar-project);
+    padding-left: 12px;
+}
+
+.pd-description {
+    color: var(--text-secondary);
+    margin: 10px;
+}
+
+.pd-project-menu-container {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.pd-project-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.pd-project-menu-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-default);
+    color: var(--text-primary);
+}
+
+.pd-project-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    min-width: 140px;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+}
+
+.pd-project-menu button {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background-color 0.1s, color 0.1s;
+}
+
+.pd-project-menu button:hover {
+    background: var(--bg-hover);
+}
+
+.pd-menu-danger {
+    color: var(--status-danger);
+}
+
+.pd-menu-danger:hover {
+    background: color-mix(in srgb, var(--status-danger) 14%, transparent);
+    color: var(--status-danger);
+}

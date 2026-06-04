@@ -15,6 +15,10 @@ def create_project(data: dict):
 
     return res.data[0]
 
+def delete_project(project_id: str):
+    res = supabase.table("projects").delete().eq("id", project_id).execute()
+    return res.data[0]
+
 def get_project_features(project_id: str):
     res = supabase.table("features").select("id", "created_at", "updated_at", "project_id", "name", "notes_updated_at").eq("project_id", project_id).execute()
 

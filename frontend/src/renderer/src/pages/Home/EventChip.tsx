@@ -2,7 +2,7 @@ import { useEvents } from "@renderer/hooks/useEvents";
 import { useEffect, useRef, useState } from "react";
 import { Event } from "@renderer/types";
 import NewEventPopover, { NewEventDraft } from "./NewEventPopover";
-import ConfirmDelete from "./ConfirmDelete";
+import ConfirmDelete from "../../components/ConfirmDelete";
 import categoryData from "./categories.json"
 
 const PX_PER_HOUR = 48;
@@ -199,6 +199,7 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
             {showConfirmDelete && <ConfirmDelete
                 onClose={() => {setShowConfirmDelete(false)}}
                 onDelete={() => {deleteEvent(event.id); setShowConfirmDelete(false)}}
+                itemName="event"
             />}
         </div>
     )
