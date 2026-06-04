@@ -15,7 +15,7 @@ const TasksContext = createContext<TasksContextValue | null>(null);
 
 export function TasksProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
-  const now = useNow(10000);
+  const now = useNow(15000);
 
   useEffect(() => {
     getTasks().then(fresh =>

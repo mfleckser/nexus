@@ -16,7 +16,7 @@ const EventsContext = createContext<EventsContextValue | null>(null);
 
 export function EventsProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<Event[]>([]);
-  const now = useNow(10000);
+  const now = useNow(15000);
 
   useEffect(() => {
     getEvents().then(fresh =>

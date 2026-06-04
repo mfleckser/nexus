@@ -9,7 +9,7 @@ export type Task = {
     due_at: Date | null,
     project_id: string | null,
     event_id: string | null
-}
+};
 
 export type Event = {
     id: string,
@@ -21,4 +21,15 @@ export type Event = {
     end_at: Date,
     all_day: boolean,
     category: string | null
-}
+};
+
+export type Project = {
+    id: string,
+    created_at: Date,
+    updated_at: Date,
+    title: string,
+    description: string,
+    type: string,
+    status: string,
+    notes_updated_at: Date
+};

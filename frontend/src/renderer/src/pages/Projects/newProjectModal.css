@@ -1,0 +1,199 @@
+.np-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: var(--bg-overlay);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.np-modal {
+    width: 440px;
+    max-width: 100%;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    font-family: var(--font-sans);
+    color: var(--text-primary);
+    overflow: hidden;
+}
+
+.np-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border-default);
+}
+
+.np-heading {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.np-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background-color 0.1s, color 0.1s;
+}
+
+.np-close:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.np-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px;
+}
+
+.np-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.np-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.np-optional {
+    margin-left: 6px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    text-transform: none;
+    color: var(--text-disabled);
+}
+
+.np-input {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 9px 11px;
+    transition: border-color 0.1s;
+}
+
+.np-input::placeholder {
+    color: var(--text-muted);
+}
+
+.np-input:hover {
+    border-color: var(--border-strong);
+}
+
+.np-input:focus {
+    border-color: var(--border-focus);
+}
+
+.np-textarea {
+    resize: vertical;
+    min-height: 64px;
+    line-height: 1.45;
+}
+
+.np-type-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.np-type-option {
+    cursor: pointer;
+    color: var(--text-secondary);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-pill);
+    padding: 5px 14px;
+    text-transform: capitalize;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.np-type-option:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+}
+
+.np-type-option-selected,
+.np-type-option-selected:hover {
+    background: var(--accent-muted);
+    border-color: var(--accent-border);
+    color: var(--accent);
+}
+
+.np-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.np-btn {
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.np-btn-secondary {
+    background: transparent;
+    border-color: var(--border-default);
+    color: var(--text-secondary);
+}
+
+.np-btn-secondary:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+}
+
+.np-btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-on-accent);
+}
+
+.np-btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.np-btn-primary:active:not(:disabled) {
+    background: var(--accent-active);
+    border-color: var(--accent-active);
+}
+
+.np-btn-primary:disabled {
+    background: var(--bg-active);
+    border-color: var(--border-default);
+    color: var(--text-disabled);
+    cursor: not-allowed;
+}

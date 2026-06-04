@@ -7,16 +7,19 @@ import "./root.css"
 import { Route, Routes } from "react-router-dom"
 import Projects from "./pages/Projects/Projects"
 import Sidebar from "./Sidebar"
+import { ProjectsProvider } from "./hooks/useProjects"
 
 function App(): React.JSX.Element {
   return (
     <EventsProvider>
       <TasksProvider>
-        <Sidebar />
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/projects" element={<Projects />} />
-        </Routes>
+        <ProjectsProvider>
+          <Sidebar />
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/projects/*" element={<Projects />} />
+          </Routes>
+        </ProjectsProvider>
       </TasksProvider>
     </EventsProvider>
   )

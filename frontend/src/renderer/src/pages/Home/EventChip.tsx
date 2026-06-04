@@ -194,7 +194,7 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
                     onSave={handlePopoverSave}
                     onClose={() => {setShowPopover(false)}}
                     onDelete={() => {setShowConfirmDelete(true)}}
-                    setEventDraft={(d) => {}}
+                    setEventDraft={(_) => {}}
                 />}
             {showConfirmDelete && <ConfirmDelete
                 onClose={() => {setShowConfirmDelete(false)}}
