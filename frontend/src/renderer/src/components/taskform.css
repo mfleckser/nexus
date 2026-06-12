@@ -1,0 +1,137 @@
+.task-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+}
+
+.task-form-input {
+    width: 100%;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: var(--font-sans);
+    transition: border-color 0.1s, background-color 0.1s;
+}
+
+.task-form-input::placeholder {
+    color: var(--text-muted);
+}
+
+.task-form-input:hover {
+    border-color: var(--border-strong);
+}
+
+.task-form-input:focus {
+    border-color: var(--border-focus);
+    background: var(--bg-surface);
+}
+
+.task-form-textarea {
+    resize: vertical;
+    min-height: 32px;
+    line-height: 1.4;
+}
+
+.task-form-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.task-form-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.task-form-datetime {
+    flex: 1;
+    color-scheme: dark;
+    cursor: pointer;
+}
+
+.task-form-datetime::-webkit-calendar-picker-indicator {
+    filter: invert(0.7);
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.task-form-datetime::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+.task-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 2px;
+}
+
+.task-form-btn {
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.task-form-btn-secondary {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border-default);
+}
+
+.task-form-btn-secondary:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+}
+
+.task-form-btn-primary {
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border-color: var(--accent);
+}
+
+.task-form-btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.task-form-btn-primary:active:not(:disabled) {
+    background: var(--accent-active);
+    border-color: var(--accent-active);
+}
+
+.task-form-btn-primary:disabled {
+    background: var(--accent-muted);
+    border-color: var(--accent-muted);
+    color: var(--text-disabled);
+    cursor: not-allowed;
+}
+
+.task-form-btn-danger {
+    background: transparent;
+    color: var(--status-danger);
+    border-color: var(--border-default);
+}
+
+.task-form-btn-danger:hover {
+    background: var(--bg-hover);
+    border-color: var(--status-danger);
+}
+
+.task-form-btn-danger.armed {
+    background: var(--status-danger);
+    color: var(--text-on-accent);
+    border-color: var(--status-danger);
+}

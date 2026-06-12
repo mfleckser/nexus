@@ -42,7 +42,7 @@
     --accent-border:   rgba(139, 154, 255, 0.40);
 
     /* ===== Life-pillar feature hues ===== */
-    /* --pillar-calendar: #8b9aff;  indigo — events, time */
+    --pillar-calendar: #8b9aff; /* indigo — events, time */
     /* --pillar-task:     #6dd4a3;  mint   — completion */
     /* --pillar-habit:    #f5b478;  amber  — daily warmth */
     /* --pillar-goal:     #d49ce8;  orchid — aspiration */

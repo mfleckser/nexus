@@ -3,6 +3,7 @@ import { useTasks } from "@renderer/features/tasks/useTasks"
 import { useEffect, useState } from "react";
 import { Task } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";
+import TaskForm from "@renderer/components/TaskForm";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -38,9 +39,6 @@ type TaskRowProps = {
 function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }: TaskRowProps): React.JSX.Element {
     const [editing, setEditing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
-    const [title, setTitle] = useState(task.title);
-    const [description, setDescription] = useState(task.description ?? "");
-    const [dueAt, setDueAt] = useState(toDatetimeLocal(task.due_at));
     const [complete, setComplete] = useState(task.status === "complete");
 
     useEffect(() => {
@@ -50,13 +48,6 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
         }
     }, [expanded]);
 
-    useEffect(() => {
-        setTitle(task.title);
-        setDescription(task.description ?? "");
-        setDueAt(toDatetimeLocal(task.due_at));
-    }, [task.id, task.title, task.description, task.due_at]);
-
-
     const handleCheck = (e: React.MouseEvent) => {
         e.stopPropagation();
         onStatusChange(complete ? "todo" : "complete");
@@ -64,25 +55,8 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
     };
 
     const handleStartEdit = () => {
-        setTitle(task.title);
-        setDescription(task.description ?? "");
-        setDueAt(toDatetimeLocal(task.due_at));
         setEditing(true);
         setConfirmDelete(false);
-    };
-
-    const handleCancelEdit = () => {
-        setEditing(false);
-    };
-
-    const handleSave = () => {
-        if (!title.trim()) return;
-        onSave({
-            title: title.trim(),
-            description: description.trim() ? description.trim() : null,
-            due_at: dueAt ? dueAt : null,
-        });
-        setEditing(false);
     };
 
     const handleDeleteClick = () => {
@@ -100,53 +74,22 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
                 <span className="task-label">{task.title}</span>
             </div>
             {expanded && (
-                <div className="task-row-details" onClick={(e) => e.stopPropagation()}>
+                <div className="task-row-contents" onClick={(e) => e.stopPropagation()}>
                     {editing ? (
-                        <>
-                            <input
-                                className="task-form-input"
-                                type="text"
-                                value={title}
-                                onChange={(e) => setTitle(e.target.value)}
-                                placeholder="Task title"
-                                autoFocus
-                            />
-                            <textarea
-                                className="task-form-input task-form-textarea"
-                                value={description}
-                                onChange={(e) => setDescription(e.target.value)}
-                                placeholder="Description"
-                                rows={3}
-                            />
-                            <label className="task-form-field">
-                                <span className="task-form-label">Due</span>
-                                <input
-                                    className="task-form-input task-form-datetime"
-                                    type="datetime-local"
-                                    value={dueAt}
-                                    onChange={(e) => setDueAt(e.target.value)}
-                                />
-                            </label>
-                            <div className="task-row-actions">
-                                <button
-                                    type="button"
-                                    className="task-form-btn task-form-btn-secondary"
-                                    onClick={handleCancelEdit}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    className="task-form-btn task-form-btn-primary"
-                                    onClick={handleSave}
-                                    disabled={!title.trim()}
-                                >
-                                    Save
-                                </button>
-                            </div>
-                        </>
+                        <TaskForm
+                            submitLabel="Save"
+                            initialTitle={task.title}
+                            initialDescription={task.description ?? ""}
+                            initialDueAt={toDatetimeLocal(task.due_at)}
+                            descriptionPlaceholder="Description"
+                            onSubmit={(v) => {
+                                onSave({ title: v.title, description: v.description, due_at: v.dueAt });
+                                setEditing(false);
+                            }}
+                            onCancel={() => setEditing(false)}
+                        />
                     ) : (
-                        <>
+                        <div className="task-row-details">
                             <div className="task-detail-field">
                                 <span className="task-detail-label">Description</span>
                                 <p className={`task-detail-value${task.description ? "" : " muted"}`}>
@@ -176,7 +119,7 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
                                     Edit
                                 </button>
                             </div>
-                        </>
+                        </div>
                     )}
                 </div>
             )}
@@ -236,33 +179,10 @@ function TaskGroup({ name, filterFunc, expandedId, setExpandedId, startClosed = 
 }
 
 function TaskView(): React.JSX.Element {
-    const { tasks, addTask } = useTasks();
+    const { addTask } = useTasks();
     const [showForm, setShowForm] = useState(false);
-    const [title, setTitle] = useState("");
-    const [description, setDescription] = useState("");
-    const [dueAt, setDueAt] = useState("");
     const now = useNow();
     const [expandedId, setExpandedId] = useState<string | null>(null);
-
-    const resetForm = () => {
-        setTitle("");
-        setDescription("");
-        setDueAt("");
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!title.trim()) return;
-        addTask(title, description, dueAt);
-        resetForm();
-        setShowForm(false);
-    };
-
-    const handleCancel = () => {
-        resetForm();
-        setShowForm(false);
-        console.log(tasks);
-    };
 
     const getDaysDiff = (task: Task) => {
         if (task.due_at === null) return 0;
@@ -286,49 +206,15 @@ function TaskView(): React.JSX.Element {
                     </button>
                 </div>
                 {showForm && (
-                    <form className="task-form" onSubmit={handleSubmit}>
-                        <input
-                            className="task-form-input"
-                            type="text"
-                            placeholder="Task title"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            autoFocus
-                            required
-                        />
-                        <textarea
-                            className="task-form-input task-form-textarea"
-                            placeholder="Description (optional)"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            rows={2}
-                        />
-                        <label className="task-form-field">
-                            <span className="task-form-label">Due</span>
-                            <input
-                                className="task-form-input task-form-datetime"
-                                type="datetime-local"
-                                value={dueAt}
-                                onChange={(e) => setDueAt(e.target.value)}
-                            />
-                        </label>
-                        <div className="task-form-actions">
-                            <button
-                                type="button"
-                                className="task-form-btn task-form-btn-secondary"
-                                onClick={handleCancel}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                className="task-form-btn task-form-btn-primary"
-                                disabled={!title.trim()}
-                            >
-                                Add
-                            </button>
-                        </div>
-                    </form>
+                    <TaskForm
+                        submitLabel="Add"
+                        descriptionPlaceholder="Description (optional)"
+                        onSubmit={(v) => {
+                            addTask(v.title, v.description, v.dueAt);
+                            setShowForm(false);
+                        }}
+                        onCancel={() => setShowForm(false)}
+                    />
                 )}
                 <div className="task-list themed-scroll">
                     <TaskGroup
