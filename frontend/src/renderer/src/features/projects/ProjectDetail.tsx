@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import "./projectDetail.css";
 import { useState } from "react";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
+import KanbanBoard from "./KanbanBoard";
 
 function ProjectDetail(): React.JSX.Element {
     const [showProjectMenu, setShowProjectMenu] = useState(false);
@@ -43,6 +44,7 @@ function ProjectDetail(): React.JSX.Element {
                 </div>
                 {project?.description && <p className="pd-description">{project?.description}</p>}
             </div>
+            <KanbanBoard />
         </div>
     )
 }

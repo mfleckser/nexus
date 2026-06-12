@@ -1,0 +1,129 @@
+/* Kanban board — project pillar (cyan). Feature rows × status columns. */
+
+.kanban-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 24px 24px;
+    background: var(--bg-app);
+}
+
+.kanban-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.kanban-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+}
+
+/* Floating panel on app bg */
+.kb-board {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+}
+
+.kb-grid {
+    display: grid;
+    grid-template-columns: 200px repeat(3, minmax(0, 1fr));
+}
+
+/* Header row — status columns */
+.kb-corner {
+    border-right: 1px solid var(--border-default);
+    border-bottom: 1px solid var(--border-default);
+}
+
+.kb-status-header {
+    padding: 11px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    border-right: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-default);
+}
+
+/* Feature row — left label gutter */
+.kb-feature-label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px;
+    border-right: 1px solid var(--border-default);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.kb-feature-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.kb-add-task-btn {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    margin-left: -4px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.1s, color 0.1s;
+}
+
+.kb-add-task-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* Feature row — status drop cells */
+.kb-cell {
+    min-height: 120px;
+    padding: 10px;
+    border-right: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background-color 0.1s;
+}
+
+/* Strip right border off the last status column */
+.kb-grid > *:nth-child(4n) {
+    border-right: none;
+}
+
+/* Add-feature row */
+.kb-add-feature-btn {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 12px 14px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    border-top: 1px solid var(--border-default);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.1s, color 0.1s;
+}
+
+.kb-add-feature-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
