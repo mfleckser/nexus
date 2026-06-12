@@ -1,5 +1,5 @@
-import Calendar from "./Calendar"
-import TaskView from "./TaskView"
+import Calendar from "@renderer/features/calendar/Calendar"
+import TaskView from "@renderer/features/tasks/TaskView"
 import "./home.css"
 
 function Home(): React.JSX.Element {

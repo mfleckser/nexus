@@ -1,13 +1,15 @@
-import Home from "./pages/Home/Home"
-import { TasksProvider } from "./hooks/useTasks"
-import { EventsProvider } from "./hooks/useEvents"
-
 import "./theme.css"
 import "./root.css"
+
 import { Route, Routes } from "react-router-dom"
-import Projects from "./pages/Projects/Projects"
-import Sidebar from "./Sidebar"
-import { ProjectsProvider } from "./hooks/useProjects"
+
+import Home from "@renderer/pages/Home"
+import Projects from "@renderer/pages/Projects"
+import Sidebar from "@renderer/layout/Sidebar"
+
+import { TasksProvider } from "@renderer/features/tasks/useTasks"
+import { EventsProvider } from "@renderer/features/calendar/useEvents"
+import { ProjectsProvider } from "@renderer/features/projects/useProjects"
 
 function App(): React.JSX.Element {
   return (

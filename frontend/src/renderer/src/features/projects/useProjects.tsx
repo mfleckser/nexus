@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { getProjects, addProject as apiAddProject, deleteProject as apiDeleteProject } from "@renderer/api/projects";
+import * as projectsApi from "@renderer/features/projects/projects.api";
 import { Project } from "@renderer/types";
-import useNow from "./useNow";
-import { sameSet } from "./utils";
+import useNow from "@renderer/hooks/useNow";
+import { sameSet } from "@renderer/lib/collections";
 
 type ProjectsContextValue = {
   projects: Project[];
@@ -19,18 +19,18 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   const now = useNow(600000);
 
   useEffect(() => {
-    getProjects().then(fresh =>
+    projectsApi.getProjects().then(fresh =>
       setProjects(prev => sameSet(fresh, prev) ? prev : fresh));
   }, [now]);
 
   async function addProject(title: string, description: string, type: string) {
-    await apiAddProject(title, description, type);
-    const fresh = await getProjects();
+    await projectsApi.addProject(title, description, type);
+    const fresh = await projectsApi.getProjects();
     setProjects(fresh);
   }
 
   async function deleteProject(id: string) {
-    await apiDeleteProject(id);
+    await projectsApi.deleteProject(id);
     setProjects(prev => prev.filter(p => p.id !== id))
   }
 

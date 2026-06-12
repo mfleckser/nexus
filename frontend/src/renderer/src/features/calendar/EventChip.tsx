@@ -1,8 +1,8 @@
-import { useEvents } from "@renderer/hooks/useEvents";
+import { useEvents } from "@renderer/features/calendar/useEvents";
 import { useEffect, useRef, useState } from "react";
-import { Event } from "@renderer/types";
-import NewEventPopover, { NewEventDraft } from "./NewEventPopover";
-import ConfirmDelete from "../../components/ConfirmDelete";
+import { Event, NewEventDraft } from "@renderer/types";
+import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
+import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import categoryData from "./categories.json"
 
 const PX_PER_HOUR = 48;

@@ -1,9 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { getEvents, addEvent as apiAddEvent, updateEvent as apiUpdateEvent, deleteEvent as apiDeleteEvent } from "@renderer/api/event";
-import { Event } from "@renderer/types";
-import { NewEventDraft } from "@renderer/pages/Home/NewEventPopover";
-import useNow from "./useNow";
-import { sameSet } from "./utils";
+import * as eventsApi from "@renderer/features/calendar/events.api";
+import { Event, NewEventDraft } from "@renderer/types";
+import useNow from "@renderer/hooks/useNow";
+import { sameSet } from "@renderer/lib/collections";
 
 type EventsContextValue = {
   events: Event[];
@@ -19,24 +18,24 @@ export function EventsProvider({ children }: { children: ReactNode }) {
   const now = useNow(15000);
 
   useEffect(() => {
-    getEvents().then(fresh =>
+    eventsApi.getEvents().then(fresh =>
       setEvents(prev => sameSet(fresh, prev) ? prev : fresh));
   }, [now]);
 
   async function addEvent(draft: NewEventDraft) {
-    await apiAddEvent(draft.title, draft.description, draft.start_at, new Date(draft.start_at.getTime() + draft.duration * 1000 * 60), draft.category);
-    const fresh = await getEvents();
+    await eventsApi.addEvent(draft.title, draft.description, draft.start_at, new Date(draft.start_at.getTime() + draft.duration * 1000 * 60), draft.category);
+    const fresh = await eventsApi.getEvents();
     setEvents(fresh);
   }
 
   async function updateEvent(id: string, data: any) {
     if (id === "DRAFT") return;
-    await apiUpdateEvent(id, data);
+    await eventsApi.updateEvent(id, data);
     setEvents(prev => prev.map(e => (e.id === id ? { ...e, ...data } : e)));
   }
 
   async function deleteEvent(id: string) {
-    await apiDeleteEvent(id);
+    await eventsApi.deleteEvent(id);
     setEvents(prev => prev.filter(e => e.id !== id));
   }
 

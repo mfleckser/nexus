@@ -23,6 +23,15 @@ export type Event = {
     category: string | null
 };
 
+export type NewEventDraft = {
+    title: string;
+    description: string;
+    start_at: Date;
+    duration: number;
+    category: string;
+    top?: number;
+};
+
 export type Project = {
     id: string,
     created_at: Date,

@@ -1,4 +1,4 @@
-import { useProjects } from "@renderer/hooks/useProjects";
+import { useProjects } from "@renderer/features/projects/useProjects";
 import { ChevronLeft, Ellipsis } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import "./projectDetail.css";

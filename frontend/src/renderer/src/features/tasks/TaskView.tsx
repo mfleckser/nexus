@@ -1,5 +1,5 @@
 import "./taskview.css"
-import { useTasks } from "../../hooks/useTasks"
+import { useTasks } from "@renderer/features/tasks/useTasks"
 import { useEffect, useState } from "react";
 import { Task } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";

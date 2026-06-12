@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { getTasks, addTask as apiAddTask, updateTask as apiUpdateTask, deleteTask as apiDeleteTask } from "../api/task";
+import * as tasksApi from "@renderer/features/tasks/tasks.api";
 import { Task } from "@renderer/types";
-import useNow from "./useNow";
-import { sameSet } from "./utils";
+import useNow from "@renderer/hooks/useNow";
+import { sameSet } from "@renderer/lib/collections";
 
 type TasksContextValue = {
   tasks: Task[];
@@ -18,24 +18,24 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const now = useNow(15000);
 
   useEffect(() => {
-    getTasks().then(fresh =>
+    tasksApi.getTasks().then(fresh =>
       setTasks(prev => sameSet(fresh, prev) ? prev : fresh));
   }, [now]);
 
   async function addTask(title: string, description: string | null, due_at: string | null) {
     const dueDate = due_at ? new Date(due_at) : null;
-    await apiAddTask(title, description, dueDate);
-    const fresh = await getTasks();
+    await tasksApi.addTask(title, description, dueDate);
+    const fresh = await tasksApi.getTasks();
     setTasks(fresh);
   }
 
   async function updateTask(id: string, data: any) {
-    await apiUpdateTask(id, data);
+    await tasksApi.updateTask(id, data);
     setTasks(prev => prev.map(t => (t.id === id ? { ...t, ...data } : t)));
   }
 
   async function deleteTask(id: string) {
-    await apiDeleteTask(id);
+    await tasksApi.deleteTask(id);
     setTasks(prev => prev.filter(t => t.id !== id));
   }
 

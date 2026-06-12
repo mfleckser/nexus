@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import "./calendar.css"
-import { useEvents } from "@renderer/hooks/useEvents";
+import { useEvents } from "@renderer/features/calendar/useEvents";
 import EventChip, { EventDraftChip } from "./EventChip";
-import NewEventPopover, { NewEventDraft } from "./NewEventPopover";
+import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import useNow from "@renderer/hooks/useNow";
+import { NewEventDraft } from "@renderer/types";
 
 const PX_PER_HOUR = 48;
 const PX_PER_MIN = PX_PER_HOUR / 60;

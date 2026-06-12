@@ -1,7 +1,7 @@
 import { SidebarIcon, Home as HomeIcon, FolderKanban, Dumbbell, CircleDollarSign, Bot } from "lucide-react";
 import { useState } from "react"
 import { Link, NavLink } from "react-router-dom"
-import logo from "./assets/logo.png"
+import logo from "@renderer/assets/logo.png"
 import "./sidebar.css"
 
 function Sidebar(): React.JSX.Element {

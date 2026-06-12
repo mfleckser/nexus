@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import "./newEventPopover.css";
 import categoryData from "./categories.json"
+import { NewEventDraft } from "@renderer/types";
 
 const DURATION_PRESETS = [30, 45, 60, 90, 120];
 
@@ -11,14 +12,7 @@ const toDateInput = (d: Date) =>
 const toTimeInput = (d: Date) =>
     `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
-export type NewEventDraft = {
-    title: string;
-    description: string;
-    start_at: Date;
-    duration: number;
-    category: string;
-    top?: number;
-};
+
 
 export type NewEventPopoverProps = {
     anchor: { x: number; y: number };
