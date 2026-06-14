@@ -9,11 +9,13 @@ async function getTasks() {
     }));
 }
 
-function addTask(title: string, description: string | null, due_at: Date | null) {
+function addTask(title: string, description: string | null, due_at: Date | null, project_id?: string, feature_id?: string) {
     return window.api.apiPost("/tasks", {
         title: title,
         description: description,
-        due_at: due_at
+        due_at: due_at,
+        project_id: project_id,
+        feature_id: feature_id
     })
 }
 

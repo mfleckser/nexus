@@ -30,13 +30,13 @@ export function EventsProvider({ children }: { children: ReactNode }) {
 
   async function updateEvent(id: string, data: any) {
     if (id === "DRAFT") return;
-    await eventsApi.updateEvent(id, data);
     setEvents(prev => prev.map(e => (e.id === id ? { ...e, ...data } : e)));
+    await eventsApi.updateEvent(id, data);
   }
 
   async function deleteEvent(id: string) {
-    await eventsApi.deleteEvent(id);
     setEvents(prev => prev.filter(e => e.id !== id));
+    await eventsApi.deleteEvent(id);
   }
 
   return (

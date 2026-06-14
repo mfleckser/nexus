@@ -43,11 +43,11 @@
 
     /* ===== Life-pillar feature hues ===== */
     --pillar-calendar: #8b9aff; /* indigo — events, time */
-    /* --pillar-task:     #6dd4a3;  mint   — completion */
-    /* --pillar-habit:    #f5b478;  amber  — daily warmth */
-    /* --pillar-goal:     #d49ce8;  orchid — aspiration */
+    --pillar-task:     #6dd4a3; /* mint   — completion */
+    --pillar-habit:    #f5b478; /* amber  — daily warmth */
+    --pillar-goal:     #d49ce8; /* orchid — aspiration */
     --pillar-project:  #7cc7e0; /* cyan   — execution */
-    /* --pillar-coach:    #ff9b85;  coral  — AI warmth */
+    --pillar-coach:    #ff9b85; /* coral  — AI warmth */
 
     /* ===== Status ===== */
     --status-success: #6dd4a3;

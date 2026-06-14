@@ -81,7 +81,6 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
                             initialTitle={task.title}
                             initialDescription={task.description ?? ""}
                             initialDueAt={toDatetimeLocal(task.due_at)}
-                            descriptionPlaceholder="Description"
                             onSubmit={(v) => {
                                 onSave({ title: v.title, description: v.description, due_at: v.dueAt });
                                 setEditing(false);
@@ -208,7 +207,6 @@ function TaskView(): React.JSX.Element {
                 {showForm && (
                     <TaskForm
                         submitLabel="Add"
-                        descriptionPlaceholder="Description (optional)"
                         onSubmit={(v) => {
                             addTask(v.title, v.description, v.dueAt);
                             setShowForm(false);

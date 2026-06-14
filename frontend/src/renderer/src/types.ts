@@ -8,6 +8,7 @@ export type Task = {
     status: string,
     due_at: Date | null,
     project_id: string | null,
+    feature_id: string | null,
     event_id: string | null
 };
 

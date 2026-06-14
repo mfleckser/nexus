@@ -30,8 +30,8 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   }
 
   async function deleteProject(id: string) {
-    await projectsApi.deleteProject(id);
     setProjects(prev => prev.filter(p => p.id !== id))
+    await projectsApi.deleteProject(id);
   }
 
 //   async function updateEvent(id: string, data: any) {

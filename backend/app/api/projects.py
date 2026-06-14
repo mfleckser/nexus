@@ -3,7 +3,9 @@ from flask import Blueprint, request, jsonify
 from app.services.project_service import (
     get_all_projects,
     create_project,
-    delete_project
+    delete_project,
+    get_project_features,
+    create_feature
 )
 
 projects_bp = Blueprint("projects", __name__)
@@ -24,12 +26,20 @@ def create():
 def delete(id):
     return delete_project(id)
 
+@projects_bp.route("/projects/<id>/features", methods=["GET"])
+def list_f(id):
+    return get_project_features(id)
+
+@projects_bp.route("/projects/<id>/features", methods=["POST"])
+def create_f():
+    data = request.json
+
+    feature = create_feature(data)
+
+    return jsonify(feature), 201
+
 # @events_bp.route("/events/<id>", methods=["PUT"])
 # def update(id):
 #     data = request.json
 
 #     return update_event(id, data)
-
-# @events_bp.route("/events/<id>", methods=["DELETE"])
-# def delete(id):
-#     return delete_event(id)

@@ -6,7 +6,7 @@ import { sameSet } from "@renderer/lib/collections";
 
 type TasksContextValue = {
   tasks: Task[];
-  addTask: (title: string, description: string | null, due_at: string | null) => Promise<void>;
+  addTask: (title: string, description: string | null, due_at: string | null, project_id?: string, feature_id?: string) => Promise<void>;
   updateTask: (id: string, data: any) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
 };
@@ -22,21 +22,21 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       setTasks(prev => sameSet(fresh, prev) ? prev : fresh));
   }, [now]);
 
-  async function addTask(title: string, description: string | null, due_at: string | null) {
+  async function addTask(title: string, description: string | null, due_at: string | null, project_id?: string, feature_id?: string) {
     const dueDate = due_at ? new Date(due_at) : null;
-    await tasksApi.addTask(title, description, dueDate);
+    await tasksApi.addTask(title, description, dueDate, project_id, feature_id);
     const fresh = await tasksApi.getTasks();
     setTasks(fresh);
   }
 
   async function updateTask(id: string, data: any) {
-    await tasksApi.updateTask(id, data);
     setTasks(prev => prev.map(t => (t.id === id ? { ...t, ...data } : t)));
+    await tasksApi.updateTask(id, data);
   }
 
   async function deleteTask(id: string) {
-    await tasksApi.deleteTask(id);
     setTasks(prev => prev.filter(t => t.id !== id));
+    await tasksApi.deleteTask(id);
   }
 
   return (

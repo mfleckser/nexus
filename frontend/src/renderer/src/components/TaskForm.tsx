@@ -14,7 +14,6 @@ type TaskFormProps = {
     initialTitle?: string;
     initialDescription?: string;
     initialDueAt?: string;
-    descriptionPlaceholder?: string;
 };
 
 function TaskForm({
@@ -24,7 +23,6 @@ function TaskForm({
     initialTitle = "",
     initialDescription = "",
     initialDueAt = "",
-    descriptionPlaceholder = "Description",
 }: TaskFormProps): React.JSX.Element {
     const [title, setTitle] = useState(initialTitle);
     const [description, setDescription] = useState(initialDescription);
@@ -57,7 +55,7 @@ function TaskForm({
             />
             <textarea
                 className="task-form-input task-form-textarea"
-                placeholder={descriptionPlaceholder}
+                placeholder="Description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}

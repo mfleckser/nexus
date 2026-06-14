@@ -44,7 +44,7 @@ function ProjectDetail(): React.JSX.Element {
                 </div>
                 {project?.description && <p className="pd-description">{project?.description}</p>}
             </div>
-            <KanbanBoard />
+            <KanbanBoard project_id={projectId || ""}/>
         </div>
     )
 }
