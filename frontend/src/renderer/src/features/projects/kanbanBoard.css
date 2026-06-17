@@ -3,6 +3,8 @@
 .kanban-container {
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
     gap: 12px;
     padding: 16px 24px 24px;
     background: var(--bg-app);
@@ -10,6 +12,7 @@
 
 .kanban-header {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: space-between;
 }
@@ -22,8 +25,11 @@
     color: var(--text-muted);
 }
 
-/* Floating panel on app bg */
+/* Floating panel on app bg — scroll container for feature rows */
 .kb-board {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     background: var(--bg-surface);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-lg);
@@ -35,14 +41,22 @@
     grid-template-columns: 200px repeat(3, minmax(0, 1fr));
 }
 
-/* Header row — status columns */
+/* Header row — status columns. Sticky so feature rows scroll beneath it. */
 .kb-corner {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg-surface);
     border-right: 1px solid var(--border-default);
     border-bottom: 1px solid var(--border-default);
 }
 
 .kb-status-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
     padding: 11px 14px;
+    background: var(--bg-surface);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -136,6 +150,8 @@
     color: var(--text-secondary);
     border: none;
     border-top: 1px solid var(--border-default);
+    border-bottom-left-radius: inherit;
+    border-bottom-right-radius: inherit;
     font-family: var(--font-sans);
     font-size: 13px;
     font-weight: 500;

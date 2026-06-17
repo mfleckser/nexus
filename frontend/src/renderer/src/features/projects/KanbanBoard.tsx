@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import "./kanbanBoard.css";
 import TaskForm from "@renderer/components/TaskForm";
 import { useTasks } from "../tasks/useTasks";
-import { Task } from "@renderer/types";
+import { Feature, Project, Task } from "@renderer/types";
 import TaskCard from "./TaskCard";
 
 const STATUSES = [
@@ -11,11 +11,22 @@ const STATUSES = [
     { key: "complete", label: "Complete" },
 ];
 
-function KanbanBoard({ project_id } : {project_id: string}): React.JSX.Element {
-    const [showTaskForm, setShowTaskForm] = useState(false);
+// "general" is the synthetic row for tasks with no feature_id; it always sorts first.
+const GENERAL_ROW = "general";
+
+function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
+    const [formRow, setFormRow] = useState<string | null>(null);
 
     const {tasks, addTask, updateTask} = useTasks();
-    const projectTasks = tasks.filter(t => t.project_id === project_id);
+    const projectTasks = tasks.filter(t => t.project_id === project.id);
+
+    const [features, setFeatures] = useState<Feature[]>([]);
+    useEffect(() => { project.features().then(setFeatures); }, [project.id]);
+
+    const rows = [
+        { key: GENERAL_ROW, name: "General", featureId: null as string | null },
+        ...features.map(f => ({ key: f.id, name: f.name, featureId: f.id as string | null })),
+    ];
 
     const [draggingId, setDraggingId] = useState<string | null>(null);
     const [dragOverCol, setDragOverCol] = useState<string | null>(null);
@@ -36,39 +47,46 @@ function KanbanBoard({ project_id } : {project_id: string}): React.JSX.Element {
             <div className="kanban-header">
                 <span className="kanban-title">Tasks</span>
             </div>
-            <div className="kb-board">
+            <div className="kb-board themed-scroll">
                 <div className="kb-grid">
                     <div className="kb-corner" />
                     {STATUSES.map(s => <div key={s.key} className="kb-status-header">{s.label}</div>)}
 
-                    <div className="kb-feature-label">
-                        <span className="kb-feature-name">General</span>
-                        {showTaskForm ?
-                            <div className="kb-task-form-wrapper"><TaskForm
-                                submitLabel="Add"
-                                onSubmit={({title, description, dueAt}) => {addTask(title, description, dueAt, project_id); setShowTaskForm(false);}}
-                                onCancel={() => {setShowTaskForm(false)}}
-                            /></div> : <button type="button" className="kb-add-task-btn" onClick={() => {setShowTaskForm(true)}}>+ Add task</button>}
-                    </div>
-                    {STATUSES.map(s => (
-                        <div
-                            key={s.key}
-                            className={`kb-cell${dragOverCol === s.key ? " kb-cell-dragover" : ""}`}
-                            onDragOver={(e) => { e.preventDefault(); setDragOverCol(s.key); }}
-                            onDrop={() => handleDrop()}
-                        >
-                            {projectTasks.filter(t => statusOf(t) === s.key).map(t => (
-                                <TaskCard
-                                    key={t.id}
-                                    task={t}
-                                    dragging={draggingId === t.id}
-                                    onDragStart={() => setDraggingId(t.id)}
-                                    onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
-                                    onEdit={() => {}}
-                                />
-                            ))}
-                        </div>
-                    ))}
+                    {rows.map(row => {
+                        const rowTasks = projectTasks.filter(t => t.feature_id === row.featureId);
+                        return (
+                            <Fragment key={row.key}>
+                                <div className="kb-feature-label">
+                                    <span className="kb-feature-name">{row.name}</span>
+                                    {formRow === row.key ?
+                                        <div className="kb-task-form-wrapper"><TaskForm
+                                            submitLabel="Add"
+                                            onSubmit={({title, description, dueAt}) => {addTask(title, description, dueAt, project.id, row.featureId ?? undefined); setFormRow(null);}}
+                                            onCancel={() => {setFormRow(null)}}
+                                        /></div> : <button type="button" className="kb-add-task-btn" onClick={() => {setFormRow(row.key)}}>+ Add task</button>}
+                                </div>
+                                {STATUSES.map(s => (
+                                    <div
+                                        key={s.key}
+                                        className={`kb-cell${dragOverCol === s.key ? " kb-cell-dragover" : ""}`}
+                                        onDragOver={(e) => { e.preventDefault(); setDragOverCol(s.key); }}
+                                        onDrop={() => handleDrop()}
+                                    >
+                                        {rowTasks.filter(t => statusOf(t) === s.key).map(t => (
+                                            <TaskCard
+                                                key={t.id}
+                                                task={t}
+                                                dragging={draggingId === t.id}
+                                                onDragStart={() => setDraggingId(t.id)}
+                                                onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
+                                                onEdit={() => {}}
+                                            />
+                                        ))}
+                                    </div>
+                                ))}
+                            </Fragment>
+                        );
+                    })}
                 </div>
                 <button type="button" className="kb-add-feature-btn">+ Add feature</button>
             </div>

@@ -1,5 +1,5 @@
 import { useProjects } from "@renderer/features/projects/useProjects";
-import { ChevronLeft, Ellipsis } from "lucide-react";
+import { ChevronLeft, Ellipsis, FolderX } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import "./projectDetail.css";
 import { useState } from "react";
@@ -13,6 +13,24 @@ function ProjectDetail(): React.JSX.Element {
     const {projectId} = useParams();
     const {projects, deleteProject} = useProjects();
     const project = projects.find(p => p.id === projectId);
+
+    if (!project) {
+        return (
+            <div className="pd-not-found">
+                <div className="pd-not-found-card">
+                    <div className="pd-not-found-icon">
+                        <FolderX size={28} />
+                    </div>
+                    <h2 className="pd-not-found-title">Project not found</h2>
+                    <p className="pd-not-found-text">This project doesn’t exist or may have been deleted.</p>
+                    <Link className="pd-not-found-link" to="/projects">
+                        <ChevronLeft size={16} />
+                        Back to Projects
+                    </Link>
+                </div>
+            </div>
+        )
+    }
 
     const nav = useNavigate();
 
@@ -44,7 +62,7 @@ function ProjectDetail(): React.JSX.Element {
                 </div>
                 {project?.description && <p className="pd-description">{project?.description}</p>}
             </div>
-            <KanbanBoard project_id={projectId || ""}/>
+            <KanbanBoard project={project}/>
         </div>
     )
 }

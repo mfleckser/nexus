@@ -1,14 +1,95 @@
 .pd-container {
+    display: flex;
+    flex-direction: column;
     width: 100%;
     height: 100%;
+    overflow: hidden;
     background: var(--bg-app);
     font-family: var(--font-sans);
     color: var(--text-primary);
 }
 
+.pd-not-found {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--bg-app);
+    font-family: var(--font-sans);
+}
+
+.pd-not-found-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 12px;
+    max-width: 360px;
+    padding: 32px 36px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+}
+
+.pd-not-found-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-pill);
+    color: var(--pillar-project);
+    background: color-mix(in srgb, var(--pillar-project) 14%, transparent);
+}
+
+.pd-not-found-title {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    color: var(--text-primary);
+}
+
+.pd-not-found-text {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.pd-not-found-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    padding: 6px 14px 6px 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.pd-not-found-link:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+}
+
+.pd-not-found-link:active {
+    background: var(--bg-active);
+}
+
 .pd-header {
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
     gap: 12px;
     padding: 20px 24px;
     border-bottom: 1px solid var(--border-subtle);
