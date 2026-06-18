@@ -119,6 +119,16 @@
     overflow: hidden;
 }
 
+/* Inline edit form — replaces a task card in its cell while editing. Flows in
+   the cell column (unlike the absolute add-task popover above). */
+.kb-task-edit-wrapper {
+    background: var(--bg-elevated);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+}
+
 /* Feature row — status drop cells */
 .kb-cell {
     display: flex;

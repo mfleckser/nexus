@@ -15,8 +15,15 @@ const STATUSES = [
 // "general" is the synthetic row for tasks with no feature_id; it always sorts first.
 const GENERAL_ROW = "general";
 
+// Format a Date into the local "YYYY-MM-DDTHH:mm" string a datetime-local input expects.
+function toDatetimeLocal(d: Date): string {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
     const [formRow, setFormRow] = useState<string | null>(null);
+    const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
     const [featureInput, setFeatureInput] = useState<string>("");
     const [showFeatureInput, setShowFeatureInput] = useState<boolean>(false);
     const { featuresByProjectId, loadFeatures, addFeature } = useProjects();
@@ -91,14 +98,26 @@ function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
                                         onDrop={() => handleDrop()}
                                     >
                                         {rowTasks.filter(t => statusOf(t) === s.key).map(t => (
-                                            <TaskCard
-                                                key={t.id}
-                                                task={t}
-                                                dragging={draggingId === t.id}
-                                                onDragStart={() => setDraggingId(t.id)}
-                                                onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
-                                                onEdit={() => {}}
-                                            />
+                                            editingTaskId === t.id ?
+                                                <div key={t.id} className="kb-task-edit-wrapper"><TaskForm
+                                                    submitLabel="Save"
+                                                    initialTitle={t.title}
+                                                    initialDescription={t.description ?? ""}
+                                                    initialDueAt={t.due_at ? toDatetimeLocal(t.due_at) : ""}
+                                                    onSubmit={({title, description, dueAt}) => {
+                                                        updateTask(t.id, { title, description, due_at: dueAt ? new Date(dueAt) : null });
+                                                        setEditingTaskId(null);
+                                                    }}
+                                                    onCancel={() => setEditingTaskId(null)}
+                                                /></div> :
+                                                <TaskCard
+                                                    key={t.id}
+                                                    task={t}
+                                                    dragging={draggingId === t.id}
+                                                    onDragStart={() => setDraggingId(t.id)}
+                                                    onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
+                                                    onEdit={() => setEditingTaskId(t.id)}
+                                                />
                                         ))}
                                     </div>
                                 ))}
