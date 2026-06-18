@@ -31,10 +31,10 @@ def list_f(id):
     return get_project_features(id)
 
 @projects_bp.route("/projects/<id>/features", methods=["POST"])
-def create_f():
+def create_f(id):
     data = request.json
 
-    feature = create_feature(data)
+    feature = create_feature(id, data)
 
     return jsonify(feature), 201
 

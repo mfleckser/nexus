@@ -24,10 +24,10 @@ def get_project_features(project_id: str):
 
     return res.data
 
-def create_feature(data: dict):
+def create_feature(project_id: str, data: dict):
     res = supabase.table("features").insert({
         "name": data["name"],
-        "project_id": data["projectt_id"]
+        "project_id": project_id
     }).execute()
     
     return res.data[0]
