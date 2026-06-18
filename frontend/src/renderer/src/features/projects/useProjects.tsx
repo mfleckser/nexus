@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import * as projectsApi from "@renderer/features/projects/projects.api";
-import { Project } from "@renderer/types";
+import { Feature, Project } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";
 import { sameSet } from "@renderer/lib/collections";
 
@@ -8,14 +8,17 @@ type ProjectsContextValue = {
   projects: Project[];
   addProject: (title: string, description: string, type: string) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
-//   updateE: (id: string, data: any) => Promise<void>;
-//   deleteEvent: (id: string) => Promise<void>;
+
+  featuresByProjectId: Record<string, Feature[]>;
+  loadFeatures: (project_id: string) => Promise<void>;
+  addFeature: (project_id: string, name: string) => Promise<void>;
 };
 
 const ProjectsContext = createContext<ProjectsContextValue | null>(null);
 
 export function ProjectsProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [featuresByProjectId, setFeaturesByProjectId] = useState<Record<string, Feature[]>>({} as Record<string, Feature[]>);
   const now = useNow(600000);
 
   useEffect(() => {
@@ -34,19 +37,18 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
     await projectsApi.deleteProject(id);
   }
 
-//   async function updateEvent(id: string, data: any) {
-//     if (id === "DRAFT") return;
-//     await apiUpdateEvent(id, data);
-//     setEvents(prev => prev.map(e => (e.id === id ? { ...e, ...data } : e)));
-//   }
+  async function loadFeatures(project_id: string) {
+    const features = await projectsApi.getFeatures(project_id);
+    setFeaturesByProjectId(prev => ({ ...prev, [project_id]: features }));
+  }
 
-//   async function deleteEvent(id: string) {
-//     await apiDeleteEvent(id);
-//     setEvents(prev => prev.filter(t => t.id !== id));
-//   }
+  async function addFeature(project_id: string, name: string) {
+    await projectsApi.addFeature(project_id, name);
+    loadFeatures(project_id);
+  }
 
   return (
-    <ProjectsContext.Provider value={{ projects, addProject, deleteProject }}>
+    <ProjectsContext.Provider value={{ projects, addProject, deleteProject, featuresByProjectId, loadFeatures, addFeature }}>
       {children}
     </ProjectsContext.Provider>
   );

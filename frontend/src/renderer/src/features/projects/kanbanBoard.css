@@ -163,3 +163,75 @@
     background: var(--bg-hover);
     color: var(--text-primary);
 }
+
+/* Inline add-feature form — replaces the add-feature button while open */
+.kb-feature-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border-default);
+    border-bottom-left-radius: inherit;
+    border-bottom-right-radius: inherit;
+}
+
+.kb-feature-input {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 10px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.1s;
+}
+
+.kb-feature-input::placeholder {
+    color: var(--text-muted);
+}
+
+.kb-feature-input:focus {
+    border-color: var(--border-focus);
+}
+
+.kb-feature-btn {
+    flex-shrink: 0;
+    padding: 7px 12px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.kb-feature-btn-primary {
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border: 1px solid var(--accent);
+}
+
+.kb-feature-btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.kb-feature-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.kb-feature-btn-secondary {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
+}
+
+.kb-feature-btn-secondary:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
