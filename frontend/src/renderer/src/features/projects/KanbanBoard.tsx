@@ -4,6 +4,7 @@ import TaskForm from "@renderer/components/TaskForm";
 import { useTasks } from "../tasks/useTasks";
 import { Project, Task } from "@renderer/types";
 import TaskCard from "./TaskCard";
+import FeatureLabel from "./FeatureLabel";
 import { useProjects } from "./useProjects";
 
 const STATUSES = [
@@ -82,7 +83,12 @@ function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
                         return (
                             <Fragment key={row.key}>
                                 <div className="kb-feature-label">
-                                    <span className="kb-feature-name">{row.name}</span>
+                                    <FeatureLabel
+                                        name={row.name}
+                                        featureId={row.featureId}
+                                        onEdit={() => {}}
+                                        onDelete={() => {}}
+                                    />
                                     {formRow === row.key ?
                                         <div className="kb-task-form-wrapper"><TaskForm
                                             submitLabel="Add"
