@@ -5,7 +5,8 @@ from app.services.project_service import (
     create_project,
     delete_project,
     get_project_features,
-    create_feature
+    create_feature,
+    delete_feature
 )
 
 projects_bp = Blueprint("projects", __name__)
@@ -37,6 +38,10 @@ def create_f(id):
     feature = create_feature(id, data)
 
     return jsonify(feature), 201
+
+@projects_bp.route("/features/<id>", methods=["DELETE"])
+def delete_f(id):
+    return delete_feature(id)
 
 # @events_bp.route("/events/<id>", methods=["PUT"])
 # def update(id):

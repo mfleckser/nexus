@@ -12,6 +12,7 @@ type ProjectsContextValue = {
   featuresByProjectId: Record<string, Feature[]>;
   loadFeatures: (project_id: string) => Promise<void>;
   addFeature: (project_id: string, name: string) => Promise<void>;
+  deleteFeature: (feature_id: string) => Promise<void>;
 };
 
 const ProjectsContext = createContext<ProjectsContextValue | null>(null);
@@ -47,8 +48,21 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
     loadFeatures(project_id);
   }
 
+  async function deleteFeature(feature_id: string) {
+    setFeaturesByProjectId(prev => {
+      const newFeatures = { ...prev };
+      const project_id = Object.keys(newFeatures).find((p: string) => newFeatures[p].some((f: Feature) => f.id === feature_id));
+      if (project_id) {
+        newFeatures[project_id] = newFeatures[project_id].filter((f: Feature) => f.id !== feature_id);
+        return newFeatures;
+      }
+      return prev;
+    });
+    await projectsApi.deleteFeature(feature_id);
+  }
+
   return (
-    <ProjectsContext.Provider value={{ projects, addProject, deleteProject, featuresByProjectId, loadFeatures, addFeature }}>
+    <ProjectsContext.Provider value={{ projects, addProject, deleteProject, featuresByProjectId, loadFeatures, addFeature, deleteFeature }}>
       {children}
     </ProjectsContext.Provider>
   );

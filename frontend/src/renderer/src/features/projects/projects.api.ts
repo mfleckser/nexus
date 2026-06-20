@@ -32,4 +32,8 @@ function addFeature(project_id: string, name: string) {
     return window.api.apiPost(`/projects/${project_id}/features`, {name});
 }
 
-export {getProjects, addProject, deleteProject, getFeatures, addFeature};
+function deleteFeature(feature_id: string) {
+    return window.api.apiDelete(`/features/${feature_id}`);
+}
+
+export {getProjects, addProject, deleteProject, getFeatures, addFeature, deleteFeature};

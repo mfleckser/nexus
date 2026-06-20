@@ -25,9 +25,11 @@ function toDatetimeLocal(d: Date): string {
 function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
     const [formRow, setFormRow] = useState<string | null>(null);
     const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+
     const [featureInput, setFeatureInput] = useState<string>("");
     const [showFeatureInput, setShowFeatureInput] = useState<boolean>(false);
-    const { featuresByProjectId, loadFeatures, addFeature } = useProjects();
+
+    const { featuresByProjectId, loadFeatures, addFeature, deleteFeature } = useProjects();
     const {tasks, addTask, updateTask} = useTasks();
     const projectTasks = tasks.filter(t => t.project_id === project.id);
     const features = featuresByProjectId[project.id] ?? [];
@@ -42,17 +44,23 @@ function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
     ];
 
     const [draggingId, setDraggingId] = useState<string | null>(null);
-    const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+    type DropTarget = { status: string, feature_id: string | null };
+    const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
     const statusOf = (t: Task) => {
         return STATUSES.some(s => s.key === t.status) ? t.status : "todo";
     };
 
     const handleDrop = () => {
-        if (!draggingId) return;
-        updateTask(draggingId, {status: dragOverCol});
+        if (!draggingId || !dropTarget) return;
+
+        const draggedTask = projectTasks.find(t => t.id === draggingId);
+        if (!draggedTask) return;
+        if (draggedTask.status !== dropTarget.status || draggedTask.feature_id !== dropTarget?.feature_id)
+            updateTask(draggingId, dropTarget);
+
         setDraggingId(null);
-        setDragOverCol(null);
+        setDropTarget(null);
     };
 
     const handleAddFeature = () => {
@@ -87,7 +95,7 @@ function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
                                         name={row.name}
                                         featureId={row.featureId}
                                         onEdit={() => {}}
-                                        onDelete={() => {}}
+                                        onDelete={() => { if (row.featureId) deleteFeature(row.featureId); }}
                                     />
                                     {formRow === row.key ?
                                         <div className="kb-task-form-wrapper"><TaskForm
@@ -99,8 +107,8 @@ function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
                                 {STATUSES.map(s => (
                                     <div
                                         key={s.key}
-                                        className={`kb-cell${dragOverCol === s.key ? " kb-cell-dragover" : ""}`}
-                                        onDragOver={(e) => { e.preventDefault(); setDragOverCol(s.key); }}
+                                        className={`kb-cell${dropTarget?.feature_id === row.featureId && dropTarget.status === s.key ? " kb-cell-dragover" : ""}`}
+                                        onDragOver={(e) => { e.preventDefault(); setDropTarget({ status: s.key, feature_id: row.featureId }); }}
                                         onDrop={() => handleDrop()}
                                     >
                                         {rowTasks.filter(t => statusOf(t) === s.key).map(t => (
@@ -121,7 +129,7 @@ function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
                                                     task={t}
                                                     dragging={draggingId === t.id}
                                                     onDragStart={() => setDraggingId(t.id)}
-                                                    onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
+                                                    onDragEnd={() => { setDraggingId(null); setDropTarget(null); }}
                                                     onEdit={() => setEditingTaskId(t.id)}
                                                 />
                                         ))}

@@ -31,3 +31,7 @@ def create_feature(project_id: str, data: dict):
     }).execute()
     
     return res.data[0]
+
+def delete_feature(feature_id: str):
+    res = supabase.table("features").delete().eq("id", feature_id).execute()
+    return res.data[0]
