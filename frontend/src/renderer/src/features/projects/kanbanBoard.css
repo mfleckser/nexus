@@ -27,7 +27,6 @@
 
 /* Floating panel on app bg — scroll container for feature rows */
 .kb-board {
-    flex: 1;
     min-height: 0;
     overflow-y: auto;
     background: var(--bg-surface);
