@@ -15,6 +15,14 @@ def create_project(data: dict):
 
     return res.data[0]
 
+def update_project(project_id: str, data: dict):
+    fields = ["title", "description", "type", "status"]
+    updates = {f: data[f] for f in fields if f in data}
+
+    res = supabase.table("projects").update(updates).eq("id", project_id).execute()
+
+    return res.data[0]
+
 def delete_project(project_id: str):
     res = supabase.table("projects").delete().eq("id", project_id).execute()
     return res.data[0]

@@ -1,16 +1,16 @@
-.np-form {
+.pm-form {
     display: flex;
     flex-direction: column;
     gap: 14px;
 }
 
-.np-field {
+.pm-field {
     display: flex;
     flex-direction: column;
     gap: 6px;
 }
 
-.np-label {
+.pm-label {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.6px;
@@ -18,7 +18,7 @@
     color: var(--text-muted);
 }
 
-.np-optional {
+.pm-optional {
     margin-left: 6px;
     font-weight: 500;
     letter-spacing: 0.3px;
@@ -26,7 +26,7 @@
     color: var(--text-disabled);
 }
 
-.np-input {
+.pm-input {
     background: var(--bg-surface);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-md);
@@ -37,31 +37,31 @@
     transition: border-color 0.1s;
 }
 
-.np-input::placeholder {
+.pm-input::placeholder {
     color: var(--text-muted);
 }
 
-.np-input:hover {
+.pm-input:hover {
     border-color: var(--border-strong);
 }
 
-.np-input:focus {
+.pm-input:focus {
     border-color: var(--border-focus);
 }
 
-.np-textarea {
+.pm-textarea {
     resize: vertical;
     min-height: 64px;
     line-height: 1.45;
 }
 
-.np-type-options {
+.pm-options {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
 }
 
-.np-type-option {
+.pm-option {
     cursor: pointer;
     color: var(--text-secondary);
     background: var(--bg-surface);
@@ -75,27 +75,27 @@
     transition: background-color 0.1s, border-color 0.1s, color 0.1s;
 }
 
-.np-type-option:hover {
+.pm-option:hover {
     background: var(--bg-hover);
     border-color: var(--border-strong);
     color: var(--text-primary);
 }
 
-.np-type-option-selected,
-.np-type-option-selected:hover {
+.pm-option-selected,
+.pm-option-selected:hover {
     background: var(--accent-muted);
     border-color: var(--accent-border);
     color: var(--accent);
 }
 
-.np-actions {
+.pm-actions {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
     margin-top: 4px;
 }
 
-.np-btn {
+.pm-btn {
     border: 1px solid transparent;
     border-radius: var(--radius-md);
     font-family: inherit;
@@ -106,35 +106,35 @@
     transition: background-color 0.1s, border-color 0.1s, color 0.1s;
 }
 
-.np-btn-secondary {
+.pm-btn-secondary {
     background: transparent;
     border-color: var(--border-default);
     color: var(--text-secondary);
 }
 
-.np-btn-secondary:hover {
+.pm-btn-secondary:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
     border-color: var(--border-strong);
 }
 
-.np-btn-primary {
+.pm-btn-primary {
     background: var(--accent);
     border-color: var(--accent);
     color: var(--text-on-accent);
 }
 
-.np-btn-primary:hover:not(:disabled) {
+.pm-btn-primary:hover:not(:disabled) {
     background: var(--accent-hover);
     border-color: var(--accent-hover);
 }
 
-.np-btn-primary:active:not(:disabled) {
+.pm-btn-primary:active:not(:disabled) {
     background: var(--accent-active);
     border-color: var(--accent-active);
 }
 
-.np-btn-primary:disabled {
+.pm-btn-primary:disabled {
     background: var(--bg-active);
     border-color: var(--border-default);
     color: var(--text-disabled);

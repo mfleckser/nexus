@@ -4,14 +4,16 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import "./projectDetail.css";
 import { useState } from "react";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
+import ProjectModal from "@renderer/components/ProjectModal";
 import KanbanBoard from "./KanbanBoard";
 
 function ProjectDetail(): React.JSX.Element {
     const [showProjectMenu, setShowProjectMenu] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
     const {projectId} = useParams();
-    const {projects, deleteProject} = useProjects();
+    const {projects, updateProject, deleteProject} = useProjects();
     const project = projects.find(p => p.id === projectId);
 
     if (!project) {
@@ -50,9 +52,21 @@ function ProjectDetail(): React.JSX.Element {
                             <Ellipsis size={18} />
                         </button>
                         {showProjectMenu && <div className="pd-project-menu">
-                            <button type="button">Edit</button>
+                            <button type="button" onClick={() => {setShowProjectMenu(false); setShowEditModal(true);}}>Edit</button>
                             <button type="button" className="pd-menu-danger" onClick={() => setShowConfirmDelete(true)}>Delete</button>
                         </div>}
+                        {showEditModal && <ProjectModal
+                            heading="Edit Project"
+                            submitLabel="Save"
+                            initial={{
+                                title: project.title,
+                                description: project.description || "",
+                                type: project.type || "",
+                                status: project.status
+                            }}
+                            onClose={() => setShowEditModal(false)}
+                            onSave={values => updateProject(project.id, values)}
+                        />}
                         {showConfirmDelete && <ConfirmDelete
                             onClose={() => setShowConfirmDelete(false)}
                             onDelete={() => {deleteProject(project?.id || ""); setShowConfirmDelete(false); nav("/projects")}}

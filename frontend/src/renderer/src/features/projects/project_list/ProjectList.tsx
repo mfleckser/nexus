@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useProjects } from "@renderer/features/projects/useProjects";
 import ProjectCard from "@renderer/features/projects/project_list/ProjectCard";
-import NewProjectModal from "@renderer/features/projects/project_list/NewProjectModal";
+import ProjectModal from "@renderer/components/ProjectModal";
 import "./projectList.css";
 
 function ProjectList(): React.JSX.Element {
@@ -30,7 +30,12 @@ function ProjectList(): React.JSX.Element {
                 </div>
             )}
 
-            {showModal && <NewProjectModal onClose={() => setShowModal(false)} onSave={addProject} />}
+            {showModal && <ProjectModal
+                heading="New Project"
+                submitLabel="Create"
+                onClose={() => setShowModal(false)}
+                onSave={v => addProject(v.title, v.description, v.type)}
+            />}
         </div>
     );
 }

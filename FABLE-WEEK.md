@@ -15,7 +15,7 @@ Scratch backlog for the Fable availability window (~Jul 1–8, 2026). Coding age
 ## Tier 1 — do first (high ROI, stampable, unblocks everything)
 
 ### Finish F1 — Project Workshop (dogfooding: get Nexus tracking itself)
-- [ ] Project edit — wire Edit menu (title/desc/type/status) + `PUT /projects/:id` endpoint + service · H·stamp·M
+- [x] Project edit — wire Edit menu (title/desc/type/status) + `PUT /projects/:id` endpoint + service · H·stamp·M — done, committed to `main` (shared ProjectModal replaces NewProjectModal; status options: planning/active/paused/complete/archived)
 - [ ] Project notes — edit UI + PUT support (notes field already in schema) · H·stamp·S
 - [ ] Task ↔ project on Home — show which project each task belongs to; allow assigning an unscoped task to current project from TaskView · H·stamp·M
 - [ ] Cache consistency — **DECIDED:** add caching for projects, and make it the standard pattern applied to every new entity type going forward. Bring projects in line with the tasks/events caching approach. · M·stamp·S

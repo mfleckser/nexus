@@ -7,6 +7,7 @@ import { sameSet } from "@renderer/lib/collections";
 type ProjectsContextValue = {
   projects: Project[];
   addProject: (title: string, description: string, type: string) => Promise<void>;
+  updateProject: (id: string, data: any) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
 
   featuresByProjectId: Record<string, Feature[]>;
@@ -29,6 +30,12 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
 
   async function addProject(title: string, description: string, type: string) {
     await projectsApi.addProject(title, description, type);
+    const fresh = await projectsApi.getProjects();
+    setProjects(fresh);
+  }
+
+  async function updateProject(id: string, data: any) {
+    await projectsApi.updateProject(id, data);
     const fresh = await projectsApi.getProjects();
     setProjects(fresh);
   }
@@ -62,7 +69,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ProjectsContext.Provider value={{ projects, addProject, deleteProject, featuresByProjectId, loadFeatures, addFeature, deleteFeature }}>
+    <ProjectsContext.Provider value={{ projects, addProject, updateProject, deleteProject, featuresByProjectId, loadFeatures, addFeature, deleteFeature }}>
       {children}
     </ProjectsContext.Provider>
   );

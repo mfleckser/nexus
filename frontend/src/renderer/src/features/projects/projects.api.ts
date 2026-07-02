@@ -14,6 +14,10 @@ function addProject(title: string, description: string, type: string) {
     return window.api.apiPost("/projects", {title, description, type});
 }
 
+function updateProject(id: string, data: any) {
+    return window.api.apiPut(`/projects/${id}`, data);
+}
+
 function deleteProject(id: string) {
     return window.api.apiDelete(`/projects/${id}`)
 }
@@ -36,4 +40,4 @@ function deleteFeature(feature_id: string) {
     return window.api.apiDelete(`/features/${feature_id}`);
 }
 
-export {getProjects, addProject, deleteProject, getFeatures, addFeature, deleteFeature};
+export {getProjects, addProject, updateProject, deleteProject, getFeatures, addFeature, deleteFeature};
