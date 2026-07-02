@@ -2,7 +2,7 @@ from app.extensions.supabase import supabase
 from app.extensions.cache import cache
 
 def get_all_projects():
-    res = supabase.table("projects").select("id", "created_at", "updated_at", "title", "description", "type", "status", "notes_updated_at").execute()
+    res = supabase.table("projects").select("id", "created_at", "updated_at", "title", "description", "type", "status", "show_tasks_in_main_view", "notes_updated_at").execute()
 
     return res.data
 
@@ -16,7 +16,7 @@ def create_project(data: dict):
     return res.data[0]
 
 def update_project(project_id: str, data: dict):
-    fields = ["title", "description", "type", "status"]
+    fields = ["title", "description", "type", "status", "show_tasks_in_main_view"]
     updates = {f: data[f] for f in fields if f in data}
 
     res = supabase.table("projects").update(updates).eq("id", project_id).execute()

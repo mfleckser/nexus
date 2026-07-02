@@ -62,7 +62,8 @@ function ProjectDetail(): React.JSX.Element {
                                 title: project.title,
                                 description: project.description || "",
                                 type: project.type || "",
-                                status: project.status
+                                status: project.status,
+                                show_tasks_in_main_view: project.show_tasks_in_main_view
                             }}
                             onClose={() => setShowEditModal(false)}
                             onSave={values => updateProject(project.id, values)}

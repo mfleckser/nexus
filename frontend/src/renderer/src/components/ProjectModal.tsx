@@ -10,6 +10,7 @@ export type ProjectFormValues = {
     description: string;
     type: string;
     status: string;
+    show_tasks_in_main_view: boolean;
 };
 
 type ProjectModalProps = {
@@ -25,6 +26,7 @@ function ProjectModal({ heading, submitLabel, onClose, onSave, initial }: Projec
     const [description, setDescription] = useState(initial?.description ?? "");
     const [type, setType] = useState(initial?.type ?? "");
     const [status, setStatus] = useState(initial?.status ?? "");
+    const [showTasks, setShowTasks] = useState(initial?.show_tasks_in_main_view ?? true);
     const titleRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -33,7 +35,7 @@ function ProjectModal({ heading, submitLabel, onClose, onSave, initial }: Projec
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        onSave({ title, description, type, status });
+        onSave({ title, description, type, status, show_tasks_in_main_view: showTasks });
         onClose();
     }
 
@@ -96,6 +98,21 @@ function ProjectModal({ heading, submitLabel, onClose, onSave, initial }: Projec
                                 </button>
                             ))}
                         </div>
+                    </div>
+                )}
+
+                {initial && (
+                    <div className="pm-field pm-field-row">
+                        <span className="pm-label">Show tasks in main view</span>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={showTasks}
+                            className={`pm-switch${showTasks ? " pm-switch-on" : ""}`}
+                            onClick={() => setShowTasks(prev => !prev)}
+                        >
+                            <span className="pm-switch-thumb" />
+                        </button>
                     </div>
                 )}
 

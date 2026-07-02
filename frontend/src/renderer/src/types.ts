@@ -50,6 +50,7 @@ export type Project = {
     description: string,
     type: string,
     status: string,
+    show_tasks_in_main_view: boolean,
     notes_updated_at: Date
 };
 

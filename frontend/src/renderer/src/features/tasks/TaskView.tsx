@@ -1,5 +1,6 @@
 import "./taskview.css"
 import { useTasks } from "@renderer/features/tasks/useTasks"
+import { useProjects } from "@renderer/features/projects/useProjects"
 import { useEffect, useState } from "react";
 import { Task } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";
@@ -179,9 +180,13 @@ function TaskGroup({ name, filterFunc, expandedId, setExpandedId, startClosed = 
 
 function TaskView(): React.JSX.Element {
     const { addTask } = useTasks();
+    const { projects } = useProjects();
     const [showForm, setShowForm] = useState(false);
     const now = useNow();
     const [expandedId, setExpandedId] = useState<string | null>(null);
+
+    const hiddenProjectIds = new Set(projects.filter(p => !p.show_tasks_in_main_view).map(p => p.id));
+    const visible = (t: Task) => t.project_id === null || !hiddenProjectIds.has(t.project_id);
 
     const getDaysDiff = (task: Task) => {
         if (task.due_at === null) return 0;
@@ -217,33 +222,33 @@ function TaskView(): React.JSX.Element {
                 <div className="task-list themed-scroll">
                     <TaskGroup
                         name="Overdue"
-                        filterFunc={t => t.due_at !== null && getDaysDiff(t) < 0 && t.status !== "complete"}
+                        filterFunc={t => visible(t) && t.due_at !== null && getDaysDiff(t) < 0 && t.status !== "complete"}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                     />
                     <TaskGroup
                         name="Today"
-                        filterFunc={t => t.due_at !== null && getDaysDiff(t) === 0}
+                        filterFunc={t => visible(t) && t.due_at !== null && getDaysDiff(t) === 0}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                     />
                     <TaskGroup
                         name="This Week"
-                        filterFunc={t => {if (t.due_at === null) return false; const diff = getDaysDiff(t); return diff >= 1 && diff <= 7;}}
+                        filterFunc={t => {if (!visible(t) || t.due_at === null) return false; const diff = getDaysDiff(t); return diff >= 1 && diff <= 7;}}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                         startClosed
                     />
                     <TaskGroup
                         name="Future"
-                        filterFunc={t => getDaysDiff(t) > 7}
+                        filterFunc={t => visible(t) && getDaysDiff(t) > 7}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                         startClosed
                     />
                     <TaskGroup
                         name="No Due Date"
-                        filterFunc={t => t.due_at === null && t.status != "complete"}
+                        filterFunc={t => visible(t) && t.due_at === null && t.status != "complete"}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                     />

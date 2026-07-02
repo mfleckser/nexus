@@ -88,6 +88,54 @@
     color: var(--accent);
 }
 
+.pm-field-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.pm-switch {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    padding: 0;
+    background: var(--bg-active);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.pm-switch:hover {
+    border-color: var(--border-strong);
+}
+
+.pm-switch-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: var(--text-muted);
+    border-radius: var(--radius-pill);
+    transition: transform 0.15s, background-color 0.15s;
+}
+
+.pm-switch-on {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.pm-switch-on:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.pm-switch-on .pm-switch-thumb {
+    background: var(--text-on-accent);
+    transform: translateX(16px);
+}
+
 .pm-actions {
     display: flex;
     justify-content: flex-end;
