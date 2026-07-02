@@ -3,7 +3,7 @@ import { Ellipsis } from "lucide-react";
 import { Task } from "@renderer/types";
 import "./taskCard.css";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
-import { useTasks } from "../tasks/useTasks";
+import { useTasks }  from "@renderer/features/tasks/useTasks";
 
 type TaskCardProps = {
     task: Task;

@@ -1,6 +1,6 @@
 import { Route, Routes } from "react-router-dom";
-import ProjectList from "@renderer/features/projects/ProjectList";
-import ProjectDetail from "@renderer/features/projects/ProjectDetail";
+import ProjectList from "@renderer/features/projects/project_list/ProjectList";
+import ProjectDetail from "@renderer/features/projects/project_detail/ProjectDetail";
 
 function Projects(): React.JSX.Element {
     return (

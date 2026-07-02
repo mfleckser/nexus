@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useState } from "react";
 import "./kanbanBoard.css";
 import TaskForm from "@renderer/components/TaskForm";
-import { useTasks } from "../tasks/useTasks";
+import { useTasks } from "../../tasks/useTasks";
 import { Project, Task } from "@renderer/types";
 import TaskCard from "./TaskCard";
 import FeatureLabel from "./FeatureLabel";
-import { useProjects } from "./useProjects";
+import { useProjects } from "../useProjects";
 
 const STATUSES = [
     { key: "todo", label: "To Do" },

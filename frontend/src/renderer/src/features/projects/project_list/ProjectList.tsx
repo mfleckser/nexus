@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useProjects } from "@renderer/features/projects/useProjects";
-import ProjectCard from "@renderer/features/projects/ProjectCard";
-import NewProjectModal from "@renderer/features/projects/NewProjectModal";
+import ProjectCard from "@renderer/features/projects/project_list/ProjectCard";
+import NewProjectModal from "@renderer/features/projects/project_list/NewProjectModal";
 import "./projectList.css";
 
 function ProjectList(): React.JSX.Element {
