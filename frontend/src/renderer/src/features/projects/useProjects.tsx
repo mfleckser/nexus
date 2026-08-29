@@ -10,6 +10,10 @@ type ProjectsContextValue = {
   updateProject: (id: string, data: any) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
 
+  notesByProjectId: Record<string, string>;
+  loadNotes: (project_id: string) => Promise<void>;
+  updateNotes: (project_id: string, notes: string) => Promise<void>;
+
   featuresByProjectId: Record<string, Feature[]>;
   loadFeatures: (project_id: string) => Promise<void>;
   addFeature: (project_id: string, name: string) => Promise<void>;
@@ -21,6 +25,7 @@ const ProjectsContext = createContext<ProjectsContextValue | null>(null);
 export function ProjectsProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [featuresByProjectId, setFeaturesByProjectId] = useState<Record<string, Feature[]>>({} as Record<string, Feature[]>);
+  const [notesByProjectId, setNotesByProjectId] = useState<Record<string, string>>({});
   const now = useNow(600000);
 
   useEffect(() => {
@@ -43,6 +48,18 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   async function deleteProject(id: string) {
     setProjects(prev => prev.filter(p => p.id !== id))
     await projectsApi.deleteProject(id);
+  }
+
+  async function loadNotes(project_id: string) {
+    const notes = await projectsApi.getNotes(project_id);
+    setNotesByProjectId(prev => ({ ...prev, [project_id]: notes }));
+  }
+
+  async function updateNotes(project_id: string, notes: string) {
+    await projectsApi.updateProject(project_id, { notes });
+    setNotesByProjectId(prev => ({ ...prev, [project_id]: notes }));
+    const fresh = await projectsApi.getProjects();
+    setProjects(fresh);
   }
 
   async function loadFeatures(project_id: string) {
@@ -69,7 +86,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ProjectsContext.Provider value={{ projects, addProject, updateProject, deleteProject, featuresByProjectId, loadFeatures, addFeature, deleteFeature }}>
+    <ProjectsContext.Provider value={{ projects, addProject, updateProject, deleteProject, notesByProjectId, loadNotes, updateNotes, featuresByProjectId, loadFeatures, addFeature, deleteFeature }}>
       {children}
     </ProjectsContext.Provider>
   );

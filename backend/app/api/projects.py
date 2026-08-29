@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 
 from app.services.project_service import (
     get_all_projects,
+    get_project_notes,
     create_project,
     update_project,
     delete_project,
@@ -23,6 +24,10 @@ def create():
     project = create_project(data)
 
     return jsonify(project), 201
+
+@projects_bp.route("/projects/<id>/notes", methods=["GET"])
+def get_notes(id):
+    return get_project_notes(id)
 
 @projects_bp.route("/projects/<id>", methods=["PUT"])
 def update(id):

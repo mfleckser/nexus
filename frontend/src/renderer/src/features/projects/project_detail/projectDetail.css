@@ -138,12 +138,26 @@
     margin: 0;
 }
 
+.pd-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.pd-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
 .pd-project-menu-container {
     position: relative;
     flex-shrink: 0;
 }
 
-.pd-project-menu-btn {
+.pd-project-menu-btn,
+.pd-notes-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -157,10 +171,18 @@
     transition: background-color 0.1s, border-color 0.1s, color 0.1s;
 }
 
-.pd-project-menu-btn:hover {
+.pd-project-menu-btn:hover,
+.pd-notes-toggle:hover {
     background: var(--bg-hover);
     border-color: var(--border-default);
     color: var(--text-primary);
+}
+
+.pd-notes-toggle-active,
+.pd-notes-toggle-active:hover {
+    background: var(--accent-muted);
+    border-color: var(--accent-border);
+    color: var(--accent);
 }
 
 .pd-project-menu {

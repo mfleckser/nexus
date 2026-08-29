@@ -10,6 +10,11 @@ async function getProjects(): Promise<Project[]> {
     }));
 }
 
+async function getNotes(project_id: string): Promise<string> {
+    const raw = await window.api.apiGet(`/projects/${project_id}/notes`);
+    return raw.notes ?? "";
+}
+
 function addProject(title: string, description: string, type: string) {
     return window.api.apiPost("/projects", {title, description, type});
 }
@@ -40,4 +45,4 @@ function deleteFeature(feature_id: string) {
     return window.api.apiDelete(`/features/${feature_id}`);
 }
 
-export {getProjects, addProject, updateProject, deleteProject, getFeatures, addFeature, deleteFeature};
+export {getProjects, getNotes, addProject, updateProject, deleteProject, getFeatures, addFeature, deleteFeature};

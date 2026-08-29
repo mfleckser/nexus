@@ -6,6 +6,12 @@ def get_all_projects():
 
     return res.data
 
+@cache.memoize()
+def get_project_notes(project_id: str):
+    res = supabase.table("projects").select("notes").eq("id", project_id).execute()
+
+    return res.data[0]
+
 def create_project(data: dict):
     res = supabase.table("projects").insert({
         "title": data["title"],
@@ -16,15 +22,19 @@ def create_project(data: dict):
     return res.data[0]
 
 def update_project(project_id: str, data: dict):
-    fields = ["title", "description", "type", "status", "show_tasks_in_main_view"]
+    fields = ["title", "description", "type", "status", "show_tasks_in_main_view", "notes"]
     updates = {f: data[f] for f in fields if f in data}
 
     res = supabase.table("projects").update(updates).eq("id", project_id).execute()
+
+    if "notes" in updates:
+        cache.delete_memoized(get_project_notes, project_id)
 
     return res.data[0]
 
 def delete_project(project_id: str):
     res = supabase.table("projects").delete().eq("id", project_id).execute()
+    cache.delete_memoized(get_project_notes, project_id)
     return res.data[0]
 
 def get_project_features(project_id: str):
