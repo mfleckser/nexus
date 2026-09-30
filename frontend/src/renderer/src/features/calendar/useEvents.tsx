@@ -9,6 +9,7 @@ type EventsContextValue = {
   range: DateRange | null;
   setRange: (next: DateRange) => void;
   addEvent: (draft: NewEventDraft) => Promise<void>;
+  // `scope` is required for occurrences of a series (recurring_event_id set).
   updateEvent: (event: Event, data: any, scope?: RecurrenceScope) => Promise<void>;
   deleteEvent: (event: Event, scope?: RecurrenceScope) => Promise<void>;
 };
@@ -63,10 +64,19 @@ export function EventsProvider({ children }: { children: ReactNode }) {
   }
 
   // Occurrences of a series (recurring_event_id set) have virtual or override
-  // ids and must only ever hit the occurrence endpoints. One edit can reshape
-  // many instances, so always resync the window afterwards — on failure too,
-  // to roll back the optimistic change — then surface the original error.
-  async function mutateOccurrence(event: Event, call: (masterId: string, originalStart: Date) => Promise<unknown>) {
+  // ids and must only ever hit the occurrence endpoints, with the scope the
+  // user picked. Returns null for plain events; throws — before any optimistic
+  // change — if an occurrence arrives without a scope.
+  function occurrenceScope(event: Event, scope: RecurrenceScope | undefined): RecurrenceScope | null {
+    if (!event.recurring_event_id) return null;
+    if (!scope) throw new Error(`Recurring occurrence ${event.id} needs an edit scope`);
+    return scope;
+  }
+
+  // One edit can reshape many instances, so always resync the window
+  // afterwards — on failure too, to roll back the optimistic change — then
+  // surface the original error.
+  async function mutateOccurrence(event: Event, call: (masterId: string, originalStart: Date) => Promise<unknown>): Promise<void> {
     if (!event.recurring_event_id || !event.original_start_at) {
       throw new Error(`Event ${event.id} is not a recurring occurrence`);
     }
@@ -81,8 +91,9 @@ export function EventsProvider({ children }: { children: ReactNode }) {
 
   async function updateEvent(event: Event, data: any, scope?: RecurrenceScope): Promise<void> {
     if (event.id === "DRAFT") return;
+    const occScope = occurrenceScope(event, scope);
     setEvents(prev => prev.map(e => (e.id === event.id ? { ...e, ...data } : e)));
-    if (!event.recurring_event_id) {
+    if (!occScope) {
       // Adding/removing an rrule turns the row into (or out of) a series whose
       // instances have different ids — resync rather than wait for the poll,
       // and on failure too, to drop the optimistic rrule.
@@ -93,20 +104,19 @@ export function EventsProvider({ children }: { children: ReactNode }) {
       }
       return;
     }
-    // TODO(Stage 4): callers will prompt for a scope; default keeps drag/resize working until then.
     await mutateOccurrence(event, (masterId, originalStart) =>
-      eventsApi.updateOccurrence(masterId, originalStart, scope ?? "this", data));
+      eventsApi.updateOccurrence(masterId, originalStart, occScope, data));
   }
 
   async function deleteEvent(event: Event, scope?: RecurrenceScope): Promise<void> {
+    const occScope = occurrenceScope(event, scope);
     setEvents(prev => prev.filter(e => e.id !== event.id));
-    if (!event.recurring_event_id) {
+    if (!occScope) {
       await eventsApi.deleteEvent(event.id);
       return;
     }
-    // TODO(Stage 4): callers will prompt for a scope; default keeps delete working until then.
     await mutateOccurrence(event, (masterId, originalStart) =>
-      eventsApi.deleteOccurrence(masterId, originalStart, scope ?? "this"));
+      eventsApi.deleteOccurrence(masterId, originalStart, occScope));
   }
 
   return (

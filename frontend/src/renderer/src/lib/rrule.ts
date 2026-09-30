@@ -183,6 +183,17 @@ export function parseRrule(rrule: string, start: Date): Recurrence | null {
     return { freq, interval, byday, end };
 }
 
+// Whether two RRULE bodies describe the same recurrence for an event starting
+// at `start` (part order, case, BYDAY order, UNTIL formatting don't matter).
+// Rules the picker can't represent fall back to an exact string match.
+export function sameRrule(a: string | null, b: string | null, start: Date): boolean {
+    if (!a || !b) return !a && !b;
+    if (a === b) return true;
+    const ra = parseRrule(a, start);
+    const rb = parseRrule(b, start);
+    return !!ra && !!rb && buildRrule(ra) === buildRrule(rb);
+}
+
 export function presetRecurrence(preset: RepeatPreset, start: Date): Recurrence | null {
     const never: RecurrenceEnd = { type: "never" };
     switch (preset) {

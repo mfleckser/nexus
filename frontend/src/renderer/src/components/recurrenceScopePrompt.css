@@ -1,0 +1,85 @@
+.rsp-options {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: -4px -8px 0;
+}
+
+.rsp-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background-color 0.1s, color 0.1s;
+}
+
+.rsp-option:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.rsp-option-selected {
+    color: var(--text-primary);
+}
+
+.rsp-radio {
+    appearance: none;
+    flex-shrink: 0;
+    display: grid;
+    place-content: center;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    background: transparent;
+    border: 1.5px solid var(--border-strong);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: border-color 0.1s;
+}
+
+.rsp-radio::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: scale(0);
+    transition: transform 0.1s;
+}
+
+.rsp-radio:checked {
+    border-color: var(--accent);
+}
+
+.rsp-radio:checked::before {
+    transform: scale(1);
+}
+
+/* Global `outline: none` — give keyboard focus a visible ring. */
+.rsp-option:has(.rsp-radio:focus-visible) {
+    background: var(--accent-muted);
+}
+
+.rsp-radio:focus-visible {
+    border-color: var(--border-focus);
+}
+
+.rsp-btn-ok {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: var(--text-on-accent);
+}
+
+.rsp-btn-ok:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.rsp-btn-ok:active {
+    background: var(--accent-active);
+    border-color: var(--accent-active);
+}
