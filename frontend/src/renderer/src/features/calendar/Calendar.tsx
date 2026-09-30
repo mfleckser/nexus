@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import "./calendar.css"
 import { useEvents } from "@renderer/features/calendar/useEvents";
 import EventChip, { EventDraftChip } from "./EventChip";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import useNow from "@renderer/hooks/useNow";
-import { NewEventDraft } from "@renderer/types";
+import { DateRange, NewEventDraft } from "@renderer/types";
+import { addDays, startOfDay } from "@renderer/lib/time";
 
 const PX_PER_HOUR = 48;
 const PX_PER_MIN = PX_PER_HOUR / 60;
 const POPOVER_WIDTH = 320;
 const POPOVER_GAP = 8;
+const BUFFER_DAYS = 7;
 
 function Calendar(): React.JSX.Element {
     const today = new Date();
@@ -18,7 +20,7 @@ function Calendar(): React.JSX.Element {
         return new Date(today.getTime() - today.getDay() * 1000 * 60 * 60 * 24)
     });
     const [viewType, setViewType] = useState("WEEK");
-    const {events, addEvent} = useEvents();
+    const {events, addEvent, setRange} = useEvents();
     const [popover, setPopover] = useState<{ anchor: { x: number; y: number }; start: Date; duration?: number } | null>(null);
     const [eventDraft, setEventDraft] = useState<NewEventDraft | null>(null);
 
@@ -143,22 +145,40 @@ function Calendar(): React.JSX.Element {
         return () => {window.removeEventListener("keydown", handleKeyPress)}
     }, [focusedDay, viewType]);
 
-    const monthCells = (() => {
-        if (viewType !== "MONTH") return [];
+    const monthGrid = useMemo(() => {
         const firstOfMonth = new Date(focusedDay.getFullYear(), focusedDay.getMonth(), 1);
         const lastOfMonth = new Date(focusedDay.getFullYear(), focusedDay.getMonth() + 1, 0);
-        const gridStart = new Date(firstOfMonth);
-        gridStart.setDate(1 - firstOfMonth.getDay());
-        const gridEnd = new Date(lastOfMonth);
-        gridEnd.setDate(lastOfMonth.getDate() + (6 - lastOfMonth.getDay()));
+        const gridStart = addDays(firstOfMonth, -firstOfMonth.getDay());
+        const gridEnd = addDays(lastOfMonth, 6 - lastOfMonth.getDay());
         const cells: Date[] = [];
-        const cursor = new Date(gridStart);
-        while (cursor <= gridEnd) {
-            cells.push(new Date(cursor));
-            cursor.setDate(cursor.getDate() + 1);
+        for (let d = gridStart; d <= gridEnd; d = addDays(d, 1)) cells.push(d);
+        return { gridStart, gridEnd, cells };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusedDay.getFullYear(), focusedDay.getMonth()]);
+
+    const monthCells = viewType === "MONTH" ? monthGrid.cells : [];
+
+    // The window the user can actually see.
+    const visible = useMemo<DateRange>(() => {
+        if (viewType === "MONTH") {
+            return { start: monthGrid.gridStart, end: addDays(monthGrid.gridEnd, 1) };
         }
-        return cells;
-    })();
+        const weekStart = startOfDay(startOfWeek(focusedDay));
+        return { start: weekStart, end: addDays(weekStart, 7) };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [viewType, focusedDay, monthGrid]);
+
+    // What we ask the server for: visible ± one buffer period, so the next
+    // nav step usually renders from memory while the refetch confirms it.
+    const fetchWindow = useMemo<DateRange>(() => ({
+        start: addDays(visible.start, -BUFFER_DAYS),
+        end: addDays(visible.end, BUFFER_DAYS)
+    }), [visible]);
+
+    useEffect(() => {
+        setRange(fetchWindow);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fetchWindow.start.getTime(), fetchWindow.end.getTime(), setRange]);
 
     const calcCursorPos = (): React.CSSProperties => {
         const left = now.getDay() * 100 / 7;
@@ -254,7 +274,8 @@ function Calendar(): React.JSX.Element {
                                 </>
                             ))}
                             <div className="events-overlay">
-                                {events.filter(e => startOfWeek(e.start_at).toDateString() === startOfWeek(focusedDay).toDateString())
+                                {events.filter(e => e.start_at.getTime() >= visible.start.getTime()
+                                                  && e.start_at.getTime() <  visible.end.getTime())
                                     .toSorted((a, b) => (a.start_at.getTime() - b.start_at.getTime()) || (b.end_at.getTime() - a.end_at.getTime()))
                                     .map((event, idx, filteredEvents) => {
                                     let cols = 1, colIdx = 0;

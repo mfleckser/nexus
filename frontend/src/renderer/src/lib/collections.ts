@@ -5,6 +5,7 @@ type SetItem = {
 };
 
 function sameSet(a: SetItem[], b: SetItem[]): boolean {
+    if (a.length !== b.length) return false;
     const keyify = (item: SetItem) => `${item.id}:${item.updated_at.getTime()}`;
     const sa = a.map(keyify).toSorted();
     const sb = b.map(keyify).toSorted();

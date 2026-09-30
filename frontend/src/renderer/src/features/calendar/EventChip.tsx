@@ -4,6 +4,7 @@ import { Event, NewEventDraft } from "@renderer/types";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import categoryData from "./categories.json"
+import { browserTimeZone } from "@renderer/lib/time";
 
 const PX_PER_HOUR = 48;
 const PX_PER_MIN = PX_PER_HOUR / 60;
@@ -215,7 +216,8 @@ function EventDraftChip({ draft } : { draft: NewEventDraft }) {
         start_at: draft.start_at,
         end_at: new Date(draft.start_at.getTime() + draft.duration * 1000 * 60),
         all_day: false,
-        category: draft.category
+        category: draft.category,
+        timezone: browserTimeZone()
     });
 
     useEffect(() => {

@@ -21,7 +21,13 @@ export type Event = {
     start_at: Date,
     end_at: Date,
     all_day: boolean,
-    category: string | null
+    category: string | null,
+    timezone: string
+};
+
+export type DateRange = {
+    start: Date;
+    end: Date;
 };
 
 export type NewEventDraft = {

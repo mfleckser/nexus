@@ -1,7 +1,12 @@
 import { Event } from "@renderer/types";
+import { browserTimeZone } from "@renderer/lib/time";
 
-async function getEvents(): Promise<Event[]> {
-    const raw = await window.api.apiGet("/events");
+async function getEvents(start: Date, end: Date): Promise<Event[]> {
+    const qs = new URLSearchParams({
+        start: start.toISOString(),
+        end: end.toISOString()
+    });
+    const raw = await window.api.apiGet(`/events?${qs.toString()}`);
     return raw.map((e: any) => ({
         ...e,
         created_at: new Date(e.created_at),
@@ -17,7 +22,8 @@ function addEvent(title: string, description: string | null, start_at: Date, end
         description: description,
         start_at: start_at,
         end_at: end_at,
-        category: category
+        category: category,
+        timezone: browserTimeZone()
     })
 }
 
