@@ -1,5 +1,6 @@
 import { useEvents } from "@renderer/features/calendar/useEvents";
 import { useEffect, useRef, useState } from "react";
+import { Repeat } from "lucide-react";
 import { Event, NewEventDraft } from "@renderer/types";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
@@ -45,13 +46,13 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
     const baseTop = (60 * event.start_at.getHours() + event.start_at.getMinutes()) * PX_PER_MIN;
 
     const handlePopoverSave = (draft: NewEventDraft) => {
-        updateEvent(event.id, {
+        updateEvent(event, {
             title: draft.title,
             description: draft.description,
             start_at: draft.start_at,
             end_at: new Date(draft.start_at.getTime() + draft.duration * 1000 * 60),
             category: draft.category
-        });
+        }).catch(console.error);
         setShowPopover(false);
     }
 
@@ -89,10 +90,10 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
             // Set new hour
             const newHour = 24 * (e.clientY - parentRectRef.current.top - grabOffsetRef.current.y) / parentRectRef.current.height;
             const roundedTime = snapTime(newHour);
-            event.start_at.setHours(roundedTime.hour, roundedTime.minute);
+            event.start_at.setHours(roundedTime.hour, roundedTime.minute, 0, 0);
             event.end_at.setTime(event.start_at.getTime() + duration * 1000 * 60);
 
-            updateEvent(event.id, {start_at: event.start_at, end_at: event.end_at});
+            updateEvent(event, {start_at: event.start_at, end_at: event.end_at}).catch(console.error);
         }
         setDragging(false);
         setDragPos(null);
@@ -118,7 +119,7 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
             const roundedDuration = 30 * Math.round((endMins - startMins) / 30);
             setDuration(roundedDuration);
             event.end_at.setTime(event.start_at.getTime() + roundedDuration * 1000 * 60)
-            updateEvent(event.id, {end_at: event.end_at})
+            updateEvent(event, {end_at: event.end_at}).catch(console.error);
         }
     }
 
@@ -180,7 +181,10 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
                 onContextMenu={(e) => {e.stopPropagation(); alert("HI")}}
                 style={style}
             >
-                <div className="event-chip-title">{event.title}</div>
+                <div className="event-chip-title">
+                    <span className="event-chip-title-text">{event.title}</span>
+                    {event.recurring_event_id && <Repeat className="event-chip-repeat" size={10} aria-label="Repeats" />}
+                </div>
                 <div className="event-chip-time">{fmtTime(event.start_at)} – {fmtTime(event.end_at)}</div>
                 <div className="event-chip-duration-adjuster" onMouseDown={durationMouseDown}></div>
             </div>
@@ -199,7 +203,7 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
                 />}
             {showConfirmDelete && <ConfirmDelete
                 onClose={() => {setShowConfirmDelete(false)}}
-                onDelete={() => {deleteEvent(event.id); setShowConfirmDelete(false)}}
+                onDelete={() => {deleteEvent(event).catch(console.error); setShowConfirmDelete(false)}}
                 itemName="event"
             />}
         </div>
@@ -217,7 +221,10 @@ function EventDraftChip({ draft } : { draft: NewEventDraft }) {
         end_at: new Date(draft.start_at.getTime() + draft.duration * 1000 * 60),
         all_day: false,
         category: draft.category,
-        timezone: browserTimeZone()
+        timezone: browserTimeZone(),
+        rrule: draft.rrule ?? null,
+        recurring_event_id: null,
+        original_start_at: null
     });
 
     useEffect(() => {

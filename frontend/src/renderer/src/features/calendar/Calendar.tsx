@@ -72,7 +72,7 @@ function Calendar(): React.JSX.Element {
     };
 
     const handlePopoverSave = (draft: NewEventDraft) => {
-        addEvent(draft);
+        addEvent(draft).catch(console.error);
         setPopover(null);
         setEventDraft(null);
     };
