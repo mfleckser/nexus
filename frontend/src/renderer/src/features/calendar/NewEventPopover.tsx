@@ -3,8 +3,15 @@ import { Trash2 } from "lucide-react";
 import "./newEventPopover.css";
 import categoryData from "./categories.json"
 import { NewEventDraft } from "@renderer/types";
+import {
+    Recurrence, RecurrenceFreq, RepeatPreset, Weekday, WEEKDAYS, MAX_COUNT,
+    buildRrule, parseRrule, presetRecurrence, matchPreset, presetLabel, describeRecurrence,
+    weekdayOf, weekdayShort, firstOccurrenceDay, maxUntilDate,
+} from "@renderer/lib/rrule";
 
 const DURATION_PRESETS = [30, 45, 60, 90, 120];
+const REPEAT_PRESETS: RepeatPreset[] = ["none", "daily", "weekdays", "weekly", "monthly", "yearly"];
+const FREQ_UNITS: Record<RecurrenceFreq, string> = { DAILY: "day", WEEKLY: "week", MONTHLY: "month", YEARLY: "year" };
 
 const toDateInput = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -12,7 +19,72 @@ const toDateInput = (d: Date) =>
 const toTimeInput = (d: Date) =>
     `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
+const parseDateInput = (s: string): Date | null => {
+    const [y, mo, da] = s.split("-").map(Number);
+    const d = new Date(y, mo - 1, da);
+    return s && !Number.isNaN(d.getTime()) ? d : null;
+};
 
+type RepeatMode = RepeatPreset | "custom";
+
+// Editable (string-valued) mirror of a Recurrence for the custom sub-form.
+type CustomRepeatForm = {
+    freq: RecurrenceFreq;
+    interval: string;
+    byday: Weekday[];
+    endType: "never" | "until" | "count";
+    until: string; // YYYY-MM-DD
+    count: string;
+};
+
+function customFormFrom(rec: Recurrence, start: Date): CustomRepeatForm {
+    return {
+        freq: rec.freq,
+        interval: String(rec.interval),
+        byday: rec.byday.length ? rec.byday : [weekdayOf(start)],
+        endType: rec.end.type,
+        until: toDateInput(rec.end.type === "until"
+            ? rec.end.date
+            : new Date(start.getFullYear(), start.getMonth() + 1, start.getDate())),
+        count: rec.end.type === "count" ? String(rec.end.n) : "10",
+    };
+}
+
+// null = the form doesn't describe a valid rule yet (Save is disabled).
+function customFormToRecurrence(form: CustomRepeatForm, start: Date): Recurrence | null {
+    const interval = Number(form.interval);
+    if (!Number.isInteger(interval) || interval < 1) return null;
+    if (form.freq === "WEEKLY" && !form.byday.length) return null;
+    const rec: Recurrence = {
+        freq: form.freq,
+        interval,
+        byday: form.freq === "WEEKLY" ? form.byday : [],
+        end: { type: "never" },
+    };
+    if (form.endType === "until") {
+        // Backend 400s on UNTIL > 50y and on rules with no occurrences at all.
+        const date = parseDateInput(form.until);
+        const first = firstOccurrenceDay(rec, start);
+        if (!date || !first || date < first || date > maxUntilDate(start)) return null;
+        rec.end = { type: "until", date };
+    } else if (form.endType === "count") {
+        const n = Number(form.count);
+        if (!Number.isInteger(n) || n < 1 || n > MAX_COUNT) return null;
+        rec.end = { type: "count", n };
+    }
+    return rec;
+}
+
+const defaultCustomForm = (start: Date): CustomRepeatForm =>
+    customFormFrom(presetRecurrence("weekly", start)!, start);
+
+function initialRepeatState(rrule: string | null | undefined, start: Date):
+    { mode: RepeatMode; custom: CustomRepeatForm; unknown: boolean } {
+    if (!rrule) return { mode: "none", custom: defaultCustomForm(start), unknown: false };
+    const rec = parseRrule(rrule, start);
+    if (!rec) return { mode: "custom", custom: defaultCustomForm(start), unknown: true };
+    return { mode: matchPreset(rec, start) ?? "custom", custom: customFormFrom(rec, start), unknown: false };
+}
 
 export type NewEventPopoverProps = {
     anchor: { x: number; y: number };
@@ -21,6 +93,9 @@ export type NewEventPopoverProps = {
     initialTitle?: string;
     initialDescription?: string;
     initialCategory?: string;
+    // Existing event's RRULE body (edit mode). Emitted unchanged unless the
+    // user touches the Repeat controls.
+    initialRrule?: string | null;
     onSave: (draft: NewEventDraft) => void;
     onClose: () => void;
     onDelete?: () => void;
@@ -34,6 +109,7 @@ function NewEventPopover({
     initialTitle = "",
     initialDescription = "",
     initialCategory = "",
+    initialRrule,
     onSave,
     onClose,
     onDelete,
@@ -53,22 +129,40 @@ function NewEventPopover({
     );
     const [top, setTop] = useState(anchor.y);
 
+    const [initialRepeat] = useState(() => initialRepeatState(initialRrule, initialStart));
+    const [repeatMode, setRepeatMode] = useState<RepeatMode>(initialRepeat.mode);
+    const [customRepeat, setCustomRepeat] = useState<CustomRepeatForm>(initialRepeat.custom);
+    const [repeatTouched, setRepeatTouched] = useState(false);
+    const showUnknownRule = initialRepeat.unknown && !repeatTouched;
+
+    const startAt = getStartAt();
+    // Labels/presets follow the chosen start; fall back while the date input is mid-edit.
+    const repeatStart = Number.isNaN(startAt.getTime()) ? initialStart : startAt;
+    const customRecurrence = repeatMode === "custom" ? customFormToRecurrence(customRepeat, repeatStart) : null;
+    const rrule = computeRrule();
+
     useEffect(() => {
         titleRef.current?.focus();
     }, []);
 
+    // Re-clamp whenever the popover grows/shrinks (custom repeat section, textarea resize).
     useLayoutEffect(() => {
         const el = rootRef.current;
         if (!el) return;
         const margin = 8;
-        const height = el.offsetHeight;
-        const maxTop = window.innerHeight - height - margin;
-        setTop(Math.max(margin, Math.min(anchor.y, maxTop)));
+        const clamp = () => {
+            const maxTop = window.innerHeight - el.offsetHeight - margin;
+            setTop(Math.max(margin, Math.min(anchor.y, maxTop)));
+        };
+        clamp();
+        const observer = new ResizeObserver(clamp);
+        observer.observe(el);
+        return () => observer.disconnect();
     }, [anchor.y]);
 
     useEffect(() => {
-        setEventDraft({title: title, description: description, start_at: getStartAt(), duration: duration, category: category});
-    }, [title, description, dateStr, timeStr, duration, category]);
+        setEventDraft({title: title, description: description, start_at: getStartAt(), duration: duration, category: category, rrule: rrule ?? null});
+    }, [title, description, dateStr, timeStr, duration, category, rrule]);
 
     useEffect(() => {
         function onKey(e: KeyboardEvent) {
@@ -93,16 +187,48 @@ function NewEventPopover({
         return new Date(y, mo - 1, da, h, mi);
     }
 
+    // undefined = custom form currently invalid.
+    function computeRrule(): string | null | undefined {
+        if (initialRrule && !repeatTouched) return initialRrule;
+        if (repeatMode === "custom") return customRecurrence ? buildRrule(customRecurrence) : undefined;
+        const rec = presetRecurrence(repeatMode, repeatStart);
+        return rec ? buildRrule(rec) : null;
+    }
+
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (!title.trim()) return;
+        if (!title.trim() || rrule === undefined) return;
         const start_at = getStartAt();
         onSave({
             title: title.trim(),
             description: description.trim(),
             start_at,
             duration,
-            category
+            category,
+            rrule
+        });
+    }
+
+    function onRepeatModeChange(mode: RepeatMode) {
+        setRepeatTouched(true);
+        if (mode === "custom" && repeatMode !== "custom") {
+            // Seed the custom form from what was selected, so "Custom" starts from it.
+            const rec = presetRecurrence(repeatMode, repeatStart);
+            setCustomRepeat(rec ? customFormFrom(rec, repeatStart) : defaultCustomForm(repeatStart));
+        }
+        setRepeatMode(mode);
+    }
+
+    function updateCustomRepeat(patch: Partial<CustomRepeatForm>) {
+        setRepeatTouched(true);
+        setCustomRepeat(prev => ({ ...prev, ...patch }));
+    }
+
+    function toggleWeekday(day: Weekday) {
+        const has = customRepeat.byday.includes(day);
+        if (has && customRepeat.byday.length === 1) return; // weekly needs at least one day
+        updateCustomRepeat({
+            byday: has ? customRepeat.byday.filter(d => d !== day) : [...customRepeat.byday, day],
         });
     }
 
@@ -125,7 +251,7 @@ function NewEventPopover({
     return (
         <div
             ref={rootRef}
-            className="new-event-popover"
+            className="new-event-popover themed-scroll"
             style={style}
             onMouseDown={e => e.stopPropagation()}
         >
@@ -209,6 +335,128 @@ function NewEventPopover({
                     </div>
                 </div>
 
+                <div className="nep-field-row">
+                    <label className="nep-label">Repeat</label>
+                    <div className="nep-select-wrapper">
+                        <select
+                            className="nep-select"
+                            value={repeatMode}
+                            onChange={e => onRepeatModeChange(e.target.value as RepeatMode)}
+                        >
+                            {REPEAT_PRESETS.map(p => (
+                                <option key={p} value={p}>{presetLabel(p, repeatStart)}</option>
+                            ))}
+                            <option value="custom">
+                                {repeatMode !== "custom"
+                                    ? "Custom…"
+                                    : showUnknownRule
+                                        ? "Custom rule"
+                                        : customRecurrence
+                                            ? describeRecurrence(customRecurrence, repeatStart)
+                                            : "Custom…"}
+                            </option>
+                        </select>
+                    </div>
+                    {repeatMode === "custom" && (showUnknownRule ? (
+                        <div className="nep-repeat-custom">
+                            <p className="nep-repeat-note">
+                                This event uses a rule the picker can't edit. It's kept as-is unless you change it.
+                            </p>
+                            <code className="nep-repeat-rule">{initialRrule}</code>
+                            <button
+                                type="button"
+                                className="nep-chip nep-repeat-edit"
+                                onClick={() => setRepeatTouched(true)}
+                            >
+                                Replace rule
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="nep-repeat-custom">
+                            <div className="nep-repeat-line">
+                                <span className="nep-repeat-text">Every</span>
+                                <input
+                                    className="nep-input nep-input-narrow"
+                                    type="number"
+                                    min={1}
+                                    value={customRepeat.interval}
+                                    onChange={e => updateCustomRepeat({ interval: e.target.value })}
+                                />
+                                <div className="nep-select-wrapper nep-select-grow">
+                                    <select
+                                        className="nep-select"
+                                        value={customRepeat.freq}
+                                        onChange={e => updateCustomRepeat({ freq: e.target.value as RecurrenceFreq })}
+                                    >
+                                        {(Object.keys(FREQ_UNITS) as RecurrenceFreq[]).map(f => (
+                                            <option key={f} value={f}>
+                                                {FREQ_UNITS[f]}{customRepeat.interval === "1" ? "" : "s"}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {customRepeat.freq === "WEEKLY" && (
+                                <div className="nep-weekdays">
+                                    {WEEKDAYS.map(day => (
+                                        <button
+                                            key={day}
+                                            type="button"
+                                            title={weekdayShort(day)}
+                                            className={`nep-chip nep-weekday${customRepeat.byday.includes(day) ? " nep-chip-active" : ""}`}
+                                            onClick={() => toggleWeekday(day)}
+                                        >
+                                            {weekdayShort(day).slice(0, 2)}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="nep-repeat-line">
+                                <span className="nep-repeat-text">Ends</span>
+                                <div className="nep-chips">
+                                    {(["never", "until", "count"] as const).map(t => (
+                                        <button
+                                            key={t}
+                                            type="button"
+                                            className={`nep-chip${customRepeat.endType === t ? " nep-chip-active" : ""}`}
+                                            onClick={() => updateCustomRepeat({ endType: t })}
+                                        >
+                                            {t === "never" ? "Never" : t === "until" ? "On date" : "After"}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {customRepeat.endType === "until" && (
+                                <input
+                                    className="nep-input"
+                                    type="date"
+                                    min={toDateInput(repeatStart)}
+                                    max={toDateInput(maxUntilDate(repeatStart))}
+                                    value={customRepeat.until}
+                                    onChange={e => updateCustomRepeat({ until: e.target.value })}
+                                />
+                            )}
+                            {customRepeat.endType === "count" && (
+                                <div className="nep-repeat-line">
+                                    <input
+                                        className="nep-input nep-input-narrow"
+                                        type="number"
+                                        min={1}
+                                        max={MAX_COUNT}
+                                        value={customRepeat.count}
+                                        onChange={e => updateCustomRepeat({ count: e.target.value })}
+                                    />
+                                    <span className="nep-repeat-text">
+                                        occurrence{customRepeat.count === "1" ? "" : "s"}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
                 <div className="nep-bottom-row">
                     {onDelete && <button type="button" className="nep-btn-delete" onClick={onDelete}>
                         <Trash2 size={20}/>
@@ -221,7 +469,7 @@ function NewEventPopover({
                         <button
                             type="submit"
                             className="nep-btn nep-btn-primary"
-                            disabled={!title.trim()}
+                            disabled={!title.trim() || rrule === undefined}
                         >
                             Save
                         </button>

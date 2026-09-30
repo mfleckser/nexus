@@ -6,6 +6,7 @@ import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import categoryData from "./categories.json"
 import { browserTimeZone } from "@renderer/lib/time";
+import { describeRrule } from "@renderer/lib/rrule";
 
 const PX_PER_HOUR = 48;
 const PX_PER_MIN = PX_PER_HOUR / 60;
@@ -46,13 +47,22 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
     const baseTop = (60 * event.start_at.getHours() + event.start_at.getMinutes()) * PX_PER_MIN;
 
     const handlePopoverSave = (draft: NewEventDraft) => {
-        updateEvent(event, {
+        const data: Record<string, unknown> = {
             title: draft.title,
             description: draft.description,
             start_at: draft.start_at,
             end_at: new Date(draft.start_at.getTime() + draft.duration * 1000 * 60),
             category: draft.category
-        }).catch(console.error);
+        };
+        // Only send rrule when the picker changed it: an unchanged rule must not
+        // be rewritten (the backend treats an rrule change as a series reshape).
+        // Send the browser timezone with it: the backend expands BYDAY/monthday
+        // in the row's timezone, and older rows were stored as UTC.
+        if (draft.rrule !== undefined && draft.rrule !== event.rrule) {
+            data.rrule = draft.rrule;
+            data.timezone = browserTimeZone();
+        }
+        updateEvent(event, data).catch(console.error);
         setShowPopover(false);
     }
 
@@ -183,7 +193,11 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
             >
                 <div className="event-chip-title">
                     <span className="event-chip-title-text">{event.title}</span>
-                    {event.recurring_event_id && <Repeat className="event-chip-repeat" size={10} aria-label="Repeats" />}
+                    {event.recurring_event_id && (
+                        <Repeat className="event-chip-repeat" size={10} aria-label="Repeats">
+                            <title>{describeRrule(event.rrule, event.start_at)}</title>
+                        </Repeat>
+                    )}
                 </div>
                 <div className="event-chip-time">{fmtTime(event.start_at)} – {fmtTime(event.end_at)}</div>
                 <div className="event-chip-duration-adjuster" onMouseDown={durationMouseDown}></div>
@@ -196,6 +210,7 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
                     initialTitle={event.title}
                     initialDescription={event.description || ""}
                     initialCategory={event.category || ""}
+                    initialRrule={event.rrule}
                     onSave={handlePopoverSave}
                     onClose={() => {setShowPopover(false)}}
                     onDelete={() => {setShowConfirmDelete(true)}}

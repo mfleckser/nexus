@@ -83,7 +83,14 @@ export function EventsProvider({ children }: { children: ReactNode }) {
     if (event.id === "DRAFT") return;
     setEvents(prev => prev.map(e => (e.id === event.id ? { ...e, ...data } : e)));
     if (!event.recurring_event_id) {
-      await eventsApi.updateEvent(event.id, data);
+      // Adding/removing an rrule turns the row into (or out of) a series whose
+      // instances have different ids — resync rather than wait for the poll,
+      // and on failure too, to drop the optimistic rrule.
+      try {
+        await eventsApi.updateEvent(event.id, data);
+      } finally {
+        if (data && "rrule" in data) await refetch();
+      }
       return;
     }
     // TODO(Stage 4): callers will prompt for a scope; default keeps drag/resize working until then.
