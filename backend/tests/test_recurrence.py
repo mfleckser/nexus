@@ -1,9 +1,12 @@
+import os
 import sys
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+os.environ.setdefault("SUPABASE_URL", "http://localhost:1")  # importing app builds the (unused) client
+os.environ.setdefault("SUPABASE_KEY", "test")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services import recurrence as rr  # noqa: E402

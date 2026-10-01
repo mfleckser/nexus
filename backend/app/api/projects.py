@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 
 from app.services.project_service import (
     create_feature,
@@ -10,6 +10,7 @@ from app.services.project_service import (
     get_project_notes,
     update_project,
 )
+from app.validation import json_body
 
 projects_bp = Blueprint("projects", __name__)
 
@@ -21,9 +22,7 @@ def list():
 
 @projects_bp.route("/projects", methods=["POST"])
 def create():
-    data = request.json
-
-    project = create_project(data)
+    project = create_project(json_body())
 
     return jsonify(project), 201
 
@@ -35,9 +34,7 @@ def get_notes(id):
 
 @projects_bp.route("/projects/<id>", methods=["PUT"])
 def update(id):
-    data = request.json
-
-    return update_project(id, data)
+    return update_project(id, json_body())
 
 
 @projects_bp.route("/projects/<id>", methods=["DELETE"])
@@ -52,9 +49,7 @@ def list_f(id):
 
 @projects_bp.route("/projects/<id>/features", methods=["POST"])
 def create_f(id):
-    data = request.json
-
-    feature = create_feature(id, data)
+    feature = create_feature(id, json_body())
 
     return jsonify(feature), 201
 

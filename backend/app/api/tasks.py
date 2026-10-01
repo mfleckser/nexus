@@ -1,6 +1,7 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 
 from app.services.task_service import create_task, delete_task, get_all_tasks, update_task
+from app.validation import json_body
 
 tasks_bp = Blueprint("tasks", __name__)
 
@@ -12,18 +13,14 @@ def list():
 
 @tasks_bp.route("/tasks", methods=["POST"])
 def create():
-    data = request.json
-
-    task = create_task(data)
+    task = create_task(json_body())
 
     return jsonify(task), 201
 
 
 @tasks_bp.route("/tasks/<id>", methods=["PUT"])
 def update(id):
-    data = request.json
-
-    return update_task(id, data)
+    return update_task(id, json_body())
 
 
 @tasks_bp.route("/tasks/<id>", methods=["DELETE"])

@@ -1,3 +1,4 @@
+from app.errors import first_row
 from app.extensions.cache import cache
 from app.extensions.supabase import supabase
 
@@ -26,7 +27,7 @@ def get_all_projects():
 def get_project_notes(project_id: str):
     res = supabase.table("projects").select("notes").eq("id", project_id).execute()
 
-    return res.data[0]
+    return first_row(res.data, f"project {project_id}")
 
 
 def create_project(data: dict):
@@ -54,13 +55,13 @@ def update_project(project_id: str, data: dict):
     if "notes" in updates:
         cache.delete_memoized(get_project_notes, project_id)
 
-    return res.data[0]
+    return first_row(res.data, f"project {project_id}")
 
 
 def delete_project(project_id: str):
     res = supabase.table("projects").delete().eq("id", project_id).execute()
     cache.delete_memoized(get_project_notes, project_id)
-    return res.data[0]
+    return first_row(res.data, f"project {project_id}")
 
 
 def get_project_features(project_id: str):
@@ -82,4 +83,4 @@ def create_feature(project_id: str, data: dict):
 
 def delete_feature(feature_id: str):
     res = supabase.table("features").delete().eq("id", feature_id).execute()
-    return res.data[0]
+    return first_row(res.data, f"feature {feature_id}")

@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+from app.errors import first_row
 from app.extensions.cache import cache
 from app.extensions.supabase import supabase
 
@@ -45,10 +46,10 @@ def update_task(task_id: str, data: dict):
 
     cache.delete(TASKS_ALL_KEY)
 
-    return res.data[0]
+    return first_row(res.data, f"task {task_id}")
 
 
 def delete_task(task_id: str):
     res = supabase.table("tasks").delete().eq("id", task_id).execute()
     cache.delete(TASKS_ALL_KEY)
-    return res.data[0]
+    return first_row(res.data, f"task {task_id}")

@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 
+from app.errors import ValidationError, first_row
 from app.extensions.cache import cache
 from app.extensions.supabase import supabase
 from app.services import recurrence as rr
@@ -11,14 +12,13 @@ DETAIL_FIELDS = ["title", "description", "category", "all_day"]
 SCOPES = ("this", "following", "all")
 
 
-class NotFound(LookupError):
-    pass
-
-
 def parse_instant(value: str) -> datetime:
     """Parse an ISO-8601 instant and normalize to UTC, so that two spellings of
-    the same moment share one memoize entry. Raises ValueError if unparseable."""
-    dt = datetime.fromisoformat(value)
+    the same moment share one memoize entry. Raises ValidationError if unparseable."""
+    try:
+        dt = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        raise ValidationError(f"invalid ISO-8601 timestamp: {value!r}") from None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return dt.astimezone(UTC)
@@ -107,14 +107,12 @@ def _instance(master: dict, start: datetime, end: datetime) -> dict:
 
 def _get_event(event_id: str) -> dict:
     res = supabase.table("events").select("*").eq("id", event_id).execute()
-    if not res.data:
-        raise NotFound(f"event {event_id} not found")
-    return res.data[0]
+    return first_row(res.data, f"event {event_id}")
 
 
 def _check_order(start: datetime, end: datetime):
     if end <= start:
-        raise ValueError("end_at must be after start_at")
+        raise ValidationError("end_at must be after start_at")
 
 
 def _series_fields(body: str, start: datetime, end: datetime, tz: str) -> dict:
@@ -196,7 +194,7 @@ def update_event(event_id: str, data: dict):
 
         body = (data.get("rrule") or None) if "rrule" in data else row["rrule"]
         if body and row["recurring_event_id"]:
-            raise ValueError("an occurrence override cannot have its own rrule")
+            raise ValidationError("an occurrence override cannot have its own rrule")
         if body:
             updates.update(_series_fields(body, start, end, updates.get("timezone") or row["timezone"]))
         elif row["rrule"]:
@@ -208,13 +206,13 @@ def update_event(event_id: str, data: dict):
 
     res = supabase.table("events").update(updates).eq("id", event_id).execute()
 
-    return res.data[0]
+    return first_row(res.data, f"event {event_id}")
 
 
 @invalidates_events
 def delete_event(event_id: str):
     res = supabase.table("events").delete().eq("id", event_id).execute()
-    return res.data[0]
+    return first_row(res.data, f"event {event_id}")
 
 
 # ---- recurring occurrences -----------------------------------------------
@@ -222,15 +220,15 @@ def delete_event(event_id: str):
 
 def _check_scope(scope):
     if scope not in SCOPES:
-        raise ValueError(f"scope must be one of {', '.join(SCOPES)}")
+        raise ValidationError(f"scope must be one of {', '.join(SCOPES)}")
 
 
 def _get_master(master_id: str, original_start: datetime) -> dict:
     master = _get_event(master_id)
     if not master["rrule"]:
-        raise ValueError("event is not recurring")
+        raise ValidationError("event is not recurring")
     if not rr.is_occurrence(master["rrule"], parse_instant(master["start_at"]), master["timezone"], original_start):
-        raise ValueError("original_start is not an occurrence of this series")
+        raise ValidationError("original_start is not an occurrence of this series")
     return master
 
 
@@ -264,7 +262,7 @@ def _delete_overrides_at(master_id: str, original_start: datetime):
 
 
 def _delete_master(master_id: str) -> dict:
-    return supabase.table("events").delete().eq("id", master_id).execute().data[0]
+    return first_row(supabase.table("events").delete().eq("id", master_id).execute().data, f"event {master_id}")
 
 
 def _series_changed(master: dict, new: dict) -> bool:
@@ -301,7 +299,7 @@ def _instance_edit(master: dict, original_start: datetime, override, data: dict)
     series_duration = parse_instant(master["end_at"]) - parse_instant(master["start_at"])
     duration = series_duration + (new_end - new_start) - (cur_end - cur_start)
     if duration <= timedelta(0):
-        raise ValueError("edit would give the series a non-positive duration")
+        raise ValidationError("edit would give the series a non-positive duration")
     return rr.wall_delta(cur_start, new_start, master["timezone"]), duration
 
 

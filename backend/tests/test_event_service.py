@@ -1,35 +1,16 @@
 """Service/API tests for recurring events against an in-memory fake Supabase."""
 
-import os
-import sys
 import unittest
-from pathlib import Path
 from unittest import mock
 
-os.environ["SUPABASE_URL"] = "http://localhost:1"  # never contacted; supabase is faked
-os.environ["SUPABASE_KEY"] = "test"
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app_case import AppTestCase
 
-from fake_supabase import FakeSupabase  # noqa: E402
-
-from app import create_app  # noqa: E402
-from app.extensions.cache import cache  # noqa: E402
-from app.services import event_service as es  # noqa: E402
+from app.services import event_service as es
 
 LA = "America/Los_Angeles"
 
 
-class EventServiceTest(unittest.TestCase):
-    def setUp(self):
-        self.db = FakeSupabase()
-        patcher = mock.patch.object(es, "supabase", self.db)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.app = create_app()
-        with self.app.app_context():
-            cache.clear()
-        self.client = self.app.test_client()
-
+class EventServiceTest(AppTestCase):
     # -- helpers --
 
     def create(self, **body):
@@ -277,7 +258,7 @@ class EventServiceTest(unittest.TestCase):
         self.assertIn("Moved", [e["title"] for e in self.events()])  # now cached
 
         # delete-this removes the override, then fails writing exdates.
-        self.app.logger.disabled = True  # expected 500; keep test output clean
+        self.quiet_errors()  # expected 500
         self.db.fail_on = "update"
         res = self.client.delete(f"/api/events/{m['id']}/occurrences/2026-10-07T16:00:00Z?scope=this")
         self.assertEqual(res.status_code, 500)
