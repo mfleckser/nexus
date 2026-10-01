@@ -1,7 +1,11 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, screen } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { health, apiGet, apiPost, apiPut, apiDelete } from './client'
+
+// Test-only: NEXUS_HIDDEN=1 keeps the window off-screen and out of the Dock so
+// automated (Playwright) runs don't steal focus. Hidden windows still render.
+const hidden = process.env['NEXUS_HIDDEN'] === '1'
 
 function createWindow(): void {
   // Create the browser window.
@@ -17,6 +21,12 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
+    if (hidden) {
+      // maximize() would show the window, so size it to the work area instead.
+      const { width, height } = screen.getPrimaryDisplay().workAreaSize
+      mainWindow.setSize(width, height)
+      return
+    }
     mainWindow.maximize();
     mainWindow.show()
   })
@@ -43,6 +53,8 @@ function createWindow(): void {
 app.whenReady().then(() => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
+
+  if (hidden) app.dock?.hide()
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.

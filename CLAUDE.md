@@ -59,3 +59,7 @@
   ## Conventions
 
   Visual design / CSS conventions live in `frontend/CLAUDE.md`.
+
+  Automated UI testing (Playwright `_electron`): launch with env `NEXUS_HIDDEN=1` so the
+  window stays hidden and out of the Dock — no focus stealing. Rendering, clicks and
+  screenshots still work.
