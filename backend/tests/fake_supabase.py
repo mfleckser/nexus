@@ -4,19 +4,26 @@ what event_service uses. Timestamps are stored the way PostgREST returns them
 
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 TIMESTAMP_COLS = {"start_at", "end_at", "recurrence_end_at", "original_start_at"}
 DEFAULTS = {
-    "title": None, "description": None, "category": None, "all_day": None, "timezone": "UTC",
-    "rrule": None, "recurrence_end_at": None, "exdates": [], "recurring_event_id": None,
+    "title": None,
+    "description": None,
+    "category": None,
+    "all_day": None,
+    "timezone": "UTC",
+    "rrule": None,
+    "recurrence_end_at": None,
+    "exdates": [],
+    "recurring_event_id": None,
     "original_start_at": None,
 }
 
 
 def _instant(value):
     dt = datetime.fromisoformat(value)
-    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+    return (dt if dt.tzinfo else dt.replace(tzinfo=UTC)).astimezone(UTC)
 
 
 def _store(col, value):

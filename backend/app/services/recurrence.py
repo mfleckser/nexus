@@ -8,12 +8,11 @@ All datetimes accepted and returned here are timezone-aware; returned ones are U
 
 import calendar
 import re
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dateutil.rrule import rrulestr
 
-UTC = dt_timezone.utc
 UNTIL_FORMAT = "%Y%m%dT%H%M%SZ"
 
 # Keep rules to the subset the UI emits, and bound how much work one can cause.
@@ -43,6 +42,7 @@ def format_until(dt: datetime) -> str:
 
 # ---- rule body <-> parts -------------------------------------------------
 
+
 def parse_rule(body: str) -> dict:
     """Split an RRULE body into an ordered {KEY: value} dict. Light syntactic
     checks only; semantic validation happens in normalize_rrule."""
@@ -50,7 +50,7 @@ def parse_rule(body: str) -> dict:
         raise ValueError("rrule must be a non-empty string")
     body = body.strip()
     if body.upper().startswith("RRULE:"):
-        body = body[len("RRULE:"):]
+        body = body[len("RRULE:") :]
     if "\n" in body or "\r" in body:
         raise ValueError("rrule must be a single RRULE body")
 
@@ -82,6 +82,7 @@ def without_bounds(parts: dict) -> dict:
 
 
 # ---- building / validating ----------------------------------------------
+
 
 def build_rule(body: str, start: datetime, tz_name: str):
     """dateutil rrule whose DTSTART is `start` expressed in `tz_name`."""
@@ -144,6 +145,7 @@ def _check_month_days(parts: dict):
 
 # ---- occurrences ---------------------------------------------------------
 
+
 def first_occurrence(body: str, start: datetime, tz_name: str):
     """First occurrence at or after `start` (DTSTART only counts if the rule
     matches it), or None if the rule has none within HORIZON."""
@@ -202,6 +204,7 @@ def recurrence_end(body: str, start: datetime, end: datetime, tz_name: str):
 
 # ---- splitting a series --------------------------------------------------
 
+
 def truncate(body: str, start: datetime, tz_name: str, split_at: datetime):
     """Cut a series so it ends before `split_at`.
 
@@ -249,6 +252,7 @@ def partition_instants(instants, split_at: datetime):
 
 
 # ---- moving a series -----------------------------------------------------
+
 
 def _local_naive(dt: datetime, tz_name: str) -> datetime:
     return dt.astimezone(get_zone(tz_name)).replace(tzinfo=None)
