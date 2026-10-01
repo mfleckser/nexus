@@ -232,14 +232,13 @@ def _get_master(master_id: str, original_start: datetime) -> dict:
     return master
 
 
+def _at_occurrence(query, master_id: str, original_start: datetime):
+    """Narrow a query to the override row of one occurrence."""
+    return query.eq("recurring_event_id", master_id).eq("original_start_at", _iso(original_start))
+
+
 def _get_override(master_id: str, original_start: datetime):
-    res = (
-        supabase.table("events")
-        .select("*")
-        .eq("recurring_event_id", master_id)
-        .eq("original_start_at", _iso(original_start))
-        .execute()
-    )
+    res = _at_occurrence(supabase.table("events").select("*"), master_id, original_start).execute()
     return res.data[0] if res.data else None
 
 
@@ -251,14 +250,8 @@ def _delete_overrides(master_id: str, from_start: datetime = None):
     q.execute()
 
 
-def _delete_overrides_at(master_id: str, original_start: datetime):
-    (
-        supabase.table("events")
-        .delete()
-        .eq("recurring_event_id", master_id)
-        .eq("original_start_at", _iso(original_start))
-        .execute()
-    )
+def _delete_override_at(master_id: str, original_start: datetime):
+    _at_occurrence(supabase.table("events").delete(), master_id, original_start).execute()
 
 
 def _delete_master(master_id: str) -> dict:
@@ -452,7 +445,7 @@ def delete_occurrence(master_id: str, original_start: datetime, scope: str):
         exdates = [parse_instant(x) for x in master["exdates"] or []]
         if original_start not in exdates:
             exdates.append(original_start)
-        _delete_overrides_at(master_id, original_start)
+        _delete_override_at(master_id, original_start)
         updates = {"exdates": [_iso(x) for x in sorted(exdates)]}
     else:  # following
         rule, _ = rr.truncate(master["rrule"], old_start, tz, original_start)

@@ -16,7 +16,7 @@ events_bp = Blueprint("events", __name__)
 
 
 @events_bp.route("/events", methods=["GET"])
-def list():
+def list_events():
     start = request.args.get("start")
     end = request.args.get("end")
 
@@ -42,21 +42,21 @@ def create():
     return jsonify(event), 201
 
 
-@events_bp.route("/events/<id>", methods=["PUT"])
-def update(id):
-    return update_event(id, json_body())
+@events_bp.route("/events/<event_id>", methods=["PUT"])
+def update(event_id):
+    return update_event(event_id, json_body())
 
 
-@events_bp.route("/events/<id>", methods=["DELETE"])
-def delete(id):
-    return delete_event(id)
+@events_bp.route("/events/<event_id>", methods=["DELETE"])
+def delete(event_id):
+    return delete_event(event_id)
 
 
-@events_bp.route("/events/<id>/occurrences/<original_start>", methods=["PUT"])
-def update_occ(id, original_start):
-    return update_occurrence(id, parse_instant(original_start), json_body())
+@events_bp.route("/events/<event_id>/occurrences/<original_start>", methods=["PUT"])
+def update_occ(event_id, original_start):
+    return update_occurrence(event_id, parse_instant(original_start), json_body())
 
 
-@events_bp.route("/events/<id>/occurrences/<original_start>", methods=["DELETE"])
-def delete_occ(id, original_start):
-    return delete_occurrence(id, parse_instant(original_start), request.args.get("scope"))
+@events_bp.route("/events/<event_id>/occurrences/<original_start>", methods=["DELETE"])
+def delete_occ(event_id, original_start):
+    return delete_occurrence(event_id, parse_instant(original_start), request.args.get("scope"))

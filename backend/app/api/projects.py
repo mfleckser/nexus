@@ -16,7 +16,7 @@ projects_bp = Blueprint("projects", __name__)
 
 
 @projects_bp.route("/projects", methods=["GET"])
-def list():
+def list_projects():
     return get_all_projects()
 
 
@@ -27,33 +27,33 @@ def create():
     return jsonify(project), 201
 
 
-@projects_bp.route("/projects/<id>/notes", methods=["GET"])
-def get_notes(id):
-    return get_project_notes(id)
+@projects_bp.route("/projects/<project_id>/notes", methods=["GET"])
+def get_notes(project_id):
+    return get_project_notes(project_id)
 
 
-@projects_bp.route("/projects/<id>", methods=["PUT"])
-def update(id):
-    return update_project(id, json_body())
+@projects_bp.route("/projects/<project_id>", methods=["PUT"])
+def update(project_id):
+    return update_project(project_id, json_body())
 
 
-@projects_bp.route("/projects/<id>", methods=["DELETE"])
-def delete(id):
-    return delete_project(id)
+@projects_bp.route("/projects/<project_id>", methods=["DELETE"])
+def delete(project_id):
+    return delete_project(project_id)
 
 
-@projects_bp.route("/projects/<id>/features", methods=["GET"])
-def list_f(id):
-    return get_project_features(id)
+@projects_bp.route("/projects/<project_id>/features", methods=["GET"])
+def list_features(project_id):
+    return get_project_features(project_id)
 
 
-@projects_bp.route("/projects/<id>/features", methods=["POST"])
-def create_f(id):
-    feature = create_feature(id, json_body())
+@projects_bp.route("/projects/<project_id>/features", methods=["POST"])
+def add_feature(project_id):
+    feature = create_feature(project_id, json_body())
 
     return jsonify(feature), 201
 
 
-@projects_bp.route("/features/<id>", methods=["DELETE"])
-def delete_f(id):
-    return delete_feature(id)
+@projects_bp.route("/features/<feature_id>", methods=["DELETE"])
+def remove_feature(feature_id):
+    return delete_feature(feature_id)

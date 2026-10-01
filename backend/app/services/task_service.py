@@ -35,7 +35,6 @@ def create_task(data: dict):
 
 
 def update_task(task_id: str, data: dict):
-    updates = {}
     fields = ["title", "description", "due_at", "status", "project_id", "feature_id"]
 
     updates = {f: data[f] for f in fields if f in data}

@@ -7,7 +7,7 @@ tasks_bp = Blueprint("tasks", __name__)
 
 
 @tasks_bp.route("/tasks", methods=["GET"])
-def list():
+def list_tasks():
     return get_all_tasks()
 
 
@@ -18,11 +18,11 @@ def create():
     return jsonify(task), 201
 
 
-@tasks_bp.route("/tasks/<id>", methods=["PUT"])
-def update(id):
-    return update_task(id, json_body())
+@tasks_bp.route("/tasks/<task_id>", methods=["PUT"])
+def update(task_id):
+    return update_task(task_id, json_body())
 
 
-@tasks_bp.route("/tasks/<id>", methods=["DELETE"])
-def delete(id):
-    return delete_task(id)
+@tasks_bp.route("/tasks/<task_id>", methods=["DELETE"])
+def delete(task_id):
+    return delete_task(task_id)
