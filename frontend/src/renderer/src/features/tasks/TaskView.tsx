@@ -5,28 +5,7 @@ import { useEffect, useState } from "react";
 import { Task } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";
 import TaskForm from "@renderer/components/TaskForm";
-
-const pad = (n: number) => String(n).padStart(2, "0");
-
-function toDatetimeLocal(value: Date | string | null): string {
-    if (!value) return "";
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return "";
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function formatDueDisplay(value: Date | string | null): string {
-    if (!value) return "No due date";
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return "No due date";
-    return d.toLocaleString(undefined, {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-    });
-}
+import { formatDueDisplay, toDatetimeLocal } from "@renderer/lib/time";
 
 type TaskRowProps = {
     task: Task;
@@ -40,7 +19,8 @@ type TaskRowProps = {
 function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }: TaskRowProps): React.JSX.Element {
     const [editing, setEditing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
-    const [complete, setComplete] = useState(task.status === "complete");
+    // Derived, not cached: the calendar can toggle the same task.
+    const complete = task.status === "complete";
 
     useEffect(() => {
         if (!expanded) {
@@ -52,7 +32,6 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
     const handleCheck = (e: React.MouseEvent) => {
         e.stopPropagation();
         onStatusChange(complete ? "todo" : "complete");
-        setComplete(prev => !prev);
     };
 
     const handleStartEdit = () => {

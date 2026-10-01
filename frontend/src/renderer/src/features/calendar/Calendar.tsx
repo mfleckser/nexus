@@ -3,8 +3,11 @@ import "./calendar.css"
 import { useEvents } from "@renderer/features/calendar/useEvents";
 import EventChip, { EventDraftChip } from "./EventChip";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
+import TaskPin, { TASK_PIN_HEIGHT } from "@renderer/features/calendar/TaskPin";
+import { useTasks } from "@renderer/features/tasks/useTasks";
+import { useProjects } from "@renderer/features/projects/useProjects";
 import useNow from "@renderer/hooks/useNow";
-import { DateRange, NewEventDraft } from "@renderer/types";
+import { DateRange, NewEventDraft, Task } from "@renderer/types";
 import { addDays, startOfDay } from "@renderer/lib/time";
 
 const PX_PER_HOUR = 48;
@@ -21,6 +24,8 @@ function Calendar(): React.JSX.Element {
     });
     const [viewType, setViewType] = useState("WEEK");
     const {events, addEvent, setRange} = useEvents();
+    const {tasks} = useTasks();
+    const {projects} = useProjects();
     const [popover, setPopover] = useState<{ anchor: { x: number; y: number }; start: Date; duration?: number } | null>(null);
     const [eventDraft, setEventDraft] = useState<NewEventDraft | null>(null);
 
@@ -180,6 +185,31 @@ function Calendar(): React.JSX.Element {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fetchWindow.start.getTime(), fetchWindow.end.getTime(), setRange]);
 
+    // Due tasks in the visible week, with each pin's top pushed below any
+    // earlier pin on the same day it would overlap. Completed/cancelled stay
+    // visible; tasks of projects hidden from the main view don't.
+    const taskPins = useMemo(() => {
+        const hiddenProjectIds = new Set(projects.filter(p => !p.show_tasks_in_main_view).map(p => p.id));
+        const lastBottom = Array(7).fill(-Infinity);
+        return tasks
+            .filter((t): t is Task & { due_at: Date } =>
+                t.due_at !== null
+                && t.due_at.getTime() >= visible.start.getTime()
+                && t.due_at.getTime() < visible.end.getTime()
+                && (t.project_id === null || !hiddenProjectIds.has(t.project_id)))
+            .toSorted((a, b) => (a.due_at.getTime() - b.due_at.getTime()) || a.title.localeCompare(b.title))
+            .map(task => {
+                const day = task.due_at.getDay();
+                const dueTop = Math.min(
+                    (task.due_at.getHours() * 60 + task.due_at.getMinutes()) * PX_PER_MIN,
+                    24 * PX_PER_HOUR - TASK_PIN_HEIGHT,
+                );
+                const top = Math.max(dueTop, lastBottom[day] + 1);
+                lastBottom[day] = top + TASK_PIN_HEIGHT;
+                return { task, top };
+            });
+    }, [tasks, projects, visible]);
+
     const calcCursorPos = (): React.CSSProperties => {
         const left = now.getDay() * 100 / 7;
         const top = (now.getHours() * 60 + now.getMinutes()) * PX_PER_MIN
@@ -291,6 +321,7 @@ function Calendar(): React.JSX.Element {
                                     }
                                     return <EventChip key={event.id} event={event} cols={cols} colIdx={colIdx} />
                                 })}
+                                {taskPins.map(({ task, top }) => <TaskPin key={task.id} task={task} top={top} />)}
                                 {eventDraft && <EventDraftChip draft={eventDraft} />}
                                 {startOfWeek(today).toDateString() === startOfWeek(focusedDay).toDateString() &&
                                     <div className="cursor-now" style={calcCursorPos()}></div>}

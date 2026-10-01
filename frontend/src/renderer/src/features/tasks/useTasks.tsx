@@ -30,6 +30,10 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   }
 
   async function updateTask(id: string, data: any) {
+    // Forms hand over datetime-local strings ("2026-09-30T10:00", no offset).
+    // Parse as local time so state holds a Date and the server gets a UTC ISO
+    // instant instead of reading the bare string as UTC.
+    if (typeof data.due_at === "string") data = { ...data, due_at: new Date(data.due_at) };
     setTasks(prev => prev.map(t => (t.id === id ? { ...t, ...data } : t)));
     await tasksApi.updateTask(id, data);
   }

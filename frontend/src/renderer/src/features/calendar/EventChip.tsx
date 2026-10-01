@@ -6,7 +6,7 @@ import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import RecurrenceScopePrompt from "@renderer/components/RecurrenceScopePrompt";
 import categoryData from "./categories.json"
-import { browserTimeZone } from "@renderer/lib/time";
+import { browserTimeZone, formatTime as fmtTime } from "@renderer/lib/time";
 import { describeRrule, sameRrule } from "@renderer/lib/rrule";
 
 const PX_PER_HOUR = 48;
@@ -15,14 +15,6 @@ const POPOVER_GAP = 8;
 // Mouse travel (px) below which a press on the chip is a click, not a drag/resize.
 const DRAG_THRESHOLD = 3;
 const MIN_DURATION = 30;
-
-const fmtTime = (d: Date): string => {
-    const h = d.getHours();
-    const m = d.getMinutes();
-    const hh = (h % 12) || 12;
-    const mm = m.toString().padStart(2, "0");
-    return `${hh}:${mm} ${h >= 12 ? "PM" : "AM"}`;
-};
 
 // A mutation of a recurring occurrence waiting on the scope prompt.
 type PendingScope =
