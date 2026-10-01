@@ -1,6 +1,6 @@
-import Calendar from "@renderer/features/calendar/Calendar"
-import TaskView from "@renderer/features/tasks/TaskView"
-import "./home.css"
+import Calendar from "@renderer/features/calendar/Calendar";
+import TaskView from "@renderer/features/tasks/TaskView";
+import "./home.css";
 
 function Home(): React.JSX.Element {
     return (
@@ -13,4 +13,4 @@ function Home(): React.JSX.Element {
     );
 }
 
-export default Home
+export default Home;

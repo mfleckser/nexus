@@ -73,7 +73,10 @@
     font-weight: 500;
     color: var(--text-secondary);
     text-decoration: none;
-    transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+    transition:
+        background-color 0.1s,
+        border-color 0.1s,
+        color 0.1s;
 }
 
 .pd-not-found-link:hover {
@@ -106,7 +109,9 @@
     text-decoration: none;
     padding: 4px 8px 4px 4px;
     border-radius: var(--radius-sm);
-    transition: color 0.1s, background-color 0.1s;
+    transition:
+        color 0.1s,
+        background-color 0.1s;
 }
 
 .pd-back-link:hover {
@@ -168,7 +173,10 @@
     border-radius: var(--radius-md);
     color: var(--text-secondary);
     cursor: pointer;
-    transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+    transition:
+        background-color 0.1s,
+        border-color 0.1s,
+        color 0.1s;
 }
 
 .pd-project-menu-btn:hover,
@@ -214,7 +222,9 @@
     text-align: left;
     color: var(--text-primary);
     cursor: pointer;
-    transition: background-color 0.1s, color 0.1s;
+    transition:
+        background-color 0.1s,
+        color 0.1s;
 }
 
 .pd-project-menu button:hover {

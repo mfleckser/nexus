@@ -22,8 +22,8 @@ export default function RecurrenceScopePrompt({
     action,
     scopes = ["this", "following", "all"],
     onCancel,
-    onConfirm
-} : RecurrenceScopePromptProps): React.JSX.Element {
+    onConfirm,
+}: RecurrenceScopePromptProps): React.JSX.Element {
     const [scope, setScope] = useState<RecurrenceScope>(scopes[0]);
     const optionsRef = useRef<HTMLDivElement>(null);
     const confirmRef = useRef<HTMLButtonElement>(null);
@@ -35,7 +35,9 @@ export default function RecurrenceScopePrompt({
     // Focus the preselected option; hand focus back (e.g. to the edit popover) on close.
     useEffect(() => {
         optionsRef.current?.querySelector<HTMLInputElement>("input:checked")?.focus();
-        return () => { if (previousFocus?.isConnected) previousFocus.focus(); };
+        return () => {
+            if (previousFocus?.isConnected) previousFocus.focus();
+        };
     }, [previousFocus]);
 
     // Capture phase + stopPropagation: while open, keys belong to this dialog —
@@ -51,9 +53,12 @@ export default function RecurrenceScopePrompt({
                 const stops = Array.from(dialog.querySelectorAll<HTMLElement>("button, input:checked"));
                 if (!stops.length) return;
                 const idx = stops.indexOf(document.activeElement as HTMLElement);
-                const next = idx === -1
-                    ? (e.shiftKey ? stops.length - 1 : 0)
-                    : (idx + (e.shiftKey ? -1 : 1) + stops.length) % stops.length;
+                const next =
+                    idx === -1
+                        ? e.shiftKey
+                            ? stops.length - 1
+                            : 0
+                        : (idx + (e.shiftKey ? -1 : 1) + stops.length) % stops.length;
                 stops[next].focus();
             } else if (e.key === "Escape") {
                 e.preventDefault();
@@ -63,7 +68,8 @@ export default function RecurrenceScopePrompt({
                 if (e.repeat) return;
                 const active = document.activeElement;
                 // Let a focused Cancel / close button activate itself.
-                if (active instanceof HTMLButtonElement && active !== confirmRef.current && dialog?.contains(active)) return;
+                if (active instanceof HTMLButtonElement && active !== confirmRef.current && dialog?.contains(active))
+                    return;
                 e.preventDefault();
                 onConfirm(scope);
             }
@@ -77,7 +83,7 @@ export default function RecurrenceScopePrompt({
     return (
         <Modal onClose={onCancel} title={isDelete ? "Delete recurring event" : "Edit recurring event"}>
             <div className="rsp-options" ref={optionsRef} role="radiogroup">
-                {scopes.map(s => (
+                {scopes.map((s) => (
                     <label key={s} className={`rsp-option${scope === s ? " rsp-option-selected" : ""}`}>
                         <input
                             type="radio"

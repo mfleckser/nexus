@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import "./calendar.css"
+import "./calendar.css";
 import { useEvents } from "@renderer/features/calendar/useEvents";
 import EventChip, { EventDraftChip } from "./EventChip";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
@@ -20,13 +20,15 @@ function Calendar(): React.JSX.Element {
     const today = new Date();
     const now = useNow();
     const [focusedDay, setFocusedDay] = useState<Date>(() => {
-        return new Date(today.getTime() - today.getDay() * 1000 * 60 * 60 * 24)
+        return new Date(today.getTime() - today.getDay() * 1000 * 60 * 60 * 24);
     });
     const [viewType, setViewType] = useState("WEEK");
-    const {events, addEvent, setRange} = useEvents();
-    const {tasks} = useTasks();
-    const {projects} = useProjects();
-    const [popover, setPopover] = useState<{ anchor: { x: number; y: number }; start: Date; duration?: number } | null>(null);
+    const { events, addEvent, setRange } = useEvents();
+    const { tasks } = useTasks();
+    const { projects } = useProjects();
+    const [popover, setPopover] = useState<{ anchor: { x: number; y: number }; start: Date; duration?: number } | null>(
+        null,
+    );
     const [eventDraft, setEventDraft] = useState<NewEventDraft | null>(null);
 
     const clampPopoverAnchor = (x: number, y: number) => {
@@ -44,7 +46,7 @@ function Calendar(): React.JSX.Element {
     };
 
     const handleSlotMouseMove = useCallback((ev: MouseEvent) => {
-        setEventDraft(prev => prev && ({...prev, duration: prev.duration + (ev.movementY / PX_PER_MIN)}));
+        setEventDraft((prev) => prev && { ...prev, duration: prev.duration + ev.movementY / PX_PER_MIN });
     }, []);
 
     const handleSlotMouseDown = (day: number, hour: number) => (e: React.MouseEvent<HTMLDivElement>) => {
@@ -53,10 +55,10 @@ function Calendar(): React.JSX.Element {
         const snappedMinute = Math.round(minuteOffset / 30) * 30;
         const base = startOfWeek(focusedDay);
         const start = new Date(base.getFullYear(), base.getMonth(), base.getDate() + day, hour, snappedMinute);
-        setEventDraft({title: "", description: "", start_at: start, duration: 0, top: rect.top, category: "none"});
-        
+        setEventDraft({ title: "", description: "", start_at: start, duration: 0, top: rect.top, category: "none" });
+
         window.addEventListener("mousemove", handleSlotMouseMove);
-    }
+    };
 
     useEffect(() => window.removeEventListener("mousemove", handleSlotMouseMove), []);
 
@@ -64,10 +66,14 @@ function Calendar(): React.JSX.Element {
         if (!eventDraft) return;
         const rect = e.currentTarget.getBoundingClientRect();
         const roundedDuration = eventDraft.duration ? Math.round(eventDraft.duration / 30) * 30 : 60;
-        openNewEventAt(eventDraft.start_at, { x: rect.right + POPOVER_GAP, y: eventDraft.top || rect.top }, roundedDuration);
+        openNewEventAt(
+            eventDraft.start_at,
+            { x: rect.right + POPOVER_GAP, y: eventDraft.top || rect.top },
+            roundedDuration,
+        );
 
         window.removeEventListener("mousemove", handleSlotMouseMove);
-    }
+    };
 
     const handleNewEventButton = (e: React.MouseEvent<HTMLButtonElement>) => {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -86,32 +92,29 @@ function Calendar(): React.JSX.Element {
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
     const isToday = (d: Date) =>
-        d.getDate() === now.getDate() &&
-        d.getMonth() === now.getMonth() &&
-        d.getFullYear() === now.getFullYear();
+        d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
 
     const formatHour = (hour: number) => {
         if (hour === 0) return "";
-        const h = (hour % 12) || 12;
+        const h = hour % 12 || 12;
         return `${h} ${hour >= 12 ? "PM" : "AM"}`;
     };
 
-    const startOfWeek = (d: Date) =>
-        new Date(d.getTime() - d.getDay() * 1000 * 60 * 60 * 24);
+    const startOfWeek = (d: Date) => new Date(d.getTime() - d.getDay() * 1000 * 60 * 60 * 24);
 
     const goPrev = () => {
-        setFocusedDay(prev =>
+        setFocusedDay((prev) =>
             viewType === "MONTH"
                 ? new Date(prev.getFullYear(), prev.getMonth() - 1, 1)
-                : new Date(prev.getTime() - 1000 * 60 * 60 * 24 * 7)
+                : new Date(prev.getTime() - 1000 * 60 * 60 * 24 * 7),
         );
     };
 
     const goNext = () => {
-        setFocusedDay(prev =>
+        setFocusedDay((prev) =>
             viewType === "MONTH"
                 ? new Date(prev.getFullYear(), prev.getMonth() + 1, 1)
-                : new Date(prev.getTime() + 1000 * 60 * 60 * 24 * 7)
+                : new Date(prev.getTime() + 1000 * 60 * 60 * 24 * 7),
         );
     };
 
@@ -147,7 +150,9 @@ function Calendar(): React.JSX.Element {
 
     useEffect(() => {
         window.addEventListener("keydown", handleKeyPress);
-        return () => {window.removeEventListener("keydown", handleKeyPress)}
+        return () => {
+            window.removeEventListener("keydown", handleKeyPress);
+        };
     }, [focusedDay, viewType]);
 
     const monthGrid = useMemo(() => {
@@ -175,10 +180,13 @@ function Calendar(): React.JSX.Element {
 
     // What we ask the server for: visible ± one buffer period, so the next
     // nav step usually renders from memory while the refetch confirms it.
-    const fetchWindow = useMemo<DateRange>(() => ({
-        start: addDays(visible.start, -BUFFER_DAYS),
-        end: addDays(visible.end, BUFFER_DAYS)
-    }), [visible]);
+    const fetchWindow = useMemo<DateRange>(
+        () => ({
+            start: addDays(visible.start, -BUFFER_DAYS),
+            end: addDays(visible.end, BUFFER_DAYS),
+        }),
+        [visible],
+    );
 
     useEffect(() => {
         setRange(fetchWindow);
@@ -189,16 +197,18 @@ function Calendar(): React.JSX.Element {
     // earlier pin on the same day it would overlap. Completed/cancelled stay
     // visible; tasks of projects hidden from the main view don't.
     const taskPins = useMemo(() => {
-        const hiddenProjectIds = new Set(projects.filter(p => !p.show_tasks_in_main_view).map(p => p.id));
+        const hiddenProjectIds = new Set(projects.filter((p) => !p.show_tasks_in_main_view).map((p) => p.id));
         const lastBottom = Array(7).fill(-Infinity);
         return tasks
-            .filter((t): t is Task & { due_at: Date } =>
-                t.due_at !== null
-                && t.due_at.getTime() >= visible.start.getTime()
-                && t.due_at.getTime() < visible.end.getTime()
-                && (t.project_id === null || !hiddenProjectIds.has(t.project_id)))
-            .toSorted((a, b) => (a.due_at.getTime() - b.due_at.getTime()) || a.title.localeCompare(b.title))
-            .map(task => {
+            .filter(
+                (t): t is Task & { due_at: Date } =>
+                    t.due_at !== null &&
+                    t.due_at.getTime() >= visible.start.getTime() &&
+                    t.due_at.getTime() < visible.end.getTime() &&
+                    (t.project_id === null || !hiddenProjectIds.has(t.project_id)),
+            )
+            .toSorted((a, b) => a.due_at.getTime() - b.due_at.getTime() || a.title.localeCompare(b.title))
+            .map((task) => {
                 const day = task.due_at.getDay();
                 const dueTop = Math.min(
                     (task.due_at.getHours() * 60 + task.due_at.getMinutes()) * PX_PER_MIN,
@@ -211,33 +221,39 @@ function Calendar(): React.JSX.Element {
     }, [tasks, projects, visible]);
 
     const calcCursorPos = (): React.CSSProperties => {
-        const left = now.getDay() * 100 / 7;
-        const top = (now.getHours() * 60 + now.getMinutes()) * PX_PER_MIN
-        
+        const left = (now.getDay() * 100) / 7;
+        const top = (now.getHours() * 60 + now.getMinutes()) * PX_PER_MIN;
+
         return {
             left: `${left}%`,
-            top: top
-        }
-    }
+            top: top,
+        };
+    };
 
     return (
         <div id="calendar-container">
             <div id="calendar-header">
                 <div className="header-left">
-                    <button className="new-event-button" onClick={handleNewEventButton}>+ New Event</button>
-                    <button className="today-button" onClick={goToday}>Today</button>
+                    <button className="new-event-button" onClick={handleNewEventButton}>
+                        + New Event
+                    </button>
+                    <button className="today-button" onClick={goToday}>
+                        Today
+                    </button>
                     <div className="nav-group">
-                        <button className="nav-button" aria-label="Previous" onClick={goPrev}>‹</button>
-                        <button className="nav-button" aria-label="Next" onClick={goNext}>›</button>
+                        <button className="nav-button" aria-label="Previous" onClick={goPrev}>
+                            ‹
+                        </button>
+                        <button className="nav-button" aria-label="Next" onClick={goNext}>
+                            ›
+                        </button>
                     </div>
-                    <span className="month-year-label">{monthNames[focusedDay.getMonth()]} {focusedDay.getFullYear()}</span>
+                    <span className="month-year-label">
+                        {monthNames[focusedDay.getMonth()]} {focusedDay.getFullYear()}
+                    </span>
                 </div>
                 <div className="select-wrapper">
-                    <select
-                        className="view-select"
-                        value={viewType}
-                        onChange={e => onViewChange(e.target.value)}
-                    >
+                    <select className="view-select" value={viewType} onChange={(e) => onViewChange(e.target.value)}>
                         <option value="DAY">Day</option>
                         <option value="WEEK">Week</option>
                         <option value="MONTH">Month</option>
@@ -247,7 +263,7 @@ function Calendar(): React.JSX.Element {
             {viewType === "MONTH" ? (
                 <div id="month-container">
                     <div className="month-header">
-                        {dayNames.map(name => (
+                        {dayNames.map((name) => (
                             <div key={name} className="day-header">
                                 <span className="day-name">{name}</span>
                             </div>
@@ -271,7 +287,7 @@ function Calendar(): React.JSX.Element {
                 <div id="week-container">
                     <div className="gutter-spacer" />
                     <div className="header-container">
-                        {[...Array(7).keys()].map(idx => {
+                        {[...Array(7).keys()].map((idx) => {
                             const d = startOfWeek(focusedDay);
                             d.setDate(d.getDate() + idx);
                             return (
@@ -284,16 +300,18 @@ function Calendar(): React.JSX.Element {
                     </div>
                     <div className="gutter-spacer all-day-gutter" />
                     <div className="all-day-container">
-                        {[...Array(7).keys()].map(idx => (
+                        {[...Array(7).keys()].map((idx) => (
                             <div key={idx} className="all-day-cell" />
                         ))}
                     </div>
                     <div className="day-events-scroll">
                         <div className="day-events">
-                            {[...Array(24).keys()].map(hour => (
+                            {[...Array(24).keys()].map((hour) => (
                                 <>
-                                    <div key={`label-${hour}`} className="hour-label">{formatHour(hour)}</div>
-                                    {[...Array(7).keys()].map(day => (
+                                    <div key={`label-${hour}`} className="hour-label">
+                                        {formatHour(hour)}
+                                    </div>
+                                    {[...Array(7).keys()].map((day) => (
                                         <div
                                             key={`${hour}-${day}`}
                                             className="hour-block"
@@ -304,27 +322,39 @@ function Calendar(): React.JSX.Element {
                                 </>
                             ))}
                             <div className="events-overlay">
-                                {events.filter(e => e.start_at.getTime() >= visible.start.getTime()
-                                                  && e.start_at.getTime() <  visible.end.getTime())
-                                    .toSorted((a, b) => (a.start_at.getTime() - b.start_at.getTime()) || (b.end_at.getTime() - a.end_at.getTime()))
+                                {events
+                                    .filter(
+                                        (e) =>
+                                            e.start_at.getTime() >= visible.start.getTime() &&
+                                            e.start_at.getTime() < visible.end.getTime(),
+                                    )
+                                    .toSorted(
+                                        (a, b) =>
+                                            a.start_at.getTime() - b.start_at.getTime() ||
+                                            b.end_at.getTime() - a.end_at.getTime(),
+                                    )
                                     .map((event, idx, filteredEvents) => {
-                                    let cols = 1, colIdx = 0;
-                                    const start = event.start_at.getTime();
-                                    const end = event.end_at.getTime();
-                                    for (let i = 0; i < filteredEvents.length; i++) {
-                                        const e_start = filteredEvents[i].start_at.getTime();
-                                        const e_end = filteredEvents[i].end_at.getTime();
-                                        if ((e_start < start && e_end > start) || (e_start < end && e_end > end)) {
-                                            cols++;
-                                            if (idx > i) colIdx++;
+                                        let cols = 1,
+                                            colIdx = 0;
+                                        const start = event.start_at.getTime();
+                                        const end = event.end_at.getTime();
+                                        for (let i = 0; i < filteredEvents.length; i++) {
+                                            const e_start = filteredEvents[i].start_at.getTime();
+                                            const e_end = filteredEvents[i].end_at.getTime();
+                                            if ((e_start < start && e_end > start) || (e_start < end && e_end > end)) {
+                                                cols++;
+                                                if (idx > i) colIdx++;
+                                            }
                                         }
-                                    }
-                                    return <EventChip key={event.id} event={event} cols={cols} colIdx={colIdx} />
-                                })}
-                                {taskPins.map(({ task, top }) => <TaskPin key={task.id} task={task} top={top} />)}
+                                        return <EventChip key={event.id} event={event} cols={cols} colIdx={colIdx} />;
+                                    })}
+                                {taskPins.map(({ task, top }) => (
+                                    <TaskPin key={task.id} task={task} top={top} />
+                                ))}
                                 {eventDraft && <EventDraftChip draft={eventDraft} />}
-                                {startOfWeek(today).toDateString() === startOfWeek(focusedDay).toDateString() &&
-                                    <div className="cursor-now" style={calcCursorPos()}></div>}
+                                {startOfWeek(today).toDateString() === startOfWeek(focusedDay).toDateString() && (
+                                    <div className="cursor-now" style={calcCursorPos()}></div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -336,7 +366,10 @@ function Calendar(): React.JSX.Element {
                     initialStart={popover.start}
                     initialDuration={popover.duration}
                     onSave={handlePopoverSave}
-                    onClose={() => {setPopover(null); setEventDraft(null)}}
+                    onClose={() => {
+                        setPopover(null);
+                        setEventDraft(null);
+                    }}
                     setEventDraft={setEventDraft}
                 />
             )}
@@ -344,4 +377,4 @@ function Calendar(): React.JSX.Element {
     );
 }
 
-export default Calendar
+export default Calendar;

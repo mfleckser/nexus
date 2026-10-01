@@ -42,18 +42,38 @@ function FeatureLabel({ name, featureId, onEdit, onDelete }: FeatureLabelProps):
 
     if (editing) {
         return (
-            <form className="kb-feature-edit-form" onSubmit={(e) => { e.preventDefault(); handleEditSubmit(); }}>
+            <form
+                className="kb-feature-edit-form"
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    handleEditSubmit();
+                }}
+            >
                 <input
                     type="text"
                     className="kb-feature-input"
                     value={editInput}
                     onChange={(e) => setEditInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Escape") handleEditCancel(); }}
+                    onKeyDown={(e) => {
+                        if (e.key === "Escape") handleEditCancel();
+                    }}
                     autoFocus
                 />
                 <div className="kb-feature-edit-actions">
-                    <button type="submit" className="kb-feature-btn kb-feature-btn-primary" disabled={!editInput.trim()}>Save</button>
-                    <button type="button" className="kb-feature-btn kb-feature-btn-secondary" onClick={handleEditCancel}>Cancel</button>
+                    <button
+                        type="submit"
+                        className="kb-feature-btn kb-feature-btn-primary"
+                        disabled={!editInput.trim()}
+                    >
+                        Save
+                    </button>
+                    <button
+                        type="button"
+                        className="kb-feature-btn kb-feature-btn-secondary"
+                        onClick={handleEditCancel}
+                    >
+                        Cancel
+                    </button>
                 </div>
             </form>
         );
@@ -68,7 +88,7 @@ function FeatureLabel({ name, featureId, onEdit, onDelete }: FeatureLabelProps):
                         type="button"
                         className={`kb-feature-menu-btn${menuOpen ? " open" : ""}`}
                         aria-label="Feature actions"
-                        onClick={() => setMenuOpen(prev => !prev)}
+                        onClick={() => setMenuOpen((prev) => !prev)}
                     >
                         <Ellipsis size={15} />
                     </button>
@@ -76,14 +96,21 @@ function FeatureLabel({ name, featureId, onEdit, onDelete }: FeatureLabelProps):
                         <div className="kb-feature-menu">
                             <button
                                 type="button"
-                                onClick={() => { setMenuOpen(false); setEditInput(name); setEditing(true); }}
+                                onClick={() => {
+                                    setMenuOpen(false);
+                                    setEditInput(name);
+                                    setEditing(true);
+                                }}
                             >
                                 Edit
                             </button>
                             <button
                                 type="button"
                                 className="kb-feature-menu-danger"
-                                onClick={() => { setMenuOpen(false); setShowConfirmDelete(true); }}
+                                onClick={() => {
+                                    setMenuOpen(false);
+                                    setShowConfirmDelete(true);
+                                }}
                             >
                                 Delete
                             </button>
@@ -91,11 +118,16 @@ function FeatureLabel({ name, featureId, onEdit, onDelete }: FeatureLabelProps):
                     )}
                 </div>
             )}
-            {showConfirmDelete && <ConfirmDelete
-                onClose={() => setShowConfirmDelete(false)}
-                onDelete={() => { onDelete?.(); setShowConfirmDelete(false); }}
-                itemName="feature"
-            />}
+            {showConfirmDelete && (
+                <ConfirmDelete
+                    onClose={() => setShowConfirmDelete(false)}
+                    onDelete={() => {
+                        onDelete?.();
+                        setShowConfirmDelete(false);
+                    }}
+                    itemName="feature"
+                />
+            )}
         </div>
     );
 }

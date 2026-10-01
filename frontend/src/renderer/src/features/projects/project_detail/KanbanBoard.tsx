@@ -22,7 +22,7 @@ function toDatetimeLocal(d: Date): string {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
+function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
     const [formRow, setFormRow] = useState<string | null>(null);
     const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
@@ -30,8 +30,8 @@ function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
     const [showFeatureInput, setShowFeatureInput] = useState<boolean>(false);
 
     const { featuresByProjectId, loadFeatures, addFeature, deleteFeature } = useProjects();
-    const {tasks, addTask, updateTask} = useTasks();
-    const projectTasks = tasks.filter(t => t.project_id === project.id);
+    const { tasks, addTask, updateTask } = useTasks();
+    const projectTasks = tasks.filter((t) => t.project_id === project.id);
     const features = featuresByProjectId[project.id] ?? [];
 
     useEffect(() => {
@@ -40,21 +40,21 @@ function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
 
     const rows = [
         { key: GENERAL_ROW, name: "General", featureId: null as string | null },
-        ...features.map(f => ({ key: f.id, name: f.name, featureId: f.id as string | null })),
+        ...features.map((f) => ({ key: f.id, name: f.name, featureId: f.id as string | null })),
     ];
 
     const [draggingId, setDraggingId] = useState<string | null>(null);
-    type DropTarget = { status: string, feature_id: string | null };
+    type DropTarget = { status: string; feature_id: string | null };
     const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
     const statusOf = (t: Task) => {
-        return STATUSES.some(s => s.key === t.status) ? t.status : "todo";
+        return STATUSES.some((s) => s.key === t.status) ? t.status : "todo";
     };
 
     const handleDrop = () => {
         if (!draggingId || !dropTarget) return;
 
-        const draggedTask = projectTasks.find(t => t.id === draggingId);
+        const draggedTask = projectTasks.find((t) => t.id === draggingId);
         if (!draggedTask) return;
         if (draggedTask.status !== dropTarget.status || draggedTask.feature_id !== dropTarget?.feature_id)
             updateTask(draggingId, dropTarget);
@@ -84,10 +84,14 @@ function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
             <div className="kb-board themed-scroll">
                 <div className="kb-grid">
                     <div className="kb-corner" />
-                    {STATUSES.map(s => <div key={s.key} className="kb-status-header">{s.label}</div>)}
+                    {STATUSES.map((s) => (
+                        <div key={s.key} className="kb-status-header">
+                            {s.label}
+                        </div>
+                    ))}
 
-                    {rows.map(row => {
-                        const rowTasks = projectTasks.filter(t => t.feature_id === row.featureId);
+                    {rows.map((row) => {
+                        const rowTasks = projectTasks.filter((t) => t.feature_id === row.featureId);
                         return (
                             <Fragment key={row.key}>
                                 <div className="kb-feature-label">
@@ -95,69 +99,134 @@ function KanbanBoard({ project } : {project: Project}): React.JSX.Element {
                                         name={row.name}
                                         featureId={row.featureId}
                                         onEdit={() => {}}
-                                        onDelete={() => { if (row.featureId) deleteFeature(row.featureId); }}
+                                        onDelete={() => {
+                                            if (row.featureId) deleteFeature(row.featureId);
+                                        }}
                                     />
-                                    {formRow === row.key ?
-                                        <div className="kb-task-form-wrapper"><TaskForm
-                                            submitLabel="Add"
-                                            onSubmit={({title, description, dueAt}) => {addTask(title, description, dueAt, project.id, row.featureId ?? undefined); setFormRow(null);}}
-                                            onCancel={() => {setFormRow(null)}}
-                                        /></div> : <button type="button" className="kb-add-task-btn" onClick={() => {setFormRow(row.key)}}>+ Add task</button>}
+                                    {formRow === row.key ? (
+                                        <div className="kb-task-form-wrapper">
+                                            <TaskForm
+                                                submitLabel="Add"
+                                                onSubmit={({ title, description, dueAt }) => {
+                                                    addTask(
+                                                        title,
+                                                        description,
+                                                        dueAt,
+                                                        project.id,
+                                                        row.featureId ?? undefined,
+                                                    );
+                                                    setFormRow(null);
+                                                }}
+                                                onCancel={() => {
+                                                    setFormRow(null);
+                                                }}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            className="kb-add-task-btn"
+                                            onClick={() => {
+                                                setFormRow(row.key);
+                                            }}
+                                        >
+                                            + Add task
+                                        </button>
+                                    )}
                                 </div>
-                                {STATUSES.map(s => (
+                                {STATUSES.map((s) => (
                                     <div
                                         key={s.key}
                                         className={`kb-cell${dropTarget?.feature_id === row.featureId && dropTarget.status === s.key ? " kb-cell-dragover" : ""}`}
-                                        onDragOver={(e) => { e.preventDefault(); setDropTarget({ status: s.key, feature_id: row.featureId }); }}
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            setDropTarget({ status: s.key, feature_id: row.featureId });
+                                        }}
                                         onDrop={() => handleDrop()}
                                     >
-                                        {rowTasks.filter(t => statusOf(t) === s.key).map(t => (
-                                            editingTaskId === t.id ?
-                                                <div key={t.id} className="kb-task-edit-wrapper"><TaskForm
-                                                    submitLabel="Save"
-                                                    initialTitle={t.title}
-                                                    initialDescription={t.description ?? ""}
-                                                    initialDueAt={t.due_at ? toDatetimeLocal(t.due_at) : ""}
-                                                    onSubmit={({title, description, dueAt}) => {
-                                                        updateTask(t.id, { title, description, due_at: dueAt ? new Date(dueAt) : null });
-                                                        setEditingTaskId(null);
-                                                    }}
-                                                    onCancel={() => setEditingTaskId(null)}
-                                                /></div> :
-                                                <TaskCard
-                                                    key={t.id}
-                                                    task={t}
-                                                    dragging={draggingId === t.id}
-                                                    onDragStart={() => setDraggingId(t.id)}
-                                                    onDragEnd={() => { setDraggingId(null); setDropTarget(null); }}
-                                                    onEdit={() => setEditingTaskId(t.id)}
-                                                />
-                                        ))}
+                                        {rowTasks
+                                            .filter((t) => statusOf(t) === s.key)
+                                            .map((t) =>
+                                                editingTaskId === t.id ? (
+                                                    <div key={t.id} className="kb-task-edit-wrapper">
+                                                        <TaskForm
+                                                            submitLabel="Save"
+                                                            initialTitle={t.title}
+                                                            initialDescription={t.description ?? ""}
+                                                            initialDueAt={t.due_at ? toDatetimeLocal(t.due_at) : ""}
+                                                            onSubmit={({ title, description, dueAt }) => {
+                                                                updateTask(t.id, {
+                                                                    title,
+                                                                    description,
+                                                                    due_at: dueAt ? new Date(dueAt) : null,
+                                                                });
+                                                                setEditingTaskId(null);
+                                                            }}
+                                                            onCancel={() => setEditingTaskId(null)}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <TaskCard
+                                                        key={t.id}
+                                                        task={t}
+                                                        dragging={draggingId === t.id}
+                                                        onDragStart={() => setDraggingId(t.id)}
+                                                        onDragEnd={() => {
+                                                            setDraggingId(null);
+                                                            setDropTarget(null);
+                                                        }}
+                                                        onEdit={() => setEditingTaskId(t.id)}
+                                                    />
+                                                ),
+                                            )}
                                     </div>
                                 ))}
                             </Fragment>
                         );
                     })}
                 </div>
-                {showFeatureInput ?
-                    <form className="kb-feature-form" onSubmit={(e) => { e.preventDefault(); handleAddFeature(); }}>
+                {showFeatureInput ? (
+                    <form
+                        className="kb-feature-form"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            handleAddFeature();
+                        }}
+                    >
                         <input
                             type="text"
                             className="kb-feature-input"
                             placeholder="Feature name"
                             value={featureInput}
                             onChange={(e) => setFeatureInput(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Escape") handleCancelFeature(); }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Escape") handleCancelFeature();
+                            }}
                             autoFocus
                         />
-                        <button type="submit" className="kb-feature-btn kb-feature-btn-primary" disabled={!featureInput.trim()}>Add</button>
-                        <button type="button" className="kb-feature-btn kb-feature-btn-secondary" onClick={handleCancelFeature}>Cancel</button>
+                        <button
+                            type="submit"
+                            className="kb-feature-btn kb-feature-btn-primary"
+                            disabled={!featureInput.trim()}
+                        >
+                            Add
+                        </button>
+                        <button
+                            type="button"
+                            className="kb-feature-btn kb-feature-btn-secondary"
+                            onClick={handleCancelFeature}
+                        >
+                            Cancel
+                        </button>
                     </form>
-                    : <button type="button" className="kb-add-feature-btn" onClick={() => setShowFeatureInput(true)}>+ Add feature</button>
-                }
+                ) : (
+                    <button type="button" className="kb-add-feature-btn" onClick={() => setShowFeatureInput(true)}>
+                        + Add feature
+                    </button>
+                )}
             </div>
         </div>
-    )
+    );
 }
 
 export default KanbanBoard;

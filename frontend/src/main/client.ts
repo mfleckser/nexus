@@ -5,7 +5,6 @@ const client = axios.create({
     timeout: 5000,
 });
 
-
 async function health() {
     const res = await client.get("/health");
     return res.data;
@@ -31,4 +30,4 @@ async function apiDelete(path: string) {
     return res.data;
 }
 
-export { client, health, apiGet, apiPost, apiPut, apiDelete }
+export { client, health, apiGet, apiPost, apiPut, apiDelete };

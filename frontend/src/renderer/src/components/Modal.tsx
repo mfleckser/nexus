@@ -9,7 +9,7 @@ type ModalProps = {
     children: ReactNode;
 };
 
-export default function Modal({ onClose, title, children } : ModalProps) {
+export default function Modal({ onClose, title, children }: ModalProps) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -47,6 +47,6 @@ export default function Modal({ onClose, title, children } : ModalProps) {
                 <div className="modal-body">{children}</div>
             </div>
         </div>,
-        document.body
+        document.body,
     );
 }

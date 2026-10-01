@@ -26,16 +26,20 @@ function ProjectList(): React.JSX.Element {
                 </div>
             ) : (
                 <div className="projects-grid themed-scroll">
-                    {projects.map(p => <ProjectCard key={p.id} project={p} />)}
+                    {projects.map((p) => (
+                        <ProjectCard key={p.id} project={p} />
+                    ))}
                 </div>
             )}
 
-            {showModal && <ProjectModal
-                heading="New Project"
-                submitLabel="Create"
-                onClose={() => setShowModal(false)}
-                onSave={v => addProject(v.title, v.description, v.type)}
-            />}
+            {showModal && (
+                <ProjectModal
+                    heading="New Project"
+                    submitLabel="Create"
+                    onClose={() => setShowModal(false)}
+                    onSave={(v) => addProject(v.title, v.description, v.type)}
+                />
+            )}
         </div>
     );
 }

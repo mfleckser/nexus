@@ -1,91 +1,93 @@
-import { app, shell, BrowserWindow, ipcMain, screen } from 'electron'
-import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { health, apiGet, apiPost, apiPut, apiDelete } from './client'
+import { app, shell, BrowserWindow, ipcMain, screen } from "electron";
+import { join } from "path";
+import { electronApp, optimizer, is } from "@electron-toolkit/utils";
+import { health, apiGet, apiPost, apiPut, apiDelete } from "./client";
 
 // Test-only: NEXUS_HIDDEN=1 keeps the window off-screen and out of the Dock so
 // automated (Playwright) runs don't steal focus. Hidden windows still render.
-const hidden = process.env['NEXUS_HIDDEN'] === '1'
+const hidden = process.env["NEXUS_HIDDEN"] === "1";
 
 function createWindow(): void {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
-    show: false,
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+    // Create the browser window.
+    const mainWindow = new BrowserWindow({
+        width: 900,
+        height: 670,
+        show: false,
+        autoHideMenuBar: true,
+        webPreferences: {
+            preload: join(__dirname, "../preload/index.js"),
+            sandbox: false,
+        },
+    });
+
+    mainWindow.on("ready-to-show", () => {
+        if (hidden) {
+            // maximize() would show the window, so size it to the work area instead.
+            const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+            mainWindow.setSize(width, height);
+            return;
+        }
+        mainWindow.maximize();
+        mainWindow.show();
+    });
+
+    mainWindow.on("focus", () => {
+        mainWindow.webContents.send("window-focus");
+    });
+
+    mainWindow.webContents.setWindowOpenHandler((details) => {
+        shell.openExternal(details.url);
+        return { action: "deny" };
+    });
+
+    // HMR for renderer base on electron-vite cli.
+    // Load the remote URL for development or the local html file for production.
+    if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+        mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+    } else {
+        mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
     }
-  })
-
-  mainWindow.on('ready-to-show', () => {
-    if (hidden) {
-      // maximize() would show the window, so size it to the work area instead.
-      const { width, height } = screen.getPrimaryDisplay().workAreaSize
-      mainWindow.setSize(width, height)
-      return
-    }
-    mainWindow.maximize();
-    mainWindow.show()
-  })
-
-  mainWindow.on("focus", () => {mainWindow.webContents.send("window-focus")});
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
 }
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+    // Set app user model id for windows
+    electronApp.setAppUserModelId("com.electron");
 
-  if (hidden) app.dock?.hide()
+    if (hidden) app.dock?.hide();
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
-  })
+    // Default open or close DevTools by F12 in development
+    // and ignore CommandOrControl + R in production.
+    // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+    app.on("browser-window-created", (_, window) => {
+        optimizer.watchWindowShortcuts(window);
+    });
 
-  ipcMain.handle("health", health)
-  ipcMain.handle("apiGet", (_, path) => apiGet(path))
-  ipcMain.handle("apiPost", (_, path, body) => apiPost(path, body))
-  ipcMain.handle("apiPut", (_, path, body) => apiPut(path, body))
-  ipcMain.handle("apiDelete", (_, path) => apiDelete(path))
+    ipcMain.handle("health", health);
+    ipcMain.handle("apiGet", (_, path) => apiGet(path));
+    ipcMain.handle("apiPost", (_, path, body) => apiPost(path, body));
+    ipcMain.handle("apiPut", (_, path, body) => apiPut(path, body));
+    ipcMain.handle("apiDelete", (_, path) => apiDelete(path));
 
-  createWindow()
+    createWindow();
 
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
+    app.on("activate", function () {
+        // On macOS it's common to re-create a window in the app when the
+        // dock icon is clicked and there are no other windows open.
+        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+});
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
+app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+        app.quit();
+    }
+});
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.

@@ -15,10 +15,10 @@ export const TASK_PIN_HEIGHT = 18;
 
 type TaskPinProps = {
     // Due date is non-null for anything rendered on the calendar.
-    task: Task & { due_at: Date },
+    task: Task & { due_at: Date };
     // Pixel top within the day grid. Usually the due time, pushed down when
     // an earlier pin on the same day would overlap it.
-    top: number
+    top: number;
 };
 
 function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
@@ -85,7 +85,10 @@ function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
             if (!parentRect || !movedPastThreshold(e)) return;
             suppressClickRef.current = true;
 
-            const newDayIdx = Math.min(6, Math.max(0, Math.floor(7 * (e.clientX - parentRect.left) / parentRect.width)));
+            const newDayIdx = Math.min(
+                6,
+                Math.max(0, Math.floor((7 * (e.clientX - parentRect.left)) / parentRect.width)),
+            );
             const rawMins = (e.clientY - parentRect.top - grabOffsetRef.current.y) / PX_PER_MIN;
             const mins = Math.min(
                 Math.max(0, SNAP_MINUTES * Math.round(rawMins / SNAP_MINUTES)),
@@ -108,7 +111,7 @@ function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
 
     const style: React.CSSProperties = dragPos
         ? { left: dragPos.left, top: dragPos.top, height: TASK_PIN_HEIGHT }
-        : { left: `calc(${dayIdx * 100 / 7}% + 3px)`, top, height: TASK_PIN_HEIGHT };
+        : { left: `calc(${(dayIdx * 100) / 7}% + 3px)`, top, height: TASK_PIN_HEIGHT };
 
     function togglePopover(): void {
         if (popoverAnchor) {
@@ -140,8 +143,11 @@ function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
                     type="button"
                     className="task-pin-check"
                     aria-label={done ? "Mark incomplete" : "Mark complete"}
-                    onMouseDown={e => e.stopPropagation()}
-                    onClick={e => { e.stopPropagation(); toggleComplete(); }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        toggleComplete();
+                    }}
                 />
                 <span className="task-pin-title">{task.title}</span>
                 <span className="task-pin-time">{formatTime(due)}</span>

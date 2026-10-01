@@ -50,7 +50,7 @@ function ProjectModal({ heading, submitLabel, onClose, onSave, initial }: Projec
                         type="text"
                         placeholder="Project title"
                         value={title}
-                        onChange={e => setTitle(e.target.value)}
+                        onChange={(e) => setTitle(e.target.value)}
                     />
                 </label>
 
@@ -61,7 +61,7 @@ function ProjectModal({ heading, submitLabel, onClose, onSave, initial }: Projec
                         placeholder="What is this project about?"
                         rows={3}
                         value={description}
-                        onChange={e => setDescription(e.target.value)}
+                        onChange={(e) => setDescription(e.target.value)}
                     />
                 </label>
 
@@ -70,7 +70,7 @@ function ProjectModal({ heading, submitLabel, onClose, onSave, initial }: Projec
                         Type<span className="pm-optional">optional</span>
                     </span>
                     <div className="pm-options">
-                        {PROJECT_TYPES.map(t => (
+                        {PROJECT_TYPES.map((t) => (
                             <button
                                 key={t}
                                 type="button"
@@ -87,7 +87,7 @@ function ProjectModal({ heading, submitLabel, onClose, onSave, initial }: Projec
                     <div className="pm-field">
                         <span className="pm-label">Status</span>
                         <div className="pm-options">
-                            {PROJECT_STATUSES.map(s => (
+                            {PROJECT_STATUSES.map((s) => (
                                 <button
                                     key={s}
                                     type="button"
@@ -109,7 +109,7 @@ function ProjectModal({ heading, submitLabel, onClose, onSave, initial }: Projec
                             role="switch"
                             aria-checked={showTasks}
                             className={`pm-switch${showTasks ? " pm-switch-on" : ""}`}
-                            onClick={() => setShowTasks(prev => !prev)}
+                            onClick={() => setShowTasks((prev) => !prev)}
                         >
                             <span className="pm-switch-thumb" />
                         </button>

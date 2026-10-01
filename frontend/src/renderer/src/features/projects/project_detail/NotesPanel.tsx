@@ -30,10 +30,13 @@ function NotesPanel({ notes, onSave }: NotesPanelProps): React.JSX.Element {
     }, [notes]);
 
     // Flush a pending save on unmount (panel closed or navigation mid-debounce).
-    useEffect(() => () => {
-        if (saveTimer.current) clearTimeout(saveTimer.current);
-        if (pendingSave.current) onSaveRef.current(draftRef.current);
-    }, []);
+    useEffect(
+        () => () => {
+            if (saveTimer.current) clearTimeout(saveTimer.current);
+            if (pendingSave.current) onSaveRef.current(draftRef.current);
+        },
+        [],
+    );
 
     const handleChange = (value: string) => {
         setDraft(value);
@@ -57,7 +60,7 @@ function NotesPanel({ notes, onSave }: NotesPanelProps): React.JSX.Element {
                         className="np-editor themed-scroll"
                         placeholder="Write project notes…"
                         value={draft}
-                        onChange={e => handleChange(e.target.value)}
+                        onChange={(e) => handleChange(e.target.value)}
                     />
                 ) : (
                     <div className="np-loading">Loading notes…</div>

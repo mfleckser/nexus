@@ -4,7 +4,7 @@ import { browserTimeZone } from "@renderer/lib/time";
 async function getEvents(start: Date, end: Date): Promise<Event[]> {
     const qs = new URLSearchParams({
         start: start.toISOString(),
-        end: end.toISOString()
+        end: end.toISOString(),
     });
     const raw = await window.api.apiGet(`/events?${qs.toString()}`);
     return raw.map((e: any) => ({
@@ -19,7 +19,14 @@ async function getEvents(start: Date, end: Date): Promise<Event[]> {
     }));
 }
 
-function addEvent(title: string, description: string | null, start_at: Date, end_at: Date, category: string, rrule: string | null = null) {
+function addEvent(
+    title: string,
+    description: string | null,
+    start_at: Date,
+    end_at: Date,
+    category: string,
+    rrule: string | null = null,
+) {
     return window.api.apiPost("/events", {
         title: title,
         description: description,
@@ -27,8 +34,8 @@ function addEvent(title: string, description: string | null, start_at: Date, end
         end_at: end_at,
         category: category,
         timezone: browserTimeZone(),
-        ...(rrule ? { rrule } : {})
-    })
+        ...(rrule ? { rrule } : {}),
+    });
 }
 
 function updateEvent(id: string, data: any) {
@@ -36,7 +43,7 @@ function updateEvent(id: string, data: any) {
 }
 
 function deleteEvent(id: string) {
-    return window.api.apiDelete(`/events/${id}`)
+    return window.api.apiDelete(`/events/${id}`);
 }
 
 const occurrencePath = (masterId: string, originalStart: Date): string =>
@@ -51,4 +58,4 @@ function deleteOccurrence(masterId: string, originalStart: Date, scope: Recurren
     return window.api.apiDelete(`${occurrencePath(masterId, originalStart)}?${qs.toString()}`);
 }
 
-export { getEvents, addEvent, updateEvent, deleteEvent, updateOccurrence, deleteOccurrence }
+export { getEvents, addEvent, updateEvent, deleteEvent, updateOccurrence, deleteOccurrence };

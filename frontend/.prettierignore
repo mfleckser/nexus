@@ -1,6 +1,10 @@
 out
 dist
 pnpm-lock.yaml
+package-lock.json
 LICENSE.md
+CLAUDE.md
 tsconfig.json
 tsconfig.*.json
+# Hand-aligned design-token table.
+src/renderer/src/theme.css

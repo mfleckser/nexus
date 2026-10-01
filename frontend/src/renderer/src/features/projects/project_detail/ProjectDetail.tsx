@@ -14,9 +14,9 @@ function ProjectDetail(): React.JSX.Element {
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
     const [showNotes, setShowNotes] = useState(false);
 
-    const {projectId} = useParams();
-    const {projects, updateProject, deleteProject, notesByProjectId, loadNotes, updateNotes} = useProjects();
-    const project = projects.find(p => p.id === projectId);
+    const { projectId } = useParams();
+    const { projects, updateProject, deleteProject, notesByProjectId, loadNotes, updateNotes } = useProjects();
+    const project = projects.find((p) => p.id === projectId);
 
     useEffect(() => {
         if (projectId) loadNotes(projectId);
@@ -37,15 +37,23 @@ function ProjectDetail(): React.JSX.Element {
                     </Link>
                 </div>
             </div>
-        )
+        );
     }
 
     const nav = useNavigate();
 
     return (
-        <div className="pd-container" onClick={() => {setShowProjectMenu(false)}}>
+        <div
+            className="pd-container"
+            onClick={() => {
+                setShowProjectMenu(false);
+            }}
+        >
             <div className="pd-header">
-                <Link className="pd-back-link" to="/projects"><ChevronLeft size={16} />Back to Project List</Link>
+                <Link className="pd-back-link" to="/projects">
+                    <ChevronLeft size={16} />
+                    Back to Project List
+                </Link>
                 <div className="pd-header-main">
                     <h1 className="pd-title">{project?.title}</h1>
                     <div className="pd-header-actions">
@@ -53,55 +61,89 @@ function ProjectDetail(): React.JSX.Element {
                             type="button"
                             className={`pd-notes-toggle${showNotes ? " pd-notes-toggle-active" : ""}`}
                             aria-label={showNotes ? "Close notes" : "Open notes"}
-                            onClick={() => setShowNotes(prev => !prev)}
+                            onClick={() => setShowNotes((prev) => !prev)}
                         >
                             <NotebookPen size={18} />
                         </button>
-                        <div className="pd-project-menu-container" onClick={e => {e.stopPropagation()}}>
+                        <div
+                            className="pd-project-menu-container"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                            }}
+                        >
                             <button
                                 type="button"
                                 className="pd-project-menu-btn"
                                 aria-label="Project actions"
-                                onClick={(e) => {e.stopPropagation(); setShowProjectMenu(prev => !prev);}}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowProjectMenu((prev) => !prev);
+                                }}
                             >
                                 <Ellipsis size={18} />
                             </button>
-                            {showProjectMenu && <div className="pd-project-menu">
-                                <button type="button" onClick={() => {setShowProjectMenu(false); setShowEditModal(true);}}>Edit</button>
-                                <button type="button" className="pd-menu-danger" onClick={() => setShowConfirmDelete(true)}>Delete</button>
-                            </div>}
-                            {showEditModal && <ProjectModal
-                                heading="Edit Project"
-                                submitLabel="Save"
-                                initial={{
-                                    title: project.title,
-                                    description: project.description || "",
-                                    type: project.type || "",
-                                    status: project.status,
-                                    show_tasks_in_main_view: project.show_tasks_in_main_view
-                                }}
-                                onClose={() => setShowEditModal(false)}
-                                onSave={values => updateProject(project.id, values)}
-                            />}
-                            {showConfirmDelete && <ConfirmDelete
-                                onClose={() => setShowConfirmDelete(false)}
-                                onDelete={() => {deleteProject(project?.id || ""); setShowConfirmDelete(false); nav("/projects")}}
-                                itemName="project"
-                            />}
+                            {showProjectMenu && (
+                                <div className="pd-project-menu">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowProjectMenu(false);
+                                            setShowEditModal(true);
+                                        }}
+                                    >
+                                        Edit
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="pd-menu-danger"
+                                        onClick={() => setShowConfirmDelete(true)}
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
+                            )}
+                            {showEditModal && (
+                                <ProjectModal
+                                    heading="Edit Project"
+                                    submitLabel="Save"
+                                    initial={{
+                                        title: project.title,
+                                        description: project.description || "",
+                                        type: project.type || "",
+                                        status: project.status,
+                                        show_tasks_in_main_view: project.show_tasks_in_main_view,
+                                    }}
+                                    onClose={() => setShowEditModal(false)}
+                                    onSave={(values) => updateProject(project.id, values)}
+                                />
+                            )}
+                            {showConfirmDelete && (
+                                <ConfirmDelete
+                                    onClose={() => setShowConfirmDelete(false)}
+                                    onDelete={() => {
+                                        deleteProject(project?.id || "");
+                                        setShowConfirmDelete(false);
+                                        nav("/projects");
+                                    }}
+                                    itemName="project"
+                                />
+                            )}
                         </div>
                     </div>
                 </div>
                 {project?.description && <p className="pd-description">{project?.description}</p>}
             </div>
             <div className="pd-body">
-                <KanbanBoard project={project}/>
-                {showNotes && <NotesPanel
-                    notes={projectId ? notesByProjectId[projectId] : undefined}
-                    onSave={notes => updateNotes(project.id, notes)}
-                />}
+                <KanbanBoard project={project} />
+                {showNotes && (
+                    <NotesPanel
+                        notes={projectId ? notesByProjectId[projectId] : undefined}
+                        onSave={(notes) => updateNotes(project.id, notes)}
+                    />
+                )}
             </div>
         </div>
-    )
+    );
 }
 
 export default ProjectDetail;

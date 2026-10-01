@@ -31,7 +31,9 @@
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.1s, border-color 0.1s;
+    transition:
+        background-color 0.1s,
+        border-color 0.1s;
 }
 
 .new-event-button {
@@ -44,7 +46,9 @@
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.1s, border-color 0.1s;
+    transition:
+        background-color 0.1s,
+        border-color 0.1s;
 }
 
 .new-event-button:hover {
@@ -83,7 +87,9 @@
     font-size: 18px;
     line-height: 1;
     cursor: pointer;
-    transition: background-color 0.1s, color 0.1s;
+    transition:
+        background-color 0.1s,
+        color 0.1s;
 }
 
 .nav-button:hover {
@@ -124,7 +130,9 @@
     cursor: pointer;
     appearance: none;
     -webkit-appearance: none;
-    transition: background-color 0.1s, border-color 0.1s;
+    transition:
+        background-color 0.1s,
+        border-color 0.1s;
 }
 
 .view-select:hover {
@@ -318,7 +326,8 @@
     transition: background-color 0.1s;
 }
 
-.event-chip:hover, .event-chip-adjusting {
+.event-chip:hover,
+.event-chip-adjusting {
     background: var(--chip-background);
     color: var(--text-on-accent);
 }
@@ -354,8 +363,10 @@
     text-overflow: ellipsis;
 }
 
-.event-chip:hover .event-chip-time, .event-chip-adjusting .event-chip-time,
-.event-chip:hover .event-chip-repeat, .event-chip-adjusting .event-chip-repeat {
+.event-chip:hover .event-chip-time,
+.event-chip-adjusting .event-chip-time,
+.event-chip:hover .event-chip-repeat,
+.event-chip-adjusting .event-chip-repeat {
     color: var(--text-on-accent);
     opacity: 0.85;
 }
@@ -413,7 +424,7 @@
     border-right: none;
 }
 
-.month-day-cell:nth-last-child(-n+7) {
+.month-day-cell:nth-last-child(-n + 7) {
     border-bottom: none;
 }
 
@@ -439,7 +450,7 @@
 }
 
 .cursor-now {
-    width: calc(100%/7);
+    width: calc(100% / 7);
     height: 1px;
     background-color: red;
     position: absolute;

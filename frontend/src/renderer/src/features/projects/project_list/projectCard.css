@@ -13,7 +13,11 @@
     font-family: var(--font-sans);
     text-decoration: none;
     color: inherit;
-    transition: background-color 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+    transition:
+        background-color 0.12s,
+        border-color 0.12s,
+        box-shadow 0.12s,
+        transform 0.12s;
 }
 
 .project-card:hover {
@@ -63,13 +67,23 @@
     flex-shrink: 0;
 }
 
-.project-status.status-active .project-status-dot { background: var(--status-success); }
-.project-status.status-planning .project-status-dot { background: var(--status-info); }
+.project-status.status-active .project-status-dot {
+    background: var(--status-success);
+}
+.project-status.status-planning .project-status-dot {
+    background: var(--status-info);
+}
 .project-status.status-paused .project-status-dot,
-.project-status.status-on-hold .project-status-dot { background: var(--status-warning); }
+.project-status.status-on-hold .project-status-dot {
+    background: var(--status-warning);
+}
 .project-status.status-done .project-status-dot,
-.project-status.status-complete .project-status-dot { background: var(--accent); }
-.project-status.status-archived .project-status-dot { background: var(--text-disabled); }
+.project-status.status-complete .project-status-dot {
+    background: var(--accent);
+}
+.project-status.status-archived .project-status-dot {
+    background: var(--text-disabled);
+}
 
 .project-card-title {
     margin: 0;

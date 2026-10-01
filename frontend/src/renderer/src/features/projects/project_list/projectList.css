@@ -39,7 +39,9 @@
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.1s, border-color 0.1s;
+    transition:
+        background-color 0.1s,
+        border-color 0.1s;
 }
 
 .projects-new-btn:hover {

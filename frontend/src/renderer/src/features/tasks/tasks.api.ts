@@ -1,4 +1,3 @@
-
 async function getTasks() {
     const raw = await window.api.apiGet("/tasks");
     return raw.map((t: any) => ({
@@ -9,14 +8,20 @@ async function getTasks() {
     }));
 }
 
-function addTask(title: string, description: string | null, due_at: Date | null, project_id?: string, feature_id?: string) {
+function addTask(
+    title: string,
+    description: string | null,
+    due_at: Date | null,
+    project_id?: string,
+    feature_id?: string,
+) {
     return window.api.apiPost("/tasks", {
         title: title,
         description: description,
         due_at: due_at,
         project_id: project_id,
-        feature_id: feature_id
-    })
+        feature_id: feature_id,
+    });
 }
 
 function updateTask(id: string, data: any) {
@@ -24,7 +29,7 @@ function updateTask(id: string, data: any) {
 }
 
 function deleteTask(id: string) {
-    return window.api.apiDelete(`/tasks/${id}`)
+    return window.api.apiDelete(`/tasks/${id}`);
 }
 
-export { getTasks, addTask, updateTask, deleteTask }
+export { getTasks, addTask, updateTask, deleteTask };
