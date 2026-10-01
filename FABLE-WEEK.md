@@ -34,6 +34,7 @@ Scratch backlog for the Fable availability window (~Jul 1–8, 2026). Coding age
 - [ ] Event editing — edit/delete existing events (create flow exists; verify edit path) · H·stamp·S
 - [ ] Search — `GET /search?q=` across tasks + events (title/description) + search bar in sidebar or Home header · M·stamp·M
 - [ ] ⚠️ Recurring / all-day / multi-day events — UI + service logic (schema supports some). Bigger job — defer unless time remains · M·**deep**·L
+  - [x] Recurring part done on branch `recurring-events` (RRULE series, server-side expansion, this/following/all scopes, picker). All-day / multi-day still open.
 - [ ] Day / month calendar views — add or stub (week view exists) · L·stamp·M
 
 ---

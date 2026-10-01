@@ -47,6 +47,19 @@
   - Plugin/integration API shape
   - Auth model (bearer token vs Supabase Auth)
 
+  ## Recurring Events
+
+  - RFC 5545 RRULE body in `events.rrule` marks a series master; expanded server-side
+    (`backend/app/services/recurrence.py`, python-dateutil) in the event's `timezone`.
+  - Single-occurrence edits are override rows (`recurring_event_id` + `original_start_at`);
+    cancelled occurrences go in master `exdates`.
+  - Frontend never mutates recurring rows via plain `/events/<id>` — always
+    `/events/<master>/occurrences/<original_start>` with scope `this|following|all`.
+
   ## Conventions
 
   Visual design / CSS conventions live in `frontend/CLAUDE.md`.
+
+  Automated UI testing (Playwright `_electron`): launch with env `NEXUS_HIDDEN=1` so the
+  window stays hidden and out of the Dock — no focus stealing. Rendering, clicks and
+  screenshots still work.

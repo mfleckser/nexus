@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import "./modal.css";
 import { X } from "lucide-react";
 
@@ -12,8 +13,12 @@ export default function Modal({ onClose, title, children } : ModalProps) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        // Escape belongs to the modal: stop it reaching window listeners
+        // (the event popover behind it, calendar shortcuts).
         const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Escape") onClose();
+            if (e.key !== "Escape") return;
+            e.stopPropagation();
+            onClose();
         };
         document.addEventListener("keydown", onKeyDown);
         return () => document.removeEventListener("keydown", onKeyDown);
@@ -26,7 +31,11 @@ export default function Modal({ onClose, title, children } : ModalProps) {
         }
     };
 
-    return (
+    // Portaled to <body> so an ancestor's pointer-events / stacking context
+    // (e.g. the calendar's events overlay) can't swallow clicks or bury it.
+    // React events still bubble through the component tree, so the backdrop's
+    // stopPropagation keeps outside-click listeners (popovers) from firing.
+    return createPortal(
         <div className="modal-backdrop" onMouseDown={onBackdropMouseDown}>
             <div className="modal-panel" ref={containerRef} role="dialog" aria-modal="true">
                 <div className="modal-header">
@@ -37,6 +46,7 @@ export default function Modal({ onClose, title, children } : ModalProps) {
                 </div>
                 <div className="modal-body">{children}</div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

@@ -22,8 +22,16 @@ export type Event = {
     end_at: Date,
     all_day: boolean,
     category: string | null,
-    timezone: string
+    timezone: string,
+    // RRULE body of the series (set on expanded instances and override rows).
+    rrule: string | null,
+    // Series master id; non-null iff this row is an occurrence of a recurring event.
+    recurring_event_id: string | null,
+    // The occurrence's original (unmodified) start; identifies it to the occurrence endpoints.
+    original_start_at: Date | null
 };
+
+export type RecurrenceScope = "this" | "following" | "all";
 
 export type DateRange = {
     start: Date;
@@ -36,6 +44,7 @@ export type NewEventDraft = {
     start_at: Date;
     duration: number;
     category: string;
+    rrule?: string | null;
     top?: number;
 };
 

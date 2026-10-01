@@ -328,10 +328,22 @@
 }
 
 .event-chip-title {
+    display: flex;
+    align-items: center;
+    gap: 3px;
     font-weight: 600;
+}
+
+.event-chip-title-text {
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.event-chip-repeat {
+    flex-shrink: 0;
+    color: var(--text-secondary);
 }
 
 .event-chip-time {
@@ -342,7 +354,8 @@
     text-overflow: ellipsis;
 }
 
-.event-chip:hover .event-chip-time, .event-chip-adjusting .event-chip-time {
+.event-chip:hover .event-chip-time, .event-chip-adjusting .event-chip-time,
+.event-chip:hover .event-chip-repeat, .event-chip-adjusting .event-chip-repeat {
     color: var(--text-on-accent);
     opacity: 0.85;
 }

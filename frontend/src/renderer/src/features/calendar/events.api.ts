@@ -1,4 +1,4 @@
-import { Event } from "@renderer/types";
+import { Event, RecurrenceScope } from "@renderer/types";
 import { browserTimeZone } from "@renderer/lib/time";
 
 async function getEvents(start: Date, end: Date): Promise<Event[]> {
@@ -13,17 +13,21 @@ async function getEvents(start: Date, end: Date): Promise<Event[]> {
         updated_at: new Date(e.updated_at),
         start_at: new Date(e.start_at),
         end_at: new Date(e.end_at),
+        rrule: e.rrule ?? null,
+        recurring_event_id: e.recurring_event_id ?? null,
+        original_start_at: e.original_start_at ? new Date(e.original_start_at) : null,
     }));
 }
 
-function addEvent(title: string, description: string | null, start_at: Date, end_at: Date, category: string) {
+function addEvent(title: string, description: string | null, start_at: Date, end_at: Date, category: string, rrule: string | null = null) {
     return window.api.apiPost("/events", {
         title: title,
         description: description,
         start_at: start_at,
         end_at: end_at,
         category: category,
-        timezone: browserTimeZone()
+        timezone: browserTimeZone(),
+        ...(rrule ? { rrule } : {})
     })
 }
 
@@ -35,4 +39,16 @@ function deleteEvent(id: string) {
     return window.api.apiDelete(`/events/${id}`)
 }
 
-export { getEvents, addEvent, updateEvent, deleteEvent }
+const occurrencePath = (masterId: string, originalStart: Date): string =>
+    `/events/${masterId}/occurrences/${encodeURIComponent(originalStart.toISOString())}`;
+
+function updateOccurrence(masterId: string, originalStart: Date, scope: RecurrenceScope, data: any): Promise<unknown> {
+    return window.api.apiPut(occurrencePath(masterId, originalStart), { ...data, scope });
+}
+
+function deleteOccurrence(masterId: string, originalStart: Date, scope: RecurrenceScope): Promise<unknown> {
+    const qs = new URLSearchParams({ scope });
+    return window.api.apiDelete(`${occurrencePath(masterId, originalStart)}?${qs.toString()}`);
+}
+
+export { getEvents, addEvent, updateEvent, deleteEvent, updateOccurrence, deleteOccurrence }
