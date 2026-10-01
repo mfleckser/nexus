@@ -6,11 +6,10 @@ from app.services.event_service import (
     delete_event,
     delete_occurrence,
     get_events,
-    parse_instant,
     update_event,
     update_occurrence,
 )
-from app.validation import json_body
+from app.validation import json_body, parse_instant
 
 events_bp = Blueprint("events", __name__)
 

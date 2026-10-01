@@ -1,10 +1,12 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from functools import wraps
 
+from app import validation as v
 from app.errors import ValidationError, first_row
 from app.extensions.cache import cache
 from app.extensions.supabase import supabase
 from app.services import recurrence as rr
+from app.validation import parse_instant
 
 EVENT_FIELDS = ["title", "description", "start_at", "end_at", "all_day", "category", "timezone"]
 # Non-time fields a master shares with its overrides / split-off series.
@@ -12,20 +14,20 @@ DETAIL_FIELDS = ["title", "description", "category", "all_day"]
 SCOPES = ("this", "following", "all")
 
 
-def parse_instant(value: str) -> datetime:
-    """Parse an ISO-8601 instant and normalize to UTC, so that two spellings of
-    the same moment share one memoize entry. Raises ValidationError if unparseable."""
-    try:
-        dt = datetime.fromisoformat(value)
-    except (TypeError, ValueError):
-        raise ValidationError(f"invalid ISO-8601 timestamp: {value!r}") from None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC)
-
-
 def _iso(dt):
     return dt.isoformat() if dt else None
+
+
+def _validate(data: dict):
+    """Type checks for the event fields present in a request body."""
+    v.check_title(data)
+    v.check_text(data, "description")
+    v.check_text(data, "category")
+    v.check_bool(data, "all_day")
+    v.check_instant(data, "start_at", nullable=False)
+    v.check_instant(data, "end_at", nullable=False)
+    v.check_timezone(data)
+    v.check_text(data, "rrule")  # semantics checked by rr.normalize_rrule
 
 
 # ---- reads ---------------------------------------------------------------
@@ -149,21 +151,12 @@ def invalidates_events(fn):
 
 @invalidates_events
 def create_event(data: dict):
+    v.require(data, "title", "start_at", "end_at")
+    _validate(data)
     _check_order(parse_instant(data["start_at"]), parse_instant(data["end_at"]))
 
-    row = {
-        "title": data["title"],
-        "description": data.get("description"),
-        "start_at": data["start_at"],
-        "end_at": data["end_at"],
-        "category": data.get("category"),
-        "all_day": data.get("all_day"),
-    }
-
-    # timezone is NOT NULL with a default — omit the key entirely when the
-    # client didn't send one, rather than sending an explicit null (23502).
-    if data.get("timezone"):
-        row["timezone"] = data["timezone"]
+    # timezone is omitted (-> column default UTC) when the client didn't send one.
+    row = v.pick(data, EVENT_FIELDS)
 
     if data.get("rrule"):
         row.update(
@@ -182,7 +175,10 @@ def create_event(data: dict):
 
 @invalidates_events
 def update_event(event_id: str, data: dict):
-    updates = {f: data[f] for f in EVENT_FIELDS if f in data}
+    _validate(data)
+    updates = v.pick(data, EVENT_FIELDS)
+    if not updates and "rrule" not in data:
+        return _get_event(event_id)
 
     # rrule / time changes need the current row to validate and to (re)compute
     # series columns.
@@ -311,6 +307,7 @@ def _requested_rule(master: dict, data: dict):
 def update_occurrence(master_id: str, original_start: datetime, data: dict):
     scope = data.get("scope")
     _check_scope(scope)
+    _validate(data)
     master = _get_master(master_id, original_start)
     override = _get_override(master_id, original_start)
 
@@ -322,7 +319,7 @@ def update_occurrence(master_id: str, original_start: datetime, data: dict):
 
 
 def _update_this(master, original_start, override, data):
-    updates = {f: data[f] for f in EVENT_FIELDS if f in data}  # rrule ignored for "this"
+    updates = v.pick(data, EVENT_FIELDS)  # rrule ignored for "this"
     cur_start, cur_end = _current_times(master, original_start, override)
     _check_order(
         parse_instant(updates["start_at"]) if updates.get("start_at") else cur_start,

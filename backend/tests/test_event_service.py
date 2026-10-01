@@ -272,6 +272,48 @@ class EventServiceTest(AppTestCase):
                 es.update_occurrence("any", None, {"scope": "bogus"})
             invalidate.assert_called_once_with(es.get_events)
 
+    # -- input validation --
+
+    def test_create_validation(self):
+        ok = {"title": "x", "start_at": "2026-10-01T16:00:00Z", "end_at": "2026-10-01T17:00:00Z"}
+        bad = [
+            {k: val for k, val in ok.items() if k != "title"},
+            {k: val for k, val in ok.items() if k != "start_at"},
+            {**ok, "title": None},
+            {**ok, "title": " "},
+            {**ok, "start_at": None},
+            {**ok, "end_at": "later"},
+            {**ok, "timezone": "Mars/Olympus"},
+            {**ok, "timezone": None},
+            {**ok, "all_day": "yes"},
+            {**ok, "rrule": 7},
+            {**ok, "rrule": "FREQ=DAILY", "timezone": "Mars/Olympus"},
+        ]
+        for body in bad:
+            with self.subTest(body=body):
+                self.assertEqual(self.client.post("/api/events", json=body).status_code, 400)
+        self.assertEqual(self.db.rows, [])
+        self.assertEqual(self.create(**ok)["timezone"], "UTC")
+
+    def test_update_validation(self):
+        plain = self.create(start_at="2026-10-01T16:00:00Z", end_at="2026-10-01T17:00:00Z")
+        for body in [{"timezone": "Mars/Olympus"}, {"timezone": None}, {"title": None}, {"start_at": None}]:
+            with self.subTest(body=body):
+                res = self.client.put(f"/api/events/{plain['id']}", json=body)
+                self.assertEqual(res.status_code, 400)
+        m = self.weekly_wed()
+        for scope in ("this", "following", "all"):
+            with self.subTest(scope=scope):
+                self.put_occ(m["id"], "2026-10-07T16:00:00Z", {"scope": scope, "timezone": "Mars/Olympus"}, status=400)
+                self.put_occ(m["id"], "2026-10-07T16:00:00Z", {"scope": scope, "title": None}, status=400)
+        self.assertEqual(len(self.db.rows), 2)
+
+    def test_update_without_known_fields_returns_current_row(self):
+        plain = self.create(start_at="2026-10-01T16:00:00Z", end_at="2026-10-01T17:00:00Z")
+        res = self.client.put(f"/api/events/{plain['id']}", json={"bogus": True})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.get_json(), plain)
+
     # -- basics --
 
     def test_get_merges_instances_and_overrides_sorted(self):

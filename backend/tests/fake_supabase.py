@@ -107,8 +107,11 @@ class _Query:
         self.negate = False
         self.ordering = []
         self.row_limit = None
+        self.columns = None  # None = all
 
-    def select(self, *_):
+    def select(self, *columns):
+        names = [c.strip() for col in columns for c in col.split(",")]
+        self.columns = None if names in ([], ["*"]) else names
         return self
 
     def insert(self, row):
@@ -185,7 +188,8 @@ class _Query:
             # Stable sorts applied last-key-first give multi-column ordering; nulls last.
             for col, desc in reversed(self.ordering):
                 match.sort(key=lambda r, c=col: (r[c] is None, _cmp(c, r[c]) if r[c] is not None else 0), reverse=desc)
-            return _Result([copy.deepcopy(r) for r in match[: self.row_limit]])
+            out = [{c: r[c] for c in self.columns} if self.columns else r for r in match[: self.row_limit]]
+            return _Result(copy.deepcopy(out))
         if self.op == "insert":
             now = self.db.tick()
             row = {"id": str(uuid.uuid4()), "created_at": now, "updated_at": now}
