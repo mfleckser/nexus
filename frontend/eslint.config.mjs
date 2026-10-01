@@ -26,6 +26,8 @@ export default defineConfig(
         rules: {
             ...eslintPluginReactHooks.configs.recommended.rules,
             ...eslintPluginReactRefresh.configs.vite.rules,
+            // Return types on every component/handler add noise without catching bugs.
+            "@typescript-eslint/explicit-function-return-type": "off",
         },
     },
     eslintConfigPrettier,
