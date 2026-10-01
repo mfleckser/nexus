@@ -2,12 +2,12 @@ import { Fragment, useEffect, useState } from "react";
 import "./kanbanBoard.css";
 import TaskForm from "@renderer/components/TaskForm";
 import { useTasks } from "../../tasks/useTasks";
-import { Project, Task } from "@renderer/types";
+import { Project, Task, TaskStatus } from "@renderer/types";
 import TaskCard from "./TaskCard";
 import FeatureLabel from "./FeatureLabel";
 import { useProjects } from "../useProjects";
 
-const STATUSES = [
+const STATUSES: { key: TaskStatus; label: string }[] = [
     { key: "todo", label: "To Do" },
     { key: "active", label: "Active" },
     { key: "complete", label: "Complete" },
@@ -44,7 +44,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
     ];
 
     const [draggingId, setDraggingId] = useState<string | null>(null);
-    type DropTarget = { status: string; feature_id: string | null };
+    type DropTarget = { status: TaskStatus; feature_id: string | null };
     const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
     const statusOf = (t: Task) => {

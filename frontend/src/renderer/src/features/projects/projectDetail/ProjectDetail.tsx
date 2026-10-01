@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import ProjectModal from "@renderer/components/ProjectModal";
 import KanbanBoard from "./KanbanBoard";
+import { ProjectStatus } from "@renderer/types";
 import NotesPanel from "./NotesPanel";
 
 function ProjectDetail(): React.JSX.Element {
@@ -110,11 +111,17 @@ function ProjectDetail(): React.JSX.Element {
                                         title: project.title,
                                         description: project.description || "",
                                         type: project.type || "",
-                                        status: project.status,
+                                        status: project.status ?? "",
                                         show_tasks_in_main_view: project.show_tasks_in_main_view,
                                     }}
                                     onClose={() => setShowEditModal(false)}
-                                    onSave={(values) => updateProject(project.id, values)}
+                                    onSave={(values) =>
+                                        updateProject(project.id, {
+                                            ...values,
+                                            type: values.type || null,
+                                            status: (values.status || null) as ProjectStatus | null,
+                                        })
+                                    }
                                 />
                             )}
                             {showConfirmDelete && (

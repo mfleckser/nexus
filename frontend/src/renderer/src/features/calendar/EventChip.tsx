@@ -1,7 +1,7 @@
 import { useEvents } from "@renderer/features/calendar/useEvents";
 import { useEffect, useRef, useState } from "react";
 import { Repeat } from "lucide-react";
-import { Event, NewEventDraft, RecurrenceScope } from "@renderer/types";
+import { CalendarEvent, NewEventDraft, RecurrenceScope } from "@renderer/types";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import RecurrenceScopePrompt from "@renderer/components/RecurrenceScopePrompt";
@@ -22,7 +22,7 @@ type PendingScope =
     | { action: "delete" };
 
 type EventChipProps = {
-    event: Event;
+    event: CalendarEvent;
     cols: number;
     colIdx: number;
 };
@@ -349,7 +349,7 @@ function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
 }
 
 function EventDraftChip({ draft }: { draft: NewEventDraft }) {
-    const [event, setEvent] = useState<Event>({
+    const [event, setEvent] = useState<CalendarEvent>({
         id: "DRAFT",
         created_at: new Date(),
         updated_at: new Date(),

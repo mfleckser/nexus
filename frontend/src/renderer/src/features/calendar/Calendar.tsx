@@ -30,6 +30,8 @@ function Calendar(): React.JSX.Element {
         null,
     );
     const [eventDraft, setEventDraft] = useState<NewEventDraft | null>(null);
+    // Viewport y of the slot a drag-to-create started on (popover anchor).
+    const [draftAnchorY, setDraftAnchorY] = useState<number | null>(null);
 
     const clampPopoverAnchor = (x: number, y: number) => {
         const margin = 12;
@@ -55,7 +57,8 @@ function Calendar(): React.JSX.Element {
         const snappedMinute = Math.round(minuteOffset / 30) * 30;
         const base = startOfWeek(focusedDay);
         const start = new Date(base.getFullYear(), base.getMonth(), base.getDate() + day, hour, snappedMinute);
-        setEventDraft({ title: "", description: "", start_at: start, duration: 0, top: rect.top, category: "none" });
+        setEventDraft({ title: "", description: "", start_at: start, duration: 0, category: "none" });
+        setDraftAnchorY(rect.top);
 
         window.addEventListener("mousemove", handleSlotMouseMove);
     };
@@ -68,7 +71,7 @@ function Calendar(): React.JSX.Element {
         const roundedDuration = eventDraft.duration ? Math.round(eventDraft.duration / 30) * 30 : 60;
         openNewEventAt(
             eventDraft.start_at,
-            { x: rect.right + POPOVER_GAP, y: eventDraft.top || rect.top },
+            { x: rect.right + POPOVER_GAP, y: draftAnchorY ?? rect.top },
             roundedDuration,
         );
 

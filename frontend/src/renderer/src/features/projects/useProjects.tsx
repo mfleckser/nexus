@@ -1,13 +1,17 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import * as projectsApi from "@renderer/features/projects/projects.api";
 import { Feature, Project } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";
+import useReportError from "@renderer/hooks/useReportError";
 import { sameSet } from "@renderer/lib/collections";
 
 type ProjectsContextValue = {
     projects: Project[];
-    addProject: (title: string, description: string, type: string) => Promise<void>;
-    updateProject: (id: string, data: any) => Promise<void>;
+    // False until the first project fetch has settled.
+    projectsLoaded: boolean;
+    addProject: (title: string, description: string, type: string | null) => Promise<void>;
+    updateProject: (id: string, data: projectsApi.ProjectUpdate) => Promise<void>;
+    // Optimistic; rolls back and rethrows on failure.
     deleteProject: (id: string) => Promise<void>;
 
     notesByProjectId: Record<string, string>;
@@ -17,6 +21,7 @@ type ProjectsContextValue = {
     featuresByProjectId: Record<string, Feature[]>;
     loadFeatures: (project_id: string) => Promise<void>;
     addFeature: (project_id: string, name: string) => Promise<void>;
+    // Optimistic; rolls back and rethrows on failure.
     deleteFeature: (feature_id: string) => Promise<void>;
 };
 
@@ -24,91 +29,135 @@ const ProjectsContext = createContext<ProjectsContextValue | null>(null);
 
 export function ProjectsProvider({ children }: { children: ReactNode }) {
     const [projects, setProjects] = useState<Project[]>([]);
-    const [featuresByProjectId, setFeaturesByProjectId] = useState<Record<string, Feature[]>>(
-        {} as Record<string, Feature[]>,
-    );
+    const [projectsLoaded, setProjectsLoaded] = useState(false);
+    const [featuresByProjectId, setFeaturesByProjectId] = useState<Record<string, Feature[]>>({});
     const [notesByProjectId, setNotesByProjectId] = useState<Record<string, string>>({});
     const now = useNow(600000);
+    const reportError = useReportError();
+    // Latest state, for rollback snapshots taken inside stable callbacks.
+    const projectsRef = useRef(projects);
+    const featuresRef = useRef(featuresByProjectId);
+    useEffect(() => {
+        projectsRef.current = projects;
+        featuresRef.current = featuresByProjectId;
+    }, [projects, featuresByProjectId]);
 
     useEffect(() => {
-        projectsApi.getProjects().then((fresh) => setProjects((prev) => (sameSet(fresh, prev) ? prev : fresh)));
-    }, [now]);
+        projectsApi
+            .getProjects()
+            .then((fresh) => setProjects((prev) => (sameSet(fresh, prev) ? prev : fresh)))
+            .catch((err) => reportError("Couldn't refresh projects", err))
+            .finally(() => setProjectsLoaded(true));
+    }, [now, reportError]);
 
-    async function addProject(title: string, description: string, type: string) {
+    const replaceProject = useCallback((saved: Project) => {
+        setProjects((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+    }, []);
+
+    const addProject = useCallback(async (title: string, description: string, type: string | null) => {
         await projectsApi.addProject(title, description, type);
-        const fresh = await projectsApi.getProjects();
-        setProjects(fresh);
-    }
+        setProjects(await projectsApi.getProjects());
+    }, []);
 
-    async function updateProject(id: string, data: any) {
-        await projectsApi.updateProject(id, data);
-        const fresh = await projectsApi.getProjects();
-        setProjects(fresh);
-    }
+    const updateProject = useCallback(
+        async (id: string, data: projectsApi.ProjectUpdate) => {
+            replaceProject(await projectsApi.updateProject(id, data));
+        },
+        [replaceProject],
+    );
 
-    async function deleteProject(id: string) {
+    const deleteProject = useCallback(async (id: string) => {
+        const snapshot = projectsRef.current;
         setProjects((prev) => prev.filter((p) => p.id !== id));
-        await projectsApi.deleteProject(id);
-    }
+        try {
+            await projectsApi.deleteProject(id);
+        } catch (err) {
+            const before = snapshot.find((p) => p.id === id);
+            if (before) setProjects((prev) => (prev.some((p) => p.id === id) ? prev : [...prev, before]));
+            throw err;
+        }
+    }, []);
 
-    async function loadNotes(project_id: string) {
+    const loadNotes = useCallback(async (project_id: string) => {
         const notes = await projectsApi.getNotes(project_id);
         setNotesByProjectId((prev) => ({ ...prev, [project_id]: notes }));
-    }
+    }, []);
 
-    async function updateNotes(project_id: string, notes: string) {
-        await projectsApi.updateProject(project_id, { notes });
-        setNotesByProjectId((prev) => ({ ...prev, [project_id]: notes }));
-        const fresh = await projectsApi.getProjects();
-        setProjects(fresh);
-    }
+    // The PUT returns the updated row, so only this project is refreshed.
+    const updateNotes = useCallback(
+        async (project_id: string, notes: string) => {
+            const saved = await projectsApi.updateProject(project_id, { notes });
+            setNotesByProjectId((prev) => ({ ...prev, [project_id]: notes }));
+            replaceProject(saved);
+        },
+        [replaceProject],
+    );
 
-    async function loadFeatures(project_id: string) {
+    const loadFeatures = useCallback(async (project_id: string) => {
         const features = await projectsApi.getFeatures(project_id);
         setFeaturesByProjectId((prev) => ({ ...prev, [project_id]: features }));
-    }
+    }, []);
 
-    async function addFeature(project_id: string, name: string) {
-        await projectsApi.addFeature(project_id, name);
-        loadFeatures(project_id);
-    }
-
-    async function deleteFeature(feature_id: string) {
-        setFeaturesByProjectId((prev) => {
-            const newFeatures = { ...prev };
-            const project_id = Object.keys(newFeatures).find((p: string) =>
-                newFeatures[p].some((f: Feature) => f.id === feature_id),
-            );
-            if (project_id) {
-                newFeatures[project_id] = newFeatures[project_id].filter((f: Feature) => f.id !== feature_id);
-                return newFeatures;
-            }
-            return prev;
-        });
-        await projectsApi.deleteFeature(feature_id);
-    }
-
-    return (
-        <ProjectsContext.Provider
-            value={{
-                projects,
-                addProject,
-                updateProject,
-                deleteProject,
-                notesByProjectId,
-                loadNotes,
-                updateNotes,
-                featuresByProjectId,
-                loadFeatures,
-                addFeature,
-                deleteFeature,
-            }}
-        >
-            {children}
-        </ProjectsContext.Provider>
+    const addFeature = useCallback(
+        async (project_id: string, name: string) => {
+            await projectsApi.addFeature(project_id, name);
+            await loadFeatures(project_id);
+        },
+        [loadFeatures],
     );
+
+    const deleteFeature = useCallback(async (feature_id: string) => {
+        const snapshot = featuresRef.current;
+        const project_id = Object.keys(snapshot).find((p) => snapshot[p].some((f) => f.id === feature_id));
+        if (project_id) {
+            setFeaturesByProjectId((prev) => ({
+                ...prev,
+                [project_id]: (prev[project_id] ?? []).filter((f) => f.id !== feature_id),
+            }));
+        }
+        try {
+            await projectsApi.deleteFeature(feature_id);
+        } catch (err) {
+            if (project_id) setFeaturesByProjectId((prev) => ({ ...prev, [project_id]: snapshot[project_id] }));
+            throw err;
+        }
+    }, []);
+
+    const value = useMemo(
+        () => ({
+            projects,
+            projectsLoaded,
+            addProject,
+            updateProject,
+            deleteProject,
+            notesByProjectId,
+            loadNotes,
+            updateNotes,
+            featuresByProjectId,
+            loadFeatures,
+            addFeature,
+            deleteFeature,
+        }),
+        [
+            projects,
+            projectsLoaded,
+            addProject,
+            updateProject,
+            deleteProject,
+            notesByProjectId,
+            loadNotes,
+            updateNotes,
+            featuresByProjectId,
+            loadFeatures,
+            addFeature,
+            deleteFeature,
+        ],
+    );
+
+    return <ProjectsContext.Provider value={value}>{children}</ProjectsContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- provider and hook share the private context; HMR reloads this file fully
 export function useProjects(): ProjectsContextValue {
     const ctx = useContext(ProjectsContext);
     if (!ctx) throw new Error("useProjects must be used within ProjectsProvider");

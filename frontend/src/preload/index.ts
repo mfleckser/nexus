@@ -1,30 +1,22 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { electronAPI } from "@electron-toolkit/preload";
+import type { ApiResult } from "../shared/ipc";
 
-// Custom APIs for renderer
+// Runs sandboxed: only `electron`'s renderer modules are available here.
 const api = {
-    health: () => ipcRenderer.invoke("health"),
-    apiGet: (path: string) => ipcRenderer.invoke("apiGet", path),
-    apiPost: (path: string, body: any) => ipcRenderer.invoke("apiPost", path, body),
-    apiPut: (path: string, body: any) => ipcRenderer.invoke("apiPut", path, body),
-    apiDelete: (path: string) => ipcRenderer.invoke("apiDelete", path),
-    onWindowFocus: (callback: () => void) => ipcRenderer.on("window-focus", (_) => callback()),
-    clearFocusCallback: () => ipcRenderer.removeAllListeners("window-focus"),
+    apiGet: (path: string): Promise<ApiResult> => ipcRenderer.invoke("apiGet", path),
+    apiPost: (path: string, body: unknown): Promise<ApiResult> => ipcRenderer.invoke("apiPost", path, body),
+    apiPut: (path: string, body: unknown): Promise<ApiResult> => ipcRenderer.invoke("apiPut", path, body),
+    apiDelete: (path: string): Promise<ApiResult> => ipcRenderer.invoke("apiDelete", path),
+    // Returns an unsubscribe that removes only this callback's listener.
+    onWindowFocus: (callback: () => void): (() => void) => {
+        const listener = (): void => callback();
+        ipcRenderer.on("window-focus", listener);
+        return () => {
+            ipcRenderer.removeListener("window-focus", listener);
+        };
+    },
 };
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
-if (process.contextIsolated) {
-    try {
-        contextBridge.exposeInMainWorld("electron", electronAPI);
-        contextBridge.exposeInMainWorld("api", api);
-    } catch (error) {
-        console.error(error);
-    }
-} else {
-    // @ts-ignore (define in dts)
-    window.electron = electronAPI;
-    // @ts-ignore (define in dts)
-    window.api = api;
-}
+export type NexusApi = typeof api;
+
+contextBridge.exposeInMainWorld("api", api);

@@ -2,7 +2,7 @@ import "./taskView.css";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import { useProjects } from "@renderer/features/projects/useProjects";
 import { useEffect, useState } from "react";
-import { Task } from "@renderer/types";
+import { Task, TaskStatus } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";
 import TaskForm from "@renderer/components/TaskForm";
 import { formatDueDisplay, toDatetimeLocal } from "@renderer/lib/time";
@@ -11,7 +11,7 @@ type TaskRowProps = {
     task: Task;
     expanded: boolean;
     onToggle: () => void;
-    onStatusChange: (status: string) => void;
+    onStatusChange: (status: TaskStatus) => void;
     onSave: (data: { title: string; description: string | null; due_at: string | null }) => void;
     onDelete: () => void;
 };
