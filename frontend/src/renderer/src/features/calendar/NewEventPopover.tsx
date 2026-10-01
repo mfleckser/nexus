@@ -87,7 +87,9 @@ function initialRepeatState(rrule: string | null | undefined, start: Date):
 }
 
 export type NewEventPopoverProps = {
-    anchor: { x: number; y: number };
+    // flipX: right edge to place the popover against when it would overflow
+    // the window's right side at x (e.g. the left edge of the chip it edits).
+    anchor: { x: number; y: number; flipX?: number };
     initialStart: Date;
     initialDuration?: number;
     initialTitle?: string;
@@ -128,6 +130,7 @@ function NewEventPopover({
         DURATION_PRESETS.includes(initialDuration) ? "" : String(initialDuration),
     );
     const [top, setTop] = useState(anchor.y);
+    const [left, setLeft] = useState(anchor.x);
 
     const [initialRepeat] = useState(() => initialRepeatState(initialRrule, initialStart));
     const [repeatMode, setRepeatMode] = useState<RepeatMode>(initialRepeat.mode);
@@ -153,12 +156,15 @@ function NewEventPopover({
         const clamp = () => {
             const maxTop = window.innerHeight - el.offsetHeight - margin;
             setTop(Math.max(margin, Math.min(anchor.y, maxTop)));
+            const maxLeft = window.innerWidth - el.offsetWidth - margin;
+            const x = anchor.x > maxLeft && anchor.flipX !== undefined ? anchor.flipX - el.offsetWidth : anchor.x;
+            setLeft(Math.max(margin, Math.min(x, maxLeft)));
         };
         clamp();
         const observer = new ResizeObserver(clamp);
         observer.observe(el);
         return () => observer.disconnect();
-    }, [anchor.y]);
+    }, [anchor.x, anchor.y, anchor.flipX]);
 
     useEffect(() => {
         setEventDraft({title: title, description: description, start_at: getStartAt(), duration: duration, category: category, rrule: rrule ?? null});
@@ -244,7 +250,7 @@ function NewEventPopover({
     }
 
     const style: React.CSSProperties = {
-        left: anchor.x,
+        left,
         top,
     };
 

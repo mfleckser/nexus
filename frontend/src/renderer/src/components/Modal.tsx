@@ -13,8 +13,12 @@ export default function Modal({ onClose, title, children } : ModalProps) {
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        // Escape belongs to the modal: stop it reaching window listeners
+        // (the event popover behind it, calendar shortcuts).
         const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Escape") onClose();
+            if (e.key !== "Escape") return;
+            e.stopPropagation();
+            onClose();
         };
         document.addEventListener("keydown", onKeyDown);
         return () => document.removeEventListener("keydown", onKeyDown);

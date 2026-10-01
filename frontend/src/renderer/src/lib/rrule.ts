@@ -246,7 +246,8 @@ export function describeRecurrence(rec: Recurrence, start: Date): string {
             break;
         case "WEEKLY": {
             const days = rec.byday.length ? sortWeekdays(rec.byday) : [weekdayOf(start)];
-            const list = days.map(d => DAY_SHORT[d]).join(", ");
+            // One day spelled out, matching the preset label ("Weekly on Monday").
+            const list = days.length === 1 ? DAY_LONG[days[0]] : days.map(d => DAY_SHORT[d]).join(", ");
             if (n === 1 && sameDays(days, WORKDAYS)) base = "Every weekday";
             else base = n === 1 ? `Weekly on ${list}` : `Every ${n} weeks on ${list}`;
             break;

@@ -309,7 +309,7 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
                 submitted while a pending change is waiting on a scope. */}
             {showPopover && <div inert={pendingScope !== null}>
                 <NewEventPopover
-                    anchor={{x: (rect?.right || 0) + POPOVER_GAP, y: rect?.top || 0}}
+                    anchor={{x: (rect?.right || 0) + POPOVER_GAP, y: rect?.top || 0, flipX: (rect?.left || 0) - POPOVER_GAP}}
                     initialStart={event.start_at}
                     initialDuration={duration}
                     initialTitle={event.title}
