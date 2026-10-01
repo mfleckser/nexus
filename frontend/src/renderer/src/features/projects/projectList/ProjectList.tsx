@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useProjects } from "@renderer/features/projects/useProjects";
-import ProjectCard from "@renderer/features/projects/project_list/ProjectCard";
+import ProjectCard from "@renderer/features/projects/projectList/ProjectCard";
 import ProjectModal from "@renderer/components/ProjectModal";
 import "./projectList.css";
 

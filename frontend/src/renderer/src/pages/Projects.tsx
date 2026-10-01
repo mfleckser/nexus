@@ -1,10 +1,11 @@
 import { Route, Routes } from "react-router-dom";
-import ProjectList from "@renderer/features/projects/project_list/ProjectList";
-import ProjectDetail from "@renderer/features/projects/project_detail/ProjectDetail";
+import ProjectList from "@renderer/features/projects/projectList/ProjectList";
+import ProjectDetail from "@renderer/features/projects/projectDetail/ProjectDetail";
+import "./projects.css";
 
 function Projects(): React.JSX.Element {
     return (
-        <div style={{ width: "100%", height: "100%" }}>
+        <div className="projects-page">
             <Routes>
                 <Route index element={<ProjectList />} />
                 <Route path=":projectId" element={<ProjectDetail />} />

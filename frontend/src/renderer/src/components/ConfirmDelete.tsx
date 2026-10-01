@@ -1,4 +1,4 @@
-import "./ConfirmDelete.css";
+import "./confirmDelete.css";
 import Modal from "./Modal";
 
 type ConfirmDeleteProps = {

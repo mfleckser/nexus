@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import "./ConfirmDelete.css";
+import "./confirmDelete.css";
 import "./recurrenceScopePrompt.css";
 import Modal from "./Modal";
 import { RecurrenceScope } from "@renderer/types";
