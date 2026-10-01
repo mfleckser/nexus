@@ -1,0 +1,126 @@
+.task-popover {
+    position: fixed;
+    z-index: 100;
+    pointer-events: auto;
+    width: 300px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-top: 3px solid var(--pillar-task);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: 14px;
+    font-family: var(--font-sans);
+    color: var(--text-primary);
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* The shared TaskForm brings its own panel padding; the popover already has it. */
+.task-popover .task-form {
+    padding: 0;
+}
+
+.tp-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.tp-check {
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    flex-shrink: 0;
+    padding: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-strong);
+    background: transparent;
+    cursor: pointer;
+    transition: border-color 0.1s, background-color 0.1s;
+}
+
+.tp-check:hover {
+    border-color: var(--pillar-task);
+}
+
+.task-popover.done .tp-check {
+    background: var(--pillar-task);
+    border-color: var(--pillar-task);
+}
+
+.tp-title {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.task-popover.done .tp-title {
+    color: var(--text-muted);
+    text-decoration: line-through;
+}
+
+.tp-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.tp-status {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.tp-status-complete {
+    color: var(--pillar-task);
+    border-color: color-mix(in srgb, var(--pillar-task) 40%, transparent);
+}
+
+.tp-status-active {
+    color: var(--accent);
+    border-color: var(--accent-border);
+}
+
+.tp-status-cancelled {
+    color: var(--text-muted);
+}
+
+.tp-project {
+    align-self: flex-start;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--pillar-project) 15%, transparent);
+    color: var(--pillar-project);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.tp-description {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.tp-description.muted {
+    color: var(--text-muted);
+}
+
+.tp-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
