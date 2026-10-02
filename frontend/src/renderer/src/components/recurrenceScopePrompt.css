@@ -14,7 +14,9 @@
     font-size: 13px;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: background-color 0.1s, color 0.1s;
+    transition:
+        background-color 0.1s,
+        color 0.1s;
 }
 
 .rsp-option:hover {

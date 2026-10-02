@@ -1,4 +1,4 @@
-import "./taskform.css"
+import "./taskForm.css";
 import { useState } from "react";
 
 export type TaskFormValues = {
@@ -40,10 +40,7 @@ function TaskForm({
     };
 
     return (
-        <form
-            className="task-form"
-            onSubmit={handleSubmit}
-        >
+        <form className="task-form" onSubmit={handleSubmit}>
             <input
                 className="task-form-input"
                 type="text"
@@ -70,18 +67,10 @@ function TaskForm({
                 />
             </label>
             <div className="task-form-actions">
-                <button
-                    type="button"
-                    className="task-form-btn task-form-btn-secondary"
-                    onClick={onCancel}
-                >
+                <button type="button" className="task-form-btn task-form-btn-secondary" onClick={onCancel}>
                     Cancel
                 </button>
-                <button
-                    type="submit"
-                    className="task-form-btn task-form-btn-primary"
-                    disabled={!title.trim()}
-                >
+                <button type="submit" className="task-form-btn task-form-btn-primary" disabled={!title.trim()}>
                     {submitLabel}
                 </button>
             </div>
@@ -89,4 +78,4 @@ function TaskForm({
     );
 }
 
-export default TaskForm
+export default TaskForm;

@@ -3,7 +3,7 @@ import { Ellipsis } from "lucide-react";
 import { Task } from "@renderer/types";
 import "./taskCard.css";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
-import { useTasks }  from "@renderer/features/tasks/useTasks";
+import { useTasks } from "@renderer/features/tasks/useTasks";
 
 type TaskCardProps = {
     task: Task;
@@ -17,7 +17,7 @@ function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: Ta
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
-    const {deleteTask} = useTasks();
+    const { deleteTask } = useTasks();
 
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
@@ -50,7 +50,7 @@ function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: Ta
                         type="button"
                         className={`task-card-menu-btn${menuOpen ? " open" : ""}`}
                         aria-label="Task actions"
-                        onClick={() => setMenuOpen(prev => !prev)}
+                        onClick={() => setMenuOpen((prev) => !prev)}
                     >
                         <Ellipsis size={15} />
                     </button>
@@ -58,14 +58,20 @@ function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: Ta
                         <div className="task-card-menu">
                             <button
                                 type="button"
-                                onClick={() => { setMenuOpen(false); onEdit?.(); }}
+                                onClick={() => {
+                                    setMenuOpen(false);
+                                    onEdit?.();
+                                }}
                             >
                                 Edit
                             </button>
                             <button
                                 type="button"
                                 className="task-card-menu-danger"
-                                onClick={() => { setMenuOpen(false); setShowConfirmDelete(true); }}
+                                onClick={() => {
+                                    setMenuOpen(false);
+                                    setShowConfirmDelete(true);
+                                }}
                             >
                                 Delete
                             </button>
@@ -74,11 +80,18 @@ function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: Ta
                 </div>
             </div>
             {task.description && <p className="task-card-desc">{task.description}</p>}
-            {showConfirmDelete && <ConfirmDelete
-                onClose={() => {setShowConfirmDelete(false)}}
-                onDelete={() => {deleteTask(task.id); setShowConfirmDelete(false)}}
-                itemName="task"
-            />}
+            {showConfirmDelete && (
+                <ConfirmDelete
+                    onClose={() => {
+                        setShowConfirmDelete(false);
+                    }}
+                    onDelete={() => {
+                        deleteTask(task.id);
+                        setShowConfirmDelete(false);
+                    }}
+                    itemName="task"
+                />
+            )}
         </div>
     );
 }

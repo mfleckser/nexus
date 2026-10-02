@@ -1,12 +1,25 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import "./newEventPopover.css";
-import categoryData from "./categories.json"
+import categoryData from "./categories.json";
 import { NewEventDraft } from "@renderer/types";
 import {
-    Recurrence, RecurrenceFreq, RepeatPreset, Weekday, WEEKDAYS, MAX_COUNT,
-    buildRrule, parseRrule, presetRecurrence, matchPreset, presetLabel, describeRecurrence,
-    weekdayOf, weekdayShort, firstOccurrenceDay, maxUntilDate,
+    Recurrence,
+    RecurrenceFreq,
+    RepeatPreset,
+    Weekday,
+    WEEKDAYS,
+    MAX_COUNT,
+    buildRrule,
+    parseRrule,
+    presetRecurrence,
+    matchPreset,
+    presetLabel,
+    describeRecurrence,
+    weekdayOf,
+    weekdayShort,
+    firstOccurrenceDay,
+    maxUntilDate,
 } from "@renderer/lib/rrule";
 
 const DURATION_PRESETS = [30, 45, 60, 90, 120];
@@ -16,8 +29,7 @@ const FREQ_UNITS: Record<RecurrenceFreq, string> = { DAILY: "day", WEEKLY: "week
 const toDateInput = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-const toTimeInput = (d: Date) =>
-    `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+const toTimeInput = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
 const parseDateInput = (s: string): Date | null => {
     const [y, mo, da] = s.split("-").map(Number);
@@ -43,9 +55,11 @@ function customFormFrom(rec: Recurrence, start: Date): CustomRepeatForm {
         interval: String(rec.interval),
         byday: rec.byday.length ? rec.byday : [weekdayOf(start)],
         endType: rec.end.type,
-        until: toDateInput(rec.end.type === "until"
-            ? rec.end.date
-            : new Date(start.getFullYear(), start.getMonth() + 1, start.getDate())),
+        until: toDateInput(
+            rec.end.type === "until"
+                ? rec.end.date
+                : new Date(start.getFullYear(), start.getMonth() + 1, start.getDate()),
+        ),
         count: rec.end.type === "count" ? String(rec.end.n) : "10",
     };
 }
@@ -75,11 +89,12 @@ function customFormToRecurrence(form: CustomRepeatForm, start: Date): Recurrence
     return rec;
 }
 
-const defaultCustomForm = (start: Date): CustomRepeatForm =>
-    customFormFrom(presetRecurrence("weekly", start)!, start);
+const defaultCustomForm = (start: Date): CustomRepeatForm => customFormFrom(presetRecurrence("weekly", start)!, start);
 
-function initialRepeatState(rrule: string | null | undefined, start: Date):
-    { mode: RepeatMode; custom: CustomRepeatForm; unknown: boolean } {
+function initialRepeatState(
+    rrule: string | null | undefined,
+    start: Date,
+): { mode: RepeatMode; custom: CustomRepeatForm; unknown: boolean } {
     if (!rrule) return { mode: "none", custom: defaultCustomForm(start), unknown: false };
     const rec = parseRrule(rrule, start);
     if (!rec) return { mode: "custom", custom: defaultCustomForm(start), unknown: true };
@@ -115,7 +130,7 @@ function NewEventPopover({
     onSave,
     onClose,
     onDelete,
-    setEventDraft
+    setEventDraft,
 }: NewEventPopoverProps): React.JSX.Element {
     const rootRef = useRef<HTMLDivElement>(null);
     const titleRef = useRef<HTMLInputElement>(null);
@@ -167,7 +182,14 @@ function NewEventPopover({
     }, [anchor.x, anchor.y, anchor.flipX]);
 
     useEffect(() => {
-        setEventDraft({title: title, description: description, start_at: getStartAt(), duration: duration, category: category, rrule: rrule ?? null});
+        setEventDraft({
+            title: title,
+            description: description,
+            start_at: getStartAt(),
+            duration: duration,
+            category: category,
+            rrule: rrule ?? null,
+        });
     }, [title, description, dateStr, timeStr, duration, category, rrule]);
 
     useEffect(() => {
@@ -211,7 +233,7 @@ function NewEventPopover({
             start_at,
             duration,
             category,
-            rrule
+            rrule,
         });
     }
 
@@ -227,14 +249,14 @@ function NewEventPopover({
 
     function updateCustomRepeat(patch: Partial<CustomRepeatForm>) {
         setRepeatTouched(true);
-        setCustomRepeat(prev => ({ ...prev, ...patch }));
+        setCustomRepeat((prev) => ({ ...prev, ...patch }));
     }
 
     function toggleWeekday(day: Weekday) {
         const has = customRepeat.byday.includes(day);
         if (has && customRepeat.byday.length === 1) return; // weekly needs at least one day
         updateCustomRepeat({
-            byday: has ? customRepeat.byday.filter(d => d !== day) : [...customRepeat.byday, day],
+            byday: has ? customRepeat.byday.filter((d) => d !== day) : [...customRepeat.byday, day],
         });
     }
 
@@ -259,7 +281,7 @@ function NewEventPopover({
             ref={rootRef}
             className="new-event-popover themed-scroll"
             style={style}
-            onMouseDown={e => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
         >
             <form onSubmit={handleSubmit}>
                 <input
@@ -268,7 +290,7 @@ function NewEventPopover({
                     type="text"
                     placeholder="Add title"
                     value={title}
-                    onChange={e => setTitle(e.target.value)}
+                    onChange={(e) => setTitle(e.target.value)}
                 />
 
                 <textarea
@@ -276,15 +298,15 @@ function NewEventPopover({
                     placeholder="Description (optional)"
                     rows={2}
                     value={description}
-                    onChange={e => setDescription(e.target.value)}
+                    onChange={(e) => setDescription(e.target.value)}
                 />
 
                 <div className="nep-field-row">
                     <label className="nep-label">Category</label>
                     <div className="nep-category-container">
                         {categoryData
-                            .filter(cat => cat.name !== "none")
-                            .map(cat => (
+                            .filter((cat) => cat.name !== "none")
+                            .map((cat) => (
                                 <button
                                     key={cat.name}
                                     type="button"
@@ -304,13 +326,13 @@ function NewEventPopover({
                             className="nep-input"
                             type="date"
                             value={dateStr}
-                            onChange={e => setDateStr(e.target.value)}
+                            onChange={(e) => setDateStr(e.target.value)}
                         />
                         <input
                             className="nep-input"
                             type="time"
                             value={timeStr}
-                            onChange={e => setTimeStr(e.target.value)}
+                            onChange={(e) => setTimeStr(e.target.value)}
                         />
                     </div>
                 </div>
@@ -319,14 +341,18 @@ function NewEventPopover({
                     <label className="nep-label">Duration</label>
                     <div className="nep-duration">
                         <div className="nep-chips">
-                            {DURATION_PRESETS.map(mins => (
+                            {DURATION_PRESETS.map((mins) => (
                                 <button
                                     key={mins}
                                     type="button"
                                     className={`nep-chip${duration === mins && customDuration === "" ? " nep-chip-active" : ""}`}
                                     onClick={() => selectPreset(mins)}
                                 >
-                                    {mins < 60 ? `${mins}m` : mins % 60 === 0 ? `${mins / 60}h` : `${Math.floor(mins / 60)}h${mins % 60}`}
+                                    {mins < 60
+                                        ? `${mins}m`
+                                        : mins % 60 === 0
+                                          ? `${mins / 60}h`
+                                          : `${Math.floor(mins / 60)}h${mins % 60}`}
                                 </button>
                             ))}
                         </div>
@@ -336,7 +362,7 @@ function NewEventPopover({
                             min={1}
                             placeholder="Custom (min)"
                             value={customDuration}
-                            onChange={e => onCustomChange(e.target.value)}
+                            onChange={(e) => onCustomChange(e.target.value)}
                         />
                     </div>
                 </div>
@@ -347,126 +373,134 @@ function NewEventPopover({
                         <select
                             className="nep-select"
                             value={repeatMode}
-                            onChange={e => onRepeatModeChange(e.target.value as RepeatMode)}
+                            onChange={(e) => onRepeatModeChange(e.target.value as RepeatMode)}
                         >
-                            {REPEAT_PRESETS.map(p => (
-                                <option key={p} value={p}>{presetLabel(p, repeatStart)}</option>
+                            {REPEAT_PRESETS.map((p) => (
+                                <option key={p} value={p}>
+                                    {presetLabel(p, repeatStart)}
+                                </option>
                             ))}
                             <option value="custom">
                                 {repeatMode !== "custom"
                                     ? "Custom…"
                                     : showUnknownRule
-                                        ? "Custom rule"
-                                        : customRecurrence
-                                            ? describeRecurrence(customRecurrence, repeatStart)
-                                            : "Custom…"}
+                                      ? "Custom rule"
+                                      : customRecurrence
+                                        ? describeRecurrence(customRecurrence, repeatStart)
+                                        : "Custom…"}
                             </option>
                         </select>
                     </div>
-                    {repeatMode === "custom" && (showUnknownRule ? (
-                        <div className="nep-repeat-custom">
-                            <p className="nep-repeat-note">
-                                This event uses a rule the picker can't edit. It's kept as-is unless you change it.
-                            </p>
-                            <code className="nep-repeat-rule">{initialRrule}</code>
-                            <button
-                                type="button"
-                                className="nep-chip nep-repeat-edit"
-                                onClick={() => setRepeatTouched(true)}
-                            >
-                                Replace rule
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="nep-repeat-custom">
-                            <div className="nep-repeat-line">
-                                <span className="nep-repeat-text">Every</span>
-                                <input
-                                    className="nep-input nep-input-narrow"
-                                    type="number"
-                                    min={1}
-                                    value={customRepeat.interval}
-                                    onChange={e => updateCustomRepeat({ interval: e.target.value })}
-                                />
-                                <div className="nep-select-wrapper nep-select-grow">
-                                    <select
-                                        className="nep-select"
-                                        value={customRepeat.freq}
-                                        onChange={e => updateCustomRepeat({ freq: e.target.value as RecurrenceFreq })}
-                                    >
-                                        {(Object.keys(FREQ_UNITS) as RecurrenceFreq[]).map(f => (
-                                            <option key={f} value={f}>
-                                                {FREQ_UNITS[f]}{customRepeat.interval === "1" ? "" : "s"}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
+                    {repeatMode === "custom" &&
+                        (showUnknownRule ? (
+                            <div className="nep-repeat-custom">
+                                <p className="nep-repeat-note">
+                                    This event uses a rule the picker can't edit. It's kept as-is unless you change it.
+                                </p>
+                                <code className="nep-repeat-rule">{initialRrule}</code>
+                                <button
+                                    type="button"
+                                    className="nep-chip nep-repeat-edit"
+                                    onClick={() => setRepeatTouched(true)}
+                                >
+                                    Replace rule
+                                </button>
                             </div>
-
-                            {customRepeat.freq === "WEEKLY" && (
-                                <div className="nep-weekdays">
-                                    {WEEKDAYS.map(day => (
-                                        <button
-                                            key={day}
-                                            type="button"
-                                            title={weekdayShort(day)}
-                                            className={`nep-chip nep-weekday${customRepeat.byday.includes(day) ? " nep-chip-active" : ""}`}
-                                            onClick={() => toggleWeekday(day)}
-                                        >
-                                            {weekdayShort(day).slice(0, 2)}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-
-                            <div className="nep-repeat-line">
-                                <span className="nep-repeat-text">Ends</span>
-                                <div className="nep-chips">
-                                    {(["never", "until", "count"] as const).map(t => (
-                                        <button
-                                            key={t}
-                                            type="button"
-                                            className={`nep-chip${customRepeat.endType === t ? " nep-chip-active" : ""}`}
-                                            onClick={() => updateCustomRepeat({ endType: t })}
-                                        >
-                                            {t === "never" ? "Never" : t === "until" ? "On date" : "After"}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            {customRepeat.endType === "until" && (
-                                <input
-                                    className="nep-input"
-                                    type="date"
-                                    min={toDateInput(repeatStart)}
-                                    max={toDateInput(maxUntilDate(repeatStart))}
-                                    value={customRepeat.until}
-                                    onChange={e => updateCustomRepeat({ until: e.target.value })}
-                                />
-                            )}
-                            {customRepeat.endType === "count" && (
+                        ) : (
+                            <div className="nep-repeat-custom">
                                 <div className="nep-repeat-line">
+                                    <span className="nep-repeat-text">Every</span>
                                     <input
                                         className="nep-input nep-input-narrow"
                                         type="number"
                                         min={1}
-                                        max={MAX_COUNT}
-                                        value={customRepeat.count}
-                                        onChange={e => updateCustomRepeat({ count: e.target.value })}
+                                        value={customRepeat.interval}
+                                        onChange={(e) => updateCustomRepeat({ interval: e.target.value })}
                                     />
-                                    <span className="nep-repeat-text">
-                                        occurrence{customRepeat.count === "1" ? "" : "s"}
-                                    </span>
+                                    <div className="nep-select-wrapper nep-select-grow">
+                                        <select
+                                            className="nep-select"
+                                            value={customRepeat.freq}
+                                            onChange={(e) =>
+                                                updateCustomRepeat({ freq: e.target.value as RecurrenceFreq })
+                                            }
+                                        >
+                                            {(Object.keys(FREQ_UNITS) as RecurrenceFreq[]).map((f) => (
+                                                <option key={f} value={f}>
+                                                    {FREQ_UNITS[f]}
+                                                    {customRepeat.interval === "1" ? "" : "s"}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
-                            )}
-                        </div>
-                    ))}
+
+                                {customRepeat.freq === "WEEKLY" && (
+                                    <div className="nep-weekdays">
+                                        {WEEKDAYS.map((day) => (
+                                            <button
+                                                key={day}
+                                                type="button"
+                                                title={weekdayShort(day)}
+                                                className={`nep-chip nep-weekday${customRepeat.byday.includes(day) ? " nep-chip-active" : ""}`}
+                                                onClick={() => toggleWeekday(day)}
+                                            >
+                                                {weekdayShort(day).slice(0, 2)}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div className="nep-repeat-line">
+                                    <span className="nep-repeat-text">Ends</span>
+                                    <div className="nep-chips">
+                                        {(["never", "until", "count"] as const).map((t) => (
+                                            <button
+                                                key={t}
+                                                type="button"
+                                                className={`nep-chip${customRepeat.endType === t ? " nep-chip-active" : ""}`}
+                                                onClick={() => updateCustomRepeat({ endType: t })}
+                                            >
+                                                {t === "never" ? "Never" : t === "until" ? "On date" : "After"}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {customRepeat.endType === "until" && (
+                                    <input
+                                        className="nep-input"
+                                        type="date"
+                                        min={toDateInput(repeatStart)}
+                                        max={toDateInput(maxUntilDate(repeatStart))}
+                                        value={customRepeat.until}
+                                        onChange={(e) => updateCustomRepeat({ until: e.target.value })}
+                                    />
+                                )}
+                                {customRepeat.endType === "count" && (
+                                    <div className="nep-repeat-line">
+                                        <input
+                                            className="nep-input nep-input-narrow"
+                                            type="number"
+                                            min={1}
+                                            max={MAX_COUNT}
+                                            value={customRepeat.count}
+                                            onChange={(e) => updateCustomRepeat({ count: e.target.value })}
+                                        />
+                                        <span className="nep-repeat-text">
+                                            occurrence{customRepeat.count === "1" ? "" : "s"}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
                 </div>
 
                 <div className="nep-bottom-row">
-                    {onDelete && <button type="button" className="nep-btn-delete" onClick={onDelete}>
-                        <Trash2 size={20}/>
-                    </button>}
+                    {onDelete && (
+                        <button type="button" className="nep-btn-delete" onClick={onDelete}>
+                            <Trash2 size={20} />
+                        </button>
+                    )}
                     <div />
                     <div className="nep-actions">
                         <button type="button" className="nep-btn nep-btn-secondary" onClick={onClose}>

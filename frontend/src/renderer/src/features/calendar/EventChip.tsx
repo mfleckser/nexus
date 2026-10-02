@@ -1,11 +1,11 @@
 import { useEvents } from "@renderer/features/calendar/useEvents";
 import { useEffect, useRef, useState } from "react";
 import { Repeat } from "lucide-react";
-import { Event, NewEventDraft, RecurrenceScope } from "@renderer/types";
+import { CalendarEvent, NewEventDraft, RecurrenceScope } from "@renderer/types";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import RecurrenceScopePrompt from "@renderer/components/RecurrenceScopePrompt";
-import categoryData from "./categories.json"
+import categoryData from "./categories.json";
 import { browserTimeZone, formatTime as fmtTime } from "@renderer/lib/time";
 import { describeRrule, sameRrule } from "@renderer/lib/rrule";
 
@@ -18,16 +18,16 @@ const MIN_DURATION = 30;
 
 // A mutation of a recurring occurrence waiting on the scope prompt.
 type PendingScope =
-    | { action: "edit", data: Record<string, unknown>, scopes?: RecurrenceScope[] }
+    | { action: "edit"; data: Record<string, unknown>; scopes?: RecurrenceScope[] }
     | { action: "delete" };
 
 type EventChipProps = {
-    event: Event,
-    cols: number,
-    colIdx: number
+    event: CalendarEvent;
+    cols: number;
+    colIdx: number;
 };
 
-function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element {
+function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
     const chipRef = useRef<HTMLDivElement>(null);
     const parentRectRef = useRef<DOMRect | null>(null);
     const grabOffsetRef = useRef({ x: 0, y: 0 });
@@ -43,12 +43,12 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
     // Dropped/resized times of a recurring occurrence, shown while the scope
     // prompt is open. Nothing is committed until a scope is chosen; Cancel
     // just clears this and the chip falls back to `event`.
-    const [preview, setPreview] = useState<{ start: Date, end: Date } | null>(null);
+    const [preview, setPreview] = useState<{ start: Date; end: Date } | null>(null);
     const [pendingScope, setPendingScope] = useState<PendingScope | null>(null);
     const [showPopover, setShowPopover] = useState(false);
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
-    const {updateEvent, deleteEvent} = useEvents();
+    const { updateEvent, deleteEvent } = useEvents();
 
     const shownStart = preview?.start ?? event.start_at;
     const shownEnd = preview?.end ?? event.end_at;
@@ -133,13 +133,13 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
         // edits. "This event" can't change a rule (the backend ignores rrule
         // for it), so rule changes only offer series scopes.
         requestUpdate(data, rruleChanged ? ["following", "all"] : undefined);
-    }
+    };
 
     const handlePopoverDelete = (): void => {
         // For an occurrence the scope prompt is the confirmation.
         if (isOccurrence) setPendingScope({ action: "delete" });
         else setShowConfirmDelete(true);
-    }
+    };
 
     function movedPastThreshold(e: MouseEvent): boolean {
         return Math.hypot(e.clientX - pressPosRef.current.x, e.clientY - pressPosRef.current.y) > DRAG_THRESHOLD;
@@ -166,9 +166,9 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
         setDragging(true);
     }
 
-    function snapTime(hour: number): {hour: number, minute: number} {
+    function snapTime(hour: number): { hour: number; minute: number } {
         const roundedHour = Math.round(2 * hour) / 2;
-        return {hour: roundedHour, minute: 60 * (roundedHour % 1)};
+        return { hour: roundedHour, minute: 60 * (roundedHour % 1) };
     }
 
     function onMouseUp(e: MouseEvent): void {
@@ -181,15 +181,12 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
         // New Date objects: `event` is shared state and must stay untouched
         // until the change is committed (Cancel on the scope prompt reverts to it).
         const start = new Date(event.start_at);
-        const newDayIdx = Math.min(6, Math.max(0, Math.floor(7 * (e.clientX - parentRect.left) / parentRect.width)));
+        const newDayIdx = Math.min(6, Math.max(0, Math.floor((7 * (e.clientX - parentRect.left)) / parentRect.width)));
         start.setDate(start.getDate() + newDayIdx - dayIdx);
-        const roundedTime = snapTime(24 * (e.clientY - parentRect.top - grabOffsetRef.current.y) / parentRect.height);
+        const roundedTime = snapTime((24 * (e.clientY - parentRect.top - grabOffsetRef.current.y)) / parentRect.height);
         // Keep the drop inside the target day (dropping above/below the grid
         // would otherwise roll into the neighbouring day).
-        const startMins = Math.min(
-            Math.max(0, 60 * roundedTime.hour),
-            Math.max(0, 24 * 60 - duration),
-        );
+        const startMins = Math.min(Math.max(0, 60 * roundedTime.hour), Math.max(0, 24 * 60 - duration));
         start.setHours(0, startMins, 0, 0);
         commitTimes(start, new Date(start.getTime() + duration * 1000 * 60));
     }
@@ -254,15 +251,15 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
         return () => {
             window.removeEventListener("mousemove", onMove);
             window.removeEventListener("mouseup", durationMouseUp);
-        }
+        };
     }, [adjustingDuration]);
 
-    const color = event.category ? categoryData.filter(v => v.name === event.category)[0].color : "#8a8a99";
+    const color = event.category ? categoryData.filter((v) => v.name === event.category)[0].color : "#8a8a99";
 
     const style = {
-        width: `${(100 / 7) / (dragging ? 1 : cols)}%`,
+        width: `${100 / 7 / (dragging ? 1 : cols)}%`,
         height: duration * PX_PER_MIN,
-        left: dragging && dragPos ? dragPos.left : `${(dayIdx + colIdx / cols) * 100 / 7}%`,
+        left: dragging && dragPos ? dragPos.left : `${((dayIdx + colIdx / cols) * 100) / 7}%`,
         top: dragging && dragPos ? dragPos.top : baseTop,
         "--chip-background": color,
     };
@@ -283,7 +280,10 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
                     }
                     setShowPopover(true);
                 }}
-                onContextMenu={(e) => {e.stopPropagation(); alert("HI")}}
+                onContextMenu={(e) => {
+                    e.stopPropagation();
+                    alert("HI");
+                }}
                 style={style}
             >
                 <div className="event-chip-title">
@@ -294,43 +294,62 @@ function EventChip({ event, cols, colIdx } : EventChipProps): React.JSX.Element 
                         </Repeat>
                     )}
                 </div>
-                <div className="event-chip-time">{fmtTime(shownStart)} – {fmtTime(shownEnd)}</div>
+                <div className="event-chip-time">
+                    {fmtTime(shownStart)} – {fmtTime(shownEnd)}
+                </div>
                 <div className="event-chip-duration-adjuster" onMouseDown={durationMouseDown}></div>
             </div>
             {/* Inert behind the scope prompt: its form must not be edited or
                 submitted while a pending change is waiting on a scope. */}
-            {showPopover && <div inert={pendingScope !== null}>
-                <NewEventPopover
-                    anchor={{x: (rect?.right || 0) + POPOVER_GAP, y: rect?.top || 0, flipX: (rect?.left || 0) - POPOVER_GAP}}
-                    initialStart={event.start_at}
-                    initialDuration={duration}
-                    initialTitle={event.title}
-                    initialDescription={event.description || ""}
-                    initialCategory={event.category || ""}
-                    initialRrule={event.rrule}
-                    onSave={handlePopoverSave}
-                    onClose={() => {setShowPopover(false)}}
-                    onDelete={handlePopoverDelete}
-                    setEventDraft={(_) => {}}
+            {showPopover && (
+                <div inert={pendingScope !== null}>
+                    <NewEventPopover
+                        anchor={{
+                            x: (rect?.right || 0) + POPOVER_GAP,
+                            y: rect?.top || 0,
+                            flipX: (rect?.left || 0) - POPOVER_GAP,
+                        }}
+                        initialStart={event.start_at}
+                        initialDuration={duration}
+                        initialTitle={event.title}
+                        initialDescription={event.description || ""}
+                        initialCategory={event.category || ""}
+                        initialRrule={event.rrule}
+                        onSave={handlePopoverSave}
+                        onClose={() => {
+                            setShowPopover(false);
+                        }}
+                        onDelete={handlePopoverDelete}
+                        setEventDraft={(_) => {}}
+                    />
+                </div>
+            )}
+            {showConfirmDelete && (
+                <ConfirmDelete
+                    onClose={() => {
+                        setShowConfirmDelete(false);
+                    }}
+                    onDelete={() => {
+                        deleteEvent(event).catch(console.error);
+                        setShowConfirmDelete(false);
+                    }}
+                    itemName="event"
                 />
-            </div>}
-            {showConfirmDelete && <ConfirmDelete
-                onClose={() => {setShowConfirmDelete(false)}}
-                onDelete={() => {deleteEvent(event).catch(console.error); setShowConfirmDelete(false)}}
-                itemName="event"
-            />}
-            {pendingScope && <RecurrenceScopePrompt
-                action={pendingScope.action}
-                scopes={pendingScope.action === "edit" ? pendingScope.scopes : undefined}
-                onCancel={cancelScope}
-                onConfirm={confirmScope}
-            />}
+            )}
+            {pendingScope && (
+                <RecurrenceScopePrompt
+                    action={pendingScope.action}
+                    scopes={pendingScope.action === "edit" ? pendingScope.scopes : undefined}
+                    onCancel={cancelScope}
+                    onConfirm={confirmScope}
+                />
+            )}
         </div>
-    )
+    );
 }
 
-function EventDraftChip({ draft } : { draft: NewEventDraft }) {
-    const [event, setEvent] = useState<Event>({
+function EventDraftChip({ draft }: { draft: NewEventDraft }) {
+    const [event, setEvent] = useState<CalendarEvent>({
         id: "DRAFT",
         created_at: new Date(),
         updated_at: new Date(),
@@ -343,19 +362,21 @@ function EventDraftChip({ draft } : { draft: NewEventDraft }) {
         timezone: browserTimeZone(),
         rrule: draft.rrule ?? null,
         recurring_event_id: null,
-        original_start_at: null
+        original_start_at: null,
     });
 
     useEffect(() => {
-        setEvent(prev => ({...prev,
+        setEvent((prev) => ({
+            ...prev,
             title: draft.title,
             description: draft.description,
             start_at: draft.start_at,
-            end_at: new Date(draft.start_at.getTime() + draft.duration * 1000 * 60)}));
-    }, [draft])
+            end_at: new Date(draft.start_at.getTime() + draft.duration * 1000 * 60),
+        }));
+    }, [draft]);
 
-    return <EventChip event={event} cols={1} colIdx={0} />
+    return <EventChip event={event} cols={1} colIdx={0} />;
 }
 
 export default EventChip;
-export {EventDraftChip}
+export { EventDraftChip };

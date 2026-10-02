@@ -81,7 +81,10 @@
     font-size: 14px;
     font-weight: 500;
     font-family: inherit;
-    transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+    transition:
+        background-color 0.1s,
+        border-color 0.1s,
+        color 0.1s;
 }
 
 .nep-category-option:hover {
@@ -156,7 +159,10 @@
     font-weight: 500;
     padding: 4px 12px;
     cursor: pointer;
-    transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+    transition:
+        background-color 0.1s,
+        border-color 0.1s,
+        color 0.1s;
 }
 
 .nep-chip:hover {
@@ -201,7 +207,9 @@
     appearance: none;
     -webkit-appearance: none;
     text-overflow: ellipsis;
-    transition: background-color 0.1s, border-color 0.1s;
+    transition:
+        background-color 0.1s,
+        border-color 0.1s;
 }
 
 .nep-select:hover {
@@ -307,7 +315,7 @@
     color: var(--status-danger);
     padding: 0 10px;
     cursor: pointer;
- }
+}
 
 .nep-btn-delete:hover {
     border-radius: var(--radius-md);
@@ -321,7 +329,10 @@
     font-weight: 500;
     padding: 6px 14px;
     cursor: pointer;
-    transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+    transition:
+        background-color 0.1s,
+        border-color 0.1s,
+        color 0.1s;
 }
 
 .nep-btn-secondary {

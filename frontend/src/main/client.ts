@@ -1,34 +1,55 @@
-import axios from "axios";
+import axios, { AxiosError, Method } from "axios";
+import type { ApiResult } from "../shared/ipc";
+
+const BASE_URL = "http://127.0.0.1:5000/api";
 
 const client = axios.create({
-    baseURL: "http://127.0.0.1:5000/api",
+    baseURL: BASE_URL,
     timeout: 5000,
+    // Paths always resolve against baseURL; an absolute URL from the renderer
+    // must never redirect the request elsewhere.
+    allowAbsoluteUrls: false,
 });
 
-
-async function health() {
-    const res = await client.get("/health");
-    return res.data;
+// API paths are backend-relative ("/tasks", "/events/<id>?scope=all").
+function isApiPath(path: unknown): path is string {
+    return typeof path === "string" && path.startsWith("/") && !path.startsWith("//") && !path.includes("\\");
 }
 
-async function apiGet(path: string) {
-    const res = await client.get(path);
-    return res.data;
+// Backend errors are JSON `{"error": "<message>"}`; fall back to the status line.
+function errorResult(err: unknown): ApiResult {
+    if (err instanceof AxiosError) {
+        if (err.response) {
+            const body: unknown = err.response.data;
+            const backendMessage =
+                body && typeof body === "object" && "error" in body && typeof body.error === "string"
+                    ? body.error
+                    : null;
+            const status = err.response.status;
+            return {
+                ok: false,
+                status,
+                message:
+                    backendMessage ??
+                    `Request failed (${status}${err.response.statusText ? ` ${err.response.statusText}` : ""})`,
+            };
+        }
+        if (err.code === AxiosError.ECONNABORTED || err.code === AxiosError.ETIMEDOUT) {
+            return { ok: false, status: null, message: "The backend took too long to respond" };
+        }
+        return { ok: false, status: null, message: `Can't reach the backend at ${BASE_URL}` };
+    }
+    return { ok: false, status: null, message: err instanceof Error ? err.message : String(err) };
 }
 
-async function apiPost(path: string, body: any) {
-    const res = await client.post(path, body);
-    return res.data;
+export async function apiRequest(method: Method, path: unknown, body?: unknown): Promise<ApiResult> {
+    if (!isApiPath(path)) {
+        return { ok: false, status: null, message: `Invalid API path: ${String(path)}` };
+    }
+    try {
+        const res = await client.request({ method, url: path, data: body });
+        return { ok: true, data: res.data };
+    } catch (err) {
+        return errorResult(err);
+    }
 }
-
-async function apiPut(path: string, body: any) {
-    const res = await client.put(path, body);
-    return res.data;
-}
-
-async function apiDelete(path: string) {
-    const res = await client.delete(path);
-    return res.data;
-}
-
-export { client, health, apiGet, apiPost, apiPut, apiDelete }

@@ -1,4 +1,4 @@
-import "./ConfirmDelete.css";
+import "./confirmDelete.css";
 import Modal from "./Modal";
 
 type ConfirmDeleteProps = {
@@ -7,12 +7,10 @@ type ConfirmDeleteProps = {
     itemName: string;
 };
 
-export default function ConfirmDelete({ onClose, onDelete, itemName } : ConfirmDeleteProps) {
+export default function ConfirmDelete({ onClose, onDelete, itemName }: ConfirmDeleteProps) {
     return (
         <Modal onClose={onClose} title={`Delete ${itemName}?`}>
-            <div className="cd-subtext">
-                This {itemName} will be permanently removed. This can&apos;t be undone.
-            </div>
+            <div className="cd-subtext">This {itemName} will be permanently removed. This can&apos;t be undone.</div>
             <div className="cd-btns">
                 <button type="button" className="cd-btn cd-btn-cancel" onClick={onClose}>
                     Cancel

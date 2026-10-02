@@ -1,8 +1,8 @@
-import "./taskview.css"
-import { useTasks } from "@renderer/features/tasks/useTasks"
-import { useProjects } from "@renderer/features/projects/useProjects"
+import "./taskView.css";
+import { useTasks } from "@renderer/features/tasks/useTasks";
+import { useProjects } from "@renderer/features/projects/useProjects";
 import { useEffect, useState } from "react";
-import { Task } from "@renderer/types";
+import { Task, TaskStatus } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";
 import TaskForm from "@renderer/components/TaskForm";
 import { formatDueDisplay, toDatetimeLocal } from "@renderer/lib/time";
@@ -11,7 +11,7 @@ type TaskRowProps = {
     task: Task;
     expanded: boolean;
     onToggle: () => void;
-    onStatusChange: (status: string) => void;
+    onStatusChange: (status: TaskStatus) => void;
     onSave: (data: { title: string; description: string | null; due_at: string | null }) => void;
     onDelete: () => void;
 };
@@ -114,7 +114,13 @@ type TaskGroupProps = {
     startClosed?: boolean;
 };
 
-function TaskGroup({ name, filterFunc, expandedId, setExpandedId, startClosed = false }: TaskGroupProps): React.JSX.Element {
+function TaskGroup({
+    name,
+    filterFunc,
+    expandedId,
+    setExpandedId,
+    startClosed = false,
+}: TaskGroupProps): React.JSX.Element {
     const { tasks, updateTask, deleteTask } = useTasks();
     const [showTasks, setShowTasks] = useState(!startClosed);
 
@@ -126,7 +132,7 @@ function TaskGroup({ name, filterFunc, expandedId, setExpandedId, startClosed = 
                 type="button"
                 className="task-group-toggle"
                 aria-expanded={showTasks}
-                onClick={() => setShowTasks(prev => !prev)}
+                onClick={() => setShowTasks((prev) => !prev)}
             >
                 <span className="task-group-caret" aria-hidden />
                 <span className="task-group-name">{name}</span>
@@ -134,7 +140,7 @@ function TaskGroup({ name, filterFunc, expandedId, setExpandedId, startClosed = 
             </button>
             {showTasks && (
                 <div className="task-group-list">
-                    {filtered.map(t => (
+                    {filtered.map((t) => (
                         <TaskRow
                             key={t.id}
                             task={t}
@@ -148,13 +154,11 @@ function TaskGroup({ name, filterFunc, expandedId, setExpandedId, startClosed = 
                             }}
                         />
                     ))}
-                    {filtered.length === 0 && (
-                        <div className="task-group-empty">No tasks</div>
-                    )}
+                    {filtered.length === 0 && <div className="task-group-empty">No tasks</div>}
                 </div>
             )}
         </div>
-    )
+    );
 }
 
 function TaskView(): React.JSX.Element {
@@ -164,16 +168,18 @@ function TaskView(): React.JSX.Element {
     const now = useNow();
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
-    const hiddenProjectIds = new Set(projects.filter(p => !p.show_tasks_in_main_view).map(p => p.id));
+    const hiddenProjectIds = new Set(projects.filter((p) => !p.show_tasks_in_main_view).map((p) => p.id));
     const visible = (t: Task) => t.project_id === null || !hiddenProjectIds.has(t.project_id);
 
     const getDaysDiff = (task: Task) => {
         if (task.due_at === null) return 0;
-        const today = new Date(now); today.setHours(0, 0, 0, 0);
-        const due = new Date(task.due_at); due.setHours(0, 0, 0, 0);
+        const today = new Date(now);
+        today.setHours(0, 0, 0, 0);
+        const due = new Date(task.due_at);
+        due.setHours(0, 0, 0, 0);
         const diff = (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
         return diff;
-    }
+    };
 
     return (
         <div id="task-container">
@@ -201,33 +207,39 @@ function TaskView(): React.JSX.Element {
                 <div className="task-list themed-scroll">
                     <TaskGroup
                         name="Overdue"
-                        filterFunc={t => visible(t) && t.due_at !== null && getDaysDiff(t) < 0 && t.status !== "complete"}
+                        filterFunc={(t) =>
+                            visible(t) && t.due_at !== null && getDaysDiff(t) < 0 && t.status !== "complete"
+                        }
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                     />
                     <TaskGroup
                         name="Today"
-                        filterFunc={t => visible(t) && t.due_at !== null && getDaysDiff(t) === 0}
+                        filterFunc={(t) => visible(t) && t.due_at !== null && getDaysDiff(t) === 0}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                     />
                     <TaskGroup
                         name="This Week"
-                        filterFunc={t => {if (!visible(t) || t.due_at === null) return false; const diff = getDaysDiff(t); return diff >= 1 && diff <= 7;}}
+                        filterFunc={(t) => {
+                            if (!visible(t) || t.due_at === null) return false;
+                            const diff = getDaysDiff(t);
+                            return diff >= 1 && diff <= 7;
+                        }}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                         startClosed
                     />
                     <TaskGroup
                         name="Future"
-                        filterFunc={t => visible(t) && getDaysDiff(t) > 7}
+                        filterFunc={(t) => visible(t) && getDaysDiff(t) > 7}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                         startClosed
                     />
                     <TaskGroup
                         name="No Due Date"
-                        filterFunc={t => visible(t) && t.due_at === null && t.status != "complete"}
+                        filterFunc={(t) => visible(t) && t.due_at === null && t.status != "complete"}
                         expandedId={expandedId}
                         setExpandedId={setExpandedId}
                     />
@@ -237,4 +249,4 @@ function TaskView(): React.JSX.Element {
     );
 }
 
-export default TaskView
+export default TaskView;

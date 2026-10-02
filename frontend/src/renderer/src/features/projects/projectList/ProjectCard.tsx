@@ -2,8 +2,7 @@ import { Project } from "@renderer/types";
 import "./projectCard.css";
 import { Link } from "react-router-dom";
 
-const formatDate = (d: Date) =>
-    d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+const formatDate = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
 type ProjectCardProps = {
     project: Project;

@@ -29,10 +29,22 @@ export const MAX_COUNT = 1000; // backend limit
 
 const JS_DAY_TO_WEEKDAY: Weekday[] = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 const DAY_SHORT: Record<Weekday, string> = {
-    MO: "Mon", TU: "Tue", WE: "Wed", TH: "Thu", FR: "Fri", SA: "Sat", SU: "Sun",
+    MO: "Mon",
+    TU: "Tue",
+    WE: "Wed",
+    TH: "Thu",
+    FR: "Fri",
+    SA: "Sat",
+    SU: "Sun",
 };
 const DAY_LONG: Record<Weekday, string> = {
-    MO: "Monday", TU: "Tuesday", WE: "Wednesday", TH: "Thursday", FR: "Friday", SA: "Saturday", SU: "Sunday",
+    MO: "Monday",
+    TU: "Tuesday",
+    WE: "Wednesday",
+    TH: "Thursday",
+    FR: "Friday",
+    SA: "Saturday",
+    SU: "Sunday",
 };
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const FREQS: RecurrenceFreq[] = ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"];
@@ -43,11 +55,9 @@ export const weekdayShort = (w: Weekday): string => DAY_SHORT[w];
 
 const pad = (n: number): string => String(n).padStart(2, "0");
 
-const sortWeekdays = (days: Weekday[]): Weekday[] =>
-    WEEKDAYS.filter(w => days.includes(w));
+const sortWeekdays = (days: Weekday[]): Weekday[] => WEEKDAYS.filter((w) => days.includes(w));
 
-const sameDays = (a: Weekday[], b: Weekday[]): boolean =>
-    a.length === b.length && a.every(d => b.includes(d));
+const sameDays = (a: Weekday[], b: Weekday[]): boolean => a.length === b.length && a.every((d) => b.includes(d));
 
 const isWeekday = (v: string): v is Weekday => (WEEKDAYS as string[]).includes(v);
 const isFreq = (v: string | undefined): v is RecurrenceFreq => !!v && (FREQS as string[]).includes(v);
@@ -61,8 +71,10 @@ function parsePositiveInt(v: string): number | null {
 // End of the chosen local day (23:59:59 local) as UTC basic format.
 function formatUntil(date: Date): string {
     const end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59);
-    return `${end.getUTCFullYear()}${pad(end.getUTCMonth() + 1)}${pad(end.getUTCDate())}` +
-        `T${pad(end.getUTCHours())}${pad(end.getUTCMinutes())}${pad(end.getUTCSeconds())}Z`;
+    return (
+        `${end.getUTCFullYear()}${pad(end.getUTCMonth() + 1)}${pad(end.getUTCDate())}` +
+        `T${pad(end.getUTCHours())}${pad(end.getUTCMinutes())}${pad(end.getUTCSeconds())}Z`
+    );
 }
 
 // UNTIL (date, floating local, or UTC Z form) → the last local calendar day
@@ -197,12 +209,18 @@ export function sameRrule(a: string | null, b: string | null, start: Date): bool
 export function presetRecurrence(preset: RepeatPreset, start: Date): Recurrence | null {
     const never: RecurrenceEnd = { type: "never" };
     switch (preset) {
-        case "none": return null;
-        case "daily": return { freq: "DAILY", interval: 1, byday: [], end: never };
-        case "weekdays": return { freq: "WEEKLY", interval: 1, byday: [...WORKDAYS], end: never };
-        case "weekly": return { freq: "WEEKLY", interval: 1, byday: [weekdayOf(start)], end: never };
-        case "monthly": return { freq: "MONTHLY", interval: 1, byday: [], end: never };
-        case "yearly": return { freq: "YEARLY", interval: 1, byday: [], end: never };
+        case "none":
+            return null;
+        case "daily":
+            return { freq: "DAILY", interval: 1, byday: [], end: never };
+        case "weekdays":
+            return { freq: "WEEKLY", interval: 1, byday: [...WORKDAYS], end: never };
+        case "weekly":
+            return { freq: "WEEKLY", interval: 1, byday: [weekdayOf(start)], end: never };
+        case "monthly":
+            return { freq: "MONTHLY", interval: 1, byday: [], end: never };
+        case "yearly":
+            return { freq: "YEARLY", interval: 1, byday: [], end: never };
     }
 }
 
@@ -210,9 +228,12 @@ export function presetRecurrence(preset: RepeatPreset, start: Date): Recurrence 
 export function matchPreset(rec: Recurrence, start: Date): RepeatPreset | null {
     if (rec.interval !== 1 || rec.end.type !== "never") return null;
     switch (rec.freq) {
-        case "DAILY": return "daily";
-        case "MONTHLY": return "monthly";
-        case "YEARLY": return "yearly";
+        case "DAILY":
+            return "daily";
+        case "MONTHLY":
+            return "monthly";
+        case "YEARLY":
+            return "yearly";
         case "WEEKLY":
             if (sameDays(rec.byday, WORKDAYS)) return "weekdays";
             if (sameDays(rec.byday, [weekdayOf(start)])) return "weekly";
@@ -223,17 +244,23 @@ export function matchPreset(rec: Recurrence, start: Date): RepeatPreset | null {
 const monthDayLabel = (d: Date): string => `${MONTH_SHORT[d.getMonth()]} ${d.getDate()}`;
 
 // RFC 5545 skips months/years where the day doesn't exist (no clamping).
-const monthlySkipHint = (d: Date): string => d.getDate() >= 29 ? " (skips shorter months)" : "";
-const yearlySkipHint = (d: Date): string => d.getMonth() === 1 && d.getDate() === 29 ? " (leap years only)" : "";
+const monthlySkipHint = (d: Date): string => (d.getDate() >= 29 ? " (skips shorter months)" : "");
+const yearlySkipHint = (d: Date): string => (d.getMonth() === 1 && d.getDate() === 29 ? " (leap years only)" : "");
 
 export function presetLabel(preset: RepeatPreset, start: Date): string {
     switch (preset) {
-        case "none": return "Does not repeat";
-        case "daily": return "Daily";
-        case "weekdays": return "Every weekday (Mon–Fri)";
-        case "weekly": return `Weekly on ${DAY_LONG[weekdayOf(start)]}`;
-        case "monthly": return `Monthly on day ${start.getDate()}${monthlySkipHint(start)}`;
-        case "yearly": return `Yearly on ${monthDayLabel(start)}${yearlySkipHint(start)}`;
+        case "none":
+            return "Does not repeat";
+        case "daily":
+            return "Daily";
+        case "weekdays":
+            return "Every weekday (Mon–Fri)";
+        case "weekly":
+            return `Weekly on ${DAY_LONG[weekdayOf(start)]}`;
+        case "monthly":
+            return `Monthly on day ${start.getDate()}${monthlySkipHint(start)}`;
+        case "yearly":
+            return `Yearly on ${monthDayLabel(start)}${yearlySkipHint(start)}`;
     }
 }
 
@@ -247,17 +274,19 @@ export function describeRecurrence(rec: Recurrence, start: Date): string {
         case "WEEKLY": {
             const days = rec.byday.length ? sortWeekdays(rec.byday) : [weekdayOf(start)];
             // One day spelled out, matching the preset label ("Weekly on Monday").
-            const list = days.length === 1 ? DAY_LONG[days[0]] : days.map(d => DAY_SHORT[d]).join(", ");
+            const list = days.length === 1 ? DAY_LONG[days[0]] : days.map((d) => DAY_SHORT[d]).join(", ");
             if (n === 1 && sameDays(days, WORKDAYS)) base = "Every weekday";
             else base = n === 1 ? `Weekly on ${list}` : `Every ${n} weeks on ${list}`;
             break;
         }
         case "MONTHLY":
-            base = (n === 1 ? `Monthly on day ${start.getDate()}` : `Every ${n} months on day ${start.getDate()}`) +
+            base =
+                (n === 1 ? `Monthly on day ${start.getDate()}` : `Every ${n} months on day ${start.getDate()}`) +
                 monthlySkipHint(start);
             break;
         case "YEARLY":
-            base = (n === 1 ? `Yearly on ${monthDayLabel(start)}` : `Every ${n} years on ${monthDayLabel(start)}`) +
+            base =
+                (n === 1 ? `Yearly on ${monthDayLabel(start)}` : `Every ${n} years on ${monthDayLabel(start)}`) +
                 yearlySkipHint(start);
             break;
     }

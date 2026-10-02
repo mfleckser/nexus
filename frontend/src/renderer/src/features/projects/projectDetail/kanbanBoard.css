@@ -114,7 +114,10 @@
     color: var(--text-muted);
     cursor: pointer;
     opacity: 0;
-    transition: background-color 0.1s, color 0.1s, opacity 0.1s;
+    transition:
+        background-color 0.1s,
+        color 0.1s,
+        opacity 0.1s;
 }
 
 .kb-feature-label:hover .kb-feature-menu-btn {
@@ -161,7 +164,9 @@
     text-align: left;
     color: var(--text-primary);
     cursor: pointer;
-    transition: background-color 0.1s, color 0.1s;
+    transition:
+        background-color 0.1s,
+        color 0.1s;
 }
 
 .kb-feature-menu button:hover {
@@ -201,7 +206,9 @@
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.1s, color 0.1s;
+    transition:
+        background-color 0.1s,
+        color 0.1s;
 }
 
 .kb-add-task-btn:hover {
@@ -269,7 +276,9 @@
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.1s, color 0.1s;
+    transition:
+        background-color 0.1s,
+        color 0.1s;
 }
 
 .kb-add-feature-btn:hover {
@@ -319,7 +328,10 @@
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.1s, color 0.1s, border-color 0.1s;
+    transition:
+        background-color 0.1s,
+        color 0.1s,
+        border-color 0.1s;
 }
 
 .kb-feature-btn-primary {
