@@ -1,56 +1,59 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify
 
 from app.services.project_service import (
-    get_all_projects,
-    get_project_notes,
-    create_project,
-    update_project,
-    delete_project,
-    get_project_features,
     create_feature,
-    delete_feature
+    create_project,
+    delete_feature,
+    delete_project,
+    get_all_projects,
+    get_project_features,
+    get_project_notes,
+    update_project,
 )
+from app.validation import json_body
 
 projects_bp = Blueprint("projects", __name__)
 
+
 @projects_bp.route("/projects", methods=["GET"])
-def list():
+def list_projects():
     return get_all_projects()
+
 
 @projects_bp.route("/projects", methods=["POST"])
 def create():
-    data = request.json
-
-    project = create_project(data)
+    project = create_project(json_body())
 
     return jsonify(project), 201
 
-@projects_bp.route("/projects/<id>/notes", methods=["GET"])
-def get_notes(id):
-    return get_project_notes(id)
 
-@projects_bp.route("/projects/<id>", methods=["PUT"])
-def update(id):
-    data = request.json
+@projects_bp.route("/projects/<project_id>/notes", methods=["GET"])
+def get_notes(project_id):
+    return get_project_notes(project_id)
 
-    return update_project(id, data)
 
-@projects_bp.route("/projects/<id>", methods=["DELETE"])
-def delete(id):
-    return delete_project(id)
+@projects_bp.route("/projects/<project_id>", methods=["PUT"])
+def update(project_id):
+    return update_project(project_id, json_body())
 
-@projects_bp.route("/projects/<id>/features", methods=["GET"])
-def list_f(id):
-    return get_project_features(id)
 
-@projects_bp.route("/projects/<id>/features", methods=["POST"])
-def create_f(id):
-    data = request.json
+@projects_bp.route("/projects/<project_id>", methods=["DELETE"])
+def delete(project_id):
+    return delete_project(project_id)
 
-    feature = create_feature(id, data)
+
+@projects_bp.route("/projects/<project_id>/features", methods=["GET"])
+def list_features(project_id):
+    return get_project_features(project_id)
+
+
+@projects_bp.route("/projects/<project_id>/features", methods=["POST"])
+def add_feature(project_id):
+    feature = create_feature(project_id, json_body())
 
     return jsonify(feature), 201
 
-@projects_bp.route("/features/<id>", methods=["DELETE"])
-def delete_f(id):
-    return delete_feature(id)
+
+@projects_bp.route("/features/<feature_id>", methods=["DELETE"])
+def remove_feature(feature_id):
+    return delete_feature(feature_id)

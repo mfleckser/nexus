@@ -1,9 +1,12 @@
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
 from functools import wraps
 
-from app.extensions.supabase import supabase
+from app import validation as v
+from app.errors import ValidationError, first_row
 from app.extensions.cache import cache
+from app.extensions.supabase import supabase
 from app.services import recurrence as rr
+from app.validation import parse_instant
 
 EVENT_FIELDS = ["title", "description", "start_at", "end_at", "all_day", "category", "timezone"]
 # Non-time fields a master shares with its overrides / split-off series.
@@ -11,24 +14,24 @@ DETAIL_FIELDS = ["title", "description", "category", "all_day"]
 SCOPES = ("this", "following", "all")
 
 
-class NotFound(LookupError):
-    pass
-
-
-def parse_instant(value: str) -> datetime:
-    """Parse an ISO-8601 instant and normalize to UTC, so that two spellings of
-    the same moment share one memoize entry. Raises ValueError if unparseable."""
-    dt = datetime.fromisoformat(value)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=dt_timezone.utc)
-    return dt.astimezone(dt_timezone.utc)
-
-
 def _iso(dt):
     return dt.isoformat() if dt else None
 
 
+def _validate(data: dict):
+    """Type checks for the event fields present in a request body."""
+    v.check_title(data)
+    v.check_text(data, "description")
+    v.check_text(data, "category")
+    v.check_bool(data, "all_day")
+    v.check_instant(data, "start_at", nullable=False)
+    v.check_instant(data, "end_at", nullable=False)
+    v.check_timezone(data)
+    v.check_text(data, "rrule")  # semantics checked by rr.normalize_rrule
+
+
 # ---- reads ---------------------------------------------------------------
+
 
 @cache.memoize()
 def get_events(start: str, end: str):
@@ -38,12 +41,7 @@ def get_events(start: str, end: str):
     start_dt, end_dt = parse_instant(start), parse_instant(end)
 
     plain = (
-        supabase.table("events")
-        .select("*")
-        .is_("rrule", "null")
-        .lt("start_at", end)
-        .gt("end_at", start)
-        .execute()
+        supabase.table("events").select("*").is_("rrule", "null").lt("start_at", end).gt("end_at", start).execute()
     ).data
 
     masters = (
@@ -72,8 +70,13 @@ def get_events(start: str, end: str):
     for m in masters:
         excluded = overridden.get(m["id"], set()) | {parse_instant(x) for x in m["exdates"] or []}
         occurrences = rr.expand(
-            m["rrule"], parse_instant(m["start_at"]), parse_instant(m["end_at"]), m["timezone"],
-            start_dt, end_dt, excluded,
+            m["rrule"],
+            parse_instant(m["start_at"]),
+            parse_instant(m["end_at"]),
+            m["timezone"],
+            start_dt,
+            end_dt,
+            excluded,
         )
         events.extend(_instance(m, occ_start, occ_end) for occ_start, occ_end in occurrences)
 
@@ -106,14 +109,12 @@ def _instance(master: dict, start: datetime, end: datetime) -> dict:
 
 def _get_event(event_id: str) -> dict:
     res = supabase.table("events").select("*").eq("id", event_id).execute()
-    if not res.data:
-        raise NotFound(f"event {event_id} not found")
-    return res.data[0]
+    return first_row(res.data, f"event {event_id}")
 
 
 def _check_order(start: datetime, end: datetime):
     if end <= start:
-        raise ValueError("end_at must be after start_at")
+        raise ValidationError("end_at must be after start_at")
 
 
 def _series_fields(body: str, start: datetime, end: datetime, tz: str) -> dict:
@@ -133,49 +134,51 @@ def _series_fields(body: str, start: datetime, end: datetime, tz: str) -> dict:
 
 # ---- plain event CRUD ----------------------------------------------------
 
+
 def invalidates_events(fn):
     """Clear the memoized window fetch after a mutation, even a failed one, so
     a partially applied change never leaves stale windows cached."""
+
     @wraps(fn)
     def wrapper(*args, **kwargs):
         try:
             return fn(*args, **kwargs)
         finally:
             cache.delete_memoized(get_events)
+
     return wrapper
 
 
 @invalidates_events
 def create_event(data: dict):
+    v.require(data, "title", "start_at", "end_at")
+    _validate(data)
     _check_order(parse_instant(data["start_at"]), parse_instant(data["end_at"]))
 
-    row = {
-        "title": data["title"],
-        "description": data.get("description"),
-        "start_at": data["start_at"],
-        "end_at": data["end_at"],
-        "category": data.get("category"),
-        "all_day": data.get("all_day")
-    }
-
-    # timezone is NOT NULL with a default — omit the key entirely when the
-    # client didn't send one, rather than sending an explicit null (23502).
-    if data.get("timezone"):
-        row["timezone"] = data["timezone"]
+    # timezone is omitted (-> column default UTC) when the client didn't send one.
+    row = v.pick(data, EVENT_FIELDS)
 
     if data.get("rrule"):
-        row.update(_series_fields(
-            data["rrule"], parse_instant(data["start_at"]), parse_instant(data["end_at"]),
-            data.get("timezone") or "UTC",
-        ))
+        row.update(
+            _series_fields(
+                data["rrule"],
+                parse_instant(data["start_at"]),
+                parse_instant(data["end_at"]),
+                data.get("timezone") or "UTC",
+            )
+        )
 
     res = supabase.table("events").insert(row).execute()
 
     return res.data[0]
 
+
 @invalidates_events
 def update_event(event_id: str, data: dict):
-    updates = {f: data[f] for f in EVENT_FIELDS if f in data}
+    _validate(data)
+    updates = v.pick(data, EVENT_FIELDS)
+    if not updates and "rrule" not in data:
+        return _get_event(event_id)
 
     # rrule / time changes need the current row to validate and to (re)compute
     # series columns.
@@ -187,7 +190,7 @@ def update_event(event_id: str, data: dict):
 
         body = (data.get("rrule") or None) if "rrule" in data else row["rrule"]
         if body and row["recurring_event_id"]:
-            raise ValueError("an occurrence override cannot have its own rrule")
+            raise ValidationError("an occurrence override cannot have its own rrule")
         if body:
             updates.update(_series_fields(body, start, end, updates.get("timezone") or row["timezone"]))
         elif row["rrule"]:
@@ -199,37 +202,39 @@ def update_event(event_id: str, data: dict):
 
     res = supabase.table("events").update(updates).eq("id", event_id).execute()
 
-    return res.data[0]
+    return first_row(res.data, f"event {event_id}")
+
 
 @invalidates_events
 def delete_event(event_id: str):
     res = supabase.table("events").delete().eq("id", event_id).execute()
-    return res.data[0]
+    return first_row(res.data, f"event {event_id}")
 
 
 # ---- recurring occurrences -----------------------------------------------
 
+
 def _check_scope(scope):
     if scope not in SCOPES:
-        raise ValueError(f"scope must be one of {', '.join(SCOPES)}")
+        raise ValidationError(f"scope must be one of {', '.join(SCOPES)}")
 
 
 def _get_master(master_id: str, original_start: datetime) -> dict:
     master = _get_event(master_id)
     if not master["rrule"]:
-        raise ValueError("event is not recurring")
+        raise ValidationError("event is not recurring")
     if not rr.is_occurrence(master["rrule"], parse_instant(master["start_at"]), master["timezone"], original_start):
-        raise ValueError("original_start is not an occurrence of this series")
+        raise ValidationError("original_start is not an occurrence of this series")
     return master
 
 
+def _at_occurrence(query, master_id: str, original_start: datetime):
+    """Narrow a query to the override row of one occurrence."""
+    return query.eq("recurring_event_id", master_id).eq("original_start_at", _iso(original_start))
+
+
 def _get_override(master_id: str, original_start: datetime):
-    res = (
-        supabase.table("events").select("*")
-        .eq("recurring_event_id", master_id)
-        .eq("original_start_at", _iso(original_start))
-        .execute()
-    )
+    res = _at_occurrence(supabase.table("events").select("*"), master_id, original_start).execute()
     return res.data[0] if res.data else None
 
 
@@ -241,17 +246,12 @@ def _delete_overrides(master_id: str, from_start: datetime = None):
     q.execute()
 
 
-def _delete_overrides_at(master_id: str, original_start: datetime):
-    (
-        supabase.table("events").delete()
-        .eq("recurring_event_id", master_id)
-        .eq("original_start_at", _iso(original_start))
-        .execute()
-    )
+def _delete_override_at(master_id: str, original_start: datetime):
+    _at_occurrence(supabase.table("events").delete(), master_id, original_start).execute()
 
 
 def _delete_master(master_id: str) -> dict:
-    return supabase.table("events").delete().eq("id", master_id).execute().data[0]
+    return first_row(supabase.table("events").delete().eq("id", master_id).execute().data, f"event {master_id}")
 
 
 def _series_changed(master: dict, new: dict) -> bool:
@@ -288,7 +288,7 @@ def _instance_edit(master: dict, original_start: datetime, override, data: dict)
     series_duration = parse_instant(master["end_at"]) - parse_instant(master["start_at"])
     duration = series_duration + (new_end - new_start) - (cur_end - cur_start)
     if duration <= timedelta(0):
-        raise ValueError("edit would give the series a non-positive duration")
+        raise ValidationError("edit would give the series a non-positive duration")
     return rr.wall_delta(cur_start, new_start, master["timezone"]), duration
 
 
@@ -307,6 +307,7 @@ def _requested_rule(master: dict, data: dict):
 def update_occurrence(master_id: str, original_start: datetime, data: dict):
     scope = data.get("scope")
     _check_scope(scope)
+    _validate(data)
     master = _get_master(master_id, original_start)
     override = _get_override(master_id, original_start)
 
@@ -318,7 +319,7 @@ def update_occurrence(master_id: str, original_start: datetime, data: dict):
 
 
 def _update_this(master, original_start, override, data):
-    updates = {f: data[f] for f in EVENT_FIELDS if f in data}  # rrule ignored for "this"
+    updates = v.pick(data, EVENT_FIELDS)  # rrule ignored for "this"
     cur_start, cur_end = _current_times(master, original_start, override)
     _check_order(
         parse_instant(updates["start_at"]) if updates.get("start_at") else cur_start,
@@ -360,8 +361,7 @@ def _update_all(master, original_start, override, data):
         updates.update(_series_fields(body, series_start, series_end, tz))
     else:
         # rrule cleared: the series collapses into a plain event.
-        updates.update(rrule=None, recurrence_end_at=None,
-                       start_at=_iso(series_start), end_at=_iso(series_end))
+        updates.update(rrule=None, recurrence_end_at=None, start_at=_iso(series_start), end_at=_iso(series_end))
 
     if _series_changed(master, updates):
         updates["exdates"] = []
@@ -388,12 +388,10 @@ def _update_following(master, split_at, override, data):
         body = rr.shift_rule_days(rr.continuation_rule(body, remaining), split_at, new_start, master["timezone"])
 
     # Overrides / exdates only still line up if the series isn't moved or re-ruled.
-    carry_over = (not explicit and shift == timedelta(0) and duration == old_duration
-                  and tz == master["timezone"])
+    carry_over = not explicit and shift == timedelta(0) and duration == old_duration and tz == master["timezone"]
 
     details = _changed_details(master, data)
-    exdates_before, exdates_after = rr.partition_instants(
-        [parse_instant(x) for x in master["exdates"] or []], split_at)
+    exdates_before, exdates_after = rr.partition_instants([parse_instant(x) for x in master["exdates"] or []], split_at)
 
     new_row = {f: master[f] for f in DETAIL_FIELDS}
     new_row.update(details, timezone=tz)
@@ -415,11 +413,15 @@ def _update_following(master, split_at, override, data):
     else:
         _delete_overrides(master["id"], split_at)
 
-    supabase.table("events").update({
-        "rrule": truncated,
-        "recurrence_end_at": _iso(rr.recurrence_end(truncated, old_start, old_start + old_duration, master["timezone"])),
-        "exdates": [_iso(x) for x in exdates_before],
-    }).eq("id", master["id"]).execute()
+    supabase.table("events").update(
+        {
+            "rrule": truncated,
+            "recurrence_end_at": _iso(
+                rr.recurrence_end(truncated, old_start, old_start + old_duration, master["timezone"])
+            ),
+            "exdates": [_iso(x) for x in exdates_before],
+        }
+    ).eq("id", master["id"]).execute()
 
     return new_master
 
@@ -440,7 +442,7 @@ def delete_occurrence(master_id: str, original_start: datetime, scope: str):
         exdates = [parse_instant(x) for x in master["exdates"] or []]
         if original_start not in exdates:
             exdates.append(original_start)
-        _delete_overrides_at(master_id, original_start)
+        _delete_override_at(master_id, original_start)
         updates = {"exdates": [_iso(x) for x in sorted(exdates)]}
     else:  # following
         rule, _ = rr.truncate(master["rrule"], old_start, tz, original_start)
