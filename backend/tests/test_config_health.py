@@ -19,7 +19,7 @@ class HealthTest(AppTestCase):
         self.quiet_errors()
         self.db.fail_on = "select"
         res = self.client.get("/api/health")
-        self.assertEqual((res.status_code, res.get_json()), (503, {"status": "ok", "db": "error"}))
+        self.assertEqual((res.status_code, res.get_json()), (503, {"status": "error", "db": "error"}))
 
 
 class TrustedHostsTest(AppTestCase):

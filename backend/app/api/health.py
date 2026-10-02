@@ -12,5 +12,5 @@ def health():
         supabase.table("tasks").select("id").limit(1).execute()
     except Exception:
         current_app.logger.exception("Health check: DB query failed")
-        return jsonify({"status": "ok", "db": "error"}), 503
+        return jsonify({"status": "error", "db": "error"}), 503
     return jsonify({"status": "ok", "db": "connected"})
