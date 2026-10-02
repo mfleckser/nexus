@@ -1,10 +1,9 @@
 {
-  "name": "frontend",
+  "name": "nexus",
   "version": "1.0.0",
-  "description": "An Electron application with React and TypeScript",
+  "description": "Personal life-system desktop app",
   "main": "./out/main/index.js",
   "author": "Mark Fleckser",
-  "homepage": "https://electron-vite.org",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -18,8 +17,8 @@
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
