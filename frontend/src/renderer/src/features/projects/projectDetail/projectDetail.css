@@ -20,6 +20,11 @@
     font-family: var(--font-sans);
 }
 
+.pd-loading {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
 .pd-not-found-card {
     display: flex;
     flex-direction: column;
@@ -133,7 +138,7 @@
     line-height: 1.2;
     letter-spacing: 0.2px;
     color: var(--text-primary);
-    word-break: break-word;
+    overflow-wrap: break-word;
     border-left: 3px solid var(--pillar-project);
     padding-left: 12px;
 }

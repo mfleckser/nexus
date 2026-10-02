@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Ellipsis } from "lucide-react";
 import { Task } from "@renderer/types";
 import "./taskCard.css";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import { useTasks } from "@renderer/features/tasks/useTasks";
+import useDismiss from "@renderer/hooks/useDismiss";
+import useReportError from "@renderer/hooks/useReportError";
 
 type TaskCardProps = {
     task: Task;
@@ -18,19 +20,11 @@ function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: Ta
     const menuRef = useRef<HTMLDivElement>(null);
 
     const { deleteTask } = useTasks();
+    const reportError = useReportError();
 
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
-    useEffect(() => {
-        if (!menuOpen) return;
-        const handleClick = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-                setMenuOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClick);
-        return () => document.removeEventListener("mousedown", handleClick);
-    }, [menuOpen]);
+    useDismiss(menuRef, () => setMenuOpen(false), { enabled: menuOpen });
 
     return (
         <div
@@ -50,6 +44,8 @@ function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: Ta
                         type="button"
                         className={`task-card-menu-btn${menuOpen ? " open" : ""}`}
                         aria-label="Task actions"
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen}
                         onClick={() => setMenuOpen((prev) => !prev)}
                     >
                         <Ellipsis size={15} />
@@ -86,7 +82,7 @@ function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: Ta
                         setShowConfirmDelete(false);
                     }}
                     onDelete={() => {
-                        deleteTask(task.id);
+                        deleteTask(task.id).catch((err) => reportError("Couldn't delete task", err));
                         setShowConfirmDelete(false);
                     }}
                     itemName="task"

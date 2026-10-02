@@ -73,11 +73,9 @@
 .project-status.status-planning .project-status-dot {
     background: var(--status-info);
 }
-.project-status.status-paused .project-status-dot,
-.project-status.status-on-hold .project-status-dot {
+.project-status.status-paused .project-status-dot {
     background: var(--status-warning);
 }
-.project-status.status-done .project-status-dot,
 .project-status.status-complete .project-status-dot {
     background: var(--accent);
 }
@@ -91,7 +89,7 @@
     font-weight: 600;
     line-height: 1.3;
     color: var(--text-primary);
-    word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 .project-card-desc {
@@ -103,7 +101,7 @@
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 .project-card-desc.muted {

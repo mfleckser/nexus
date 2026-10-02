@@ -13,9 +13,9 @@ function ProjectCard({ project }: ProjectCardProps): React.JSX.Element {
         <Link to={project.id} className="project-card">
             <div className="project-card-top">
                 <span className="project-type-badge">{project.type || "untyped"}</span>
-                <span className={`project-status status-${project.status}`}>
+                <span className={`project-status status-${project.status ?? "none"}`}>
                     <span className="project-status-dot" aria-hidden />
-                    {project.status}
+                    {project.status ?? "no status"}
                 </span>
             </div>
 

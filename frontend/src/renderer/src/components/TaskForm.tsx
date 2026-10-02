@@ -40,7 +40,17 @@ function TaskForm({
     };
 
     return (
-        <form className="task-form" onSubmit={handleSubmit}>
+        <form
+            className="task-form"
+            onSubmit={handleSubmit}
+            onKeyDown={(e) => {
+                // Escape cancels, like the popovers; it stops here so a popover
+                // hosting the form stays open.
+                if (e.key !== "Escape") return;
+                e.stopPropagation();
+                onCancel();
+            }}
+        >
             <input
                 className="task-form-input"
                 type="text"

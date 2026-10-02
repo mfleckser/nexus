@@ -6,6 +6,8 @@ import { Project, Task, TaskStatus } from "@renderer/types";
 import TaskCard from "./TaskCard";
 import FeatureLabel from "./FeatureLabel";
 import { useProjects } from "../useProjects";
+import useReportError from "@renderer/hooks/useReportError";
+import { toDatetimeLocal } from "@renderer/lib/time";
 
 const STATUSES: { key: TaskStatus; label: string }[] = [
     { key: "todo", label: "To Do" },
@@ -16,11 +18,7 @@ const STATUSES: { key: TaskStatus; label: string }[] = [
 // "general" is the synthetic row for tasks with no feature_id; it always sorts first.
 const GENERAL_ROW = "general";
 
-// Format a Date into the local "YYYY-MM-DDTHH:mm" string a datetime-local input expects.
-function toDatetimeLocal(d: Date): string {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+type DropTarget = { status: TaskStatus; feature_id: string | null };
 
 function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
     const [formRow, setFormRow] = useState<string | null>(null);
@@ -31,12 +29,13 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
 
     const { featuresByProjectId, loadFeatures, addFeature, deleteFeature } = useProjects();
     const { tasks, addTask, updateTask } = useTasks();
+    const reportError = useReportError();
     const projectTasks = tasks.filter((t) => t.project_id === project.id);
     const features = featuresByProjectId[project.id] ?? [];
 
     useEffect(() => {
-        loadFeatures(project.id);
-    }, [project.id]);
+        loadFeatures(project.id).catch((err) => reportError("Couldn't load features", err));
+    }, [project.id, loadFeatures, reportError]);
 
     const rows = [
         { key: GENERAL_ROW, name: "General", featureId: null as string | null },
@@ -44,29 +43,33 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
     ];
 
     const [draggingId, setDraggingId] = useState<string | null>(null);
-    type DropTarget = { status: TaskStatus; feature_id: string | null };
     const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+
+    // dragover fires continuously; only re-render when the hovered cell changes.
+    const hoverCell = (status: TaskStatus, feature_id: string | null) => {
+        setDropTarget((prev) =>
+            prev?.status === status && prev.feature_id === feature_id ? prev : { status, feature_id },
+        );
+    };
 
     const statusOf = (t: Task) => {
         return STATUSES.some((s) => s.key === t.status) ? t.status : "todo";
     };
 
     const handleDrop = () => {
-        if (!draggingId || !dropTarget) return;
-
-        const draggedTask = projectTasks.find((t) => t.id === draggingId);
-        if (!draggedTask) return;
-        if (draggedTask.status !== dropTarget.status || draggedTask.feature_id !== dropTarget?.feature_id)
-            updateTask(draggingId, dropTarget);
-
         setDraggingId(null);
         setDropTarget(null);
+        const draggedTask = projectTasks.find((t) => t.id === draggingId);
+        if (!draggedTask || !dropTarget) return;
+        if (draggedTask.status !== dropTarget.status || draggedTask.feature_id !== dropTarget.feature_id) {
+            updateTask(draggedTask.id, dropTarget).catch((err) => reportError("Couldn't move task", err));
+        }
     };
 
     const handleAddFeature = () => {
         const name = featureInput.trim();
         if (!name) return;
-        addFeature(project.id, name);
+        addFeature(project.id, name).catch((err) => reportError("Couldn't add feature", err));
         setFeatureInput("");
         setShowFeatureInput(false);
     };
@@ -100,7 +103,10 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                         featureId={row.featureId}
                                         onEdit={() => {}}
                                         onDelete={() => {
-                                            if (row.featureId) deleteFeature(row.featureId);
+                                            if (!row.featureId) return;
+                                            deleteFeature(row.featureId).catch((err) =>
+                                                reportError("Couldn't delete feature", err),
+                                            );
                                         }}
                                     />
                                     {formRow === row.key ? (
@@ -114,7 +120,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                                         dueAt,
                                                         project.id,
                                                         row.featureId ?? undefined,
-                                                    );
+                                                    ).catch((err) => reportError("Couldn't add task", err));
                                                     setFormRow(null);
                                                 }}
                                                 onCancel={() => {
@@ -140,7 +146,12 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                         className={`kb-cell${dropTarget?.feature_id === row.featureId && dropTarget.status === s.key ? " kb-cell-dragover" : ""}`}
                                         onDragOver={(e) => {
                                             e.preventDefault();
-                                            setDropTarget({ status: s.key, feature_id: row.featureId });
+                                            hoverCell(s.key, row.featureId);
+                                        }}
+                                        onDragLeave={(e) => {
+                                            // Ignore moves onto the cell's own children.
+                                            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                                            setDropTarget(null);
                                         }}
                                         onDrop={() => handleDrop()}
                                     >
@@ -153,13 +164,15 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                                             submitLabel="Save"
                                                             initialTitle={t.title}
                                                             initialDescription={t.description ?? ""}
-                                                            initialDueAt={t.due_at ? toDatetimeLocal(t.due_at) : ""}
+                                                            initialDueAt={toDatetimeLocal(t.due_at)}
                                                             onSubmit={({ title, description, dueAt }) => {
                                                                 updateTask(t.id, {
                                                                     title,
                                                                     description,
-                                                                    due_at: dueAt ? new Date(dueAt) : null,
-                                                                });
+                                                                    due_at: dueAt,
+                                                                }).catch((err) =>
+                                                                    reportError("Couldn't save task", err),
+                                                                );
                                                                 setEditingTaskId(null);
                                                             }}
                                                             onCancel={() => setEditingTaskId(null)}

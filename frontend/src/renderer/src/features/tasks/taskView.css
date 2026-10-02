@@ -213,7 +213,7 @@
     line-height: 1.4;
     color: var(--text-primary);
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 .task-detail-value.muted {
@@ -239,6 +239,9 @@
 .task-check {
     width: 16px;
     height: 16px;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
     border-radius: 50%;
     border: 1.5px solid var(--border-strong);
     flex-shrink: 0;

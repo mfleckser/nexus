@@ -4,9 +4,11 @@ import { useProjects } from "@renderer/features/projects/useProjects";
 import ProjectCard from "@renderer/features/projects/projectList/ProjectCard";
 import ProjectModal from "@renderer/components/ProjectModal";
 import "./projectList.css";
+import useReportError from "@renderer/hooks/useReportError";
 
 function ProjectList(): React.JSX.Element {
-    const { projects, addProject } = useProjects();
+    const { projects, projectsLoaded, addProject } = useProjects();
+    const reportError = useReportError();
     const [showModal, setShowModal] = useState(false);
 
     return (
@@ -19,7 +21,7 @@ function ProjectList(): React.JSX.Element {
                 </button>
             </div>
 
-            {projects.length === 0 ? (
+            {!projectsLoaded ? null : projects.length === 0 ? (
                 <div className="projects-empty">
                     <p className="projects-empty-title">No projects yet</p>
                     <p className="projects-empty-sub">Create your first project to get started.</p>
@@ -37,7 +39,11 @@ function ProjectList(): React.JSX.Element {
                     heading="New Project"
                     submitLabel="Create"
                     onClose={() => setShowModal(false)}
-                    onSave={(v) => addProject(v.title, v.description, v.type)}
+                    onSave={(v) =>
+                        addProject(v.title, v.description, v.type || null).catch((err) =>
+                            reportError("Couldn't create project", err),
+                        )
+                    }
                 />
             )}
         </div>
