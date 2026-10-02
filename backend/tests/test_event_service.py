@@ -267,7 +267,7 @@ class EventServiceTest(AppTestCase):
         self.assertNotIn("Moved", [e["title"] for e in self.events()])
 
     def test_cache_invalidated_on_validation_error(self):
-        with mock.patch.object(es.cache, "delete_memoized") as invalidate:
+        with self.app.app_context(), mock.patch.object(es.cache, "delete_memoized") as invalidate:
             with self.assertRaises(ValueError):
                 es.update_occurrence("any", None, {"scope": "bogus"})
             invalidate.assert_called_once_with(es.get_events)
@@ -313,6 +313,118 @@ class EventServiceTest(AppTestCase):
         res = self.client.put(f"/api/events/{plain['id']}", json={"bogus": True})
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.get_json(), plain)
+
+    # -- B6: a "following" split that leaves the old series empty deletes it --
+
+    def test_following_split_drops_fully_cancelled_old_series(self):
+        m = self.weekly_wed()
+        self.delete_occ(m["id"], "2026-09-30T16:00:00Z", "this")
+        new = self.put_occ(m["id"], "2026-10-07T16:00:00Z", {"scope": "following", "title": "New"})
+        self.assertIsNone(self.row(m["id"]))
+        self.assertEqual([r["id"] for r in self.db.rows], [new["id"]])
+        self.assertEqual(self.starts()[0], "2026-10-07T16:00:00+00:00")
+
+    def test_following_split_keeps_old_series_with_visible_occurrence(self):
+        m = self.weekly_wed()
+        self.put_occ(m["id"], "2026-10-07T16:00:00Z", {"scope": "following", "title": "New"})
+        self.assertEqual(self.row(m["id"])["rrule"], "FREQ=WEEKLY;BYDAY=WE;UNTIL=20261007T155959Z")
+
+    # -- B7: all/following from an override also update that override --
+
+    def test_all_from_override_applies_fields_equal_to_series(self):
+        m = self.weekly_wed(description="Daily sync")
+        self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": "this", "title": "Special", "description": "x"})
+        self.put_occ(m["id"], "2026-10-21T16:00:00Z", {"scope": "this", "title": "Other"})
+        # Title reverted to the series value; description changed for everyone.
+        self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": "all", "title": "Standup", "description": "New"})
+        by_start = {e["start_at"]: e for e in self.events()}
+        clicked = by_start["2026-10-14T16:00:00+00:00"]
+        self.assertEqual((clicked["title"], clicked["description"]), ("Standup", "New"))
+        other = by_start["2026-10-21T16:00:00+00:00"]
+        self.assertEqual((other["title"], other["description"]), ("Other", "New"))
+        self.assertEqual(self.row(m["id"])["description"], "New")
+
+    def test_following_from_override_applies_fields_equal_to_series(self):
+        m = self.weekly_wed()
+        self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": "this", "title": "Special"})
+        new = self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": "following", "title": "Standup"})
+        override = next(r for r in self.db.rows if r["recurring_event_id"])
+        self.assertEqual((override["recurring_event_id"], override["title"]), (new["id"], "Standup"))
+
+    # -- B8: overrides and cancelled occurrences --
+
+    def test_plain_delete_of_override_cancels_the_occurrence(self):
+        m = self.weekly_wed()
+        override = self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": "this", "title": "Moved"})
+        res = self.client.delete(f"/api/events/{override['id']}")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.get_json()["id"], override["id"])
+        self.assertEqual(self.row(m["id"])["exdates"], ["2026-10-14T16:00:00+00:00"])
+        self.assertNotIn("2026-10-14T16:00:00+00:00", self.starts())
+        self.assertEqual(len(self.db.rows), 1)
+
+    def test_plain_delete_of_last_override_drops_empty_series(self):
+        m = self.create(start_at="2026-09-30T16:00:00Z", end_at="2026-09-30T17:00:00Z", rrule="FREQ=WEEKLY;COUNT=2")
+        override = self.put_occ(m["id"], "2026-09-30T16:00:00Z", {"scope": "this", "title": "Kept"})
+        self.delete_occ(m["id"], "2026-10-07T16:00:00Z", "this")
+        self.assertEqual(self.client.delete(f"/api/events/{override['id']}").status_code, 200)
+        self.assertEqual(self.db.rows, [])
+
+    def test_editing_cancelled_occurrence_is_404(self):
+        m = self.weekly_wed()
+        self.delete_occ(m["id"], "2026-10-14T16:00:00Z", "this")
+        for scope in ("this", "following", "all"):
+            with self.subTest(scope=scope):
+                self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": scope, "title": "Back"}, status=404)
+        self.assertEqual(len(self.db.rows), 1)
+        self.assertEqual(self.row(m["id"])["title"], "Standup")
+
+    # -- B9: a start-only edit keeps the end, in every scope --
+
+    def test_start_only_edit_keeps_end(self):
+        early = {"start_at": "2026-10-14T15:00:00Z"}  # 8:00 PDT; end stays 10:00
+        cases = {
+            "this": ("2026-10-14T15:00:00+00:00", "2026-10-14T17:00:00+00:00"),
+            "following": ("2026-10-14T15:00:00+00:00", "2026-10-14T17:00:00+00:00"),
+            "all": ("2026-09-30T15:00:00+00:00", "2026-09-30T17:00:00+00:00"),
+        }
+        for scope, expected in cases.items():
+            with self.subTest(scope=scope):
+                self.db.rows.clear()
+                m = self.weekly_wed()
+                row = self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": scope, **early})
+                self.assertEqual((row["start_at"], row["end_at"]), expected)
+                self.assertIn(("2026-10-14T15:00:00+00:00", "2026-10-14T17:00:00+00:00"),
+                              [(e["start_at"], e["end_at"]) for e in self.events()])  # fmt: skip
+
+    def test_start_only_edit_past_end_is_400(self):
+        m = self.weekly_wed()
+        for scope in ("this", "following", "all"):
+            with self.subTest(scope=scope):
+                self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": scope, "start_at": "2026-10-14T17:30:00Z"},
+                             status=400)  # fmt: skip
+        self.assertEqual(len(self.db.rows), 1)
+
+    # -- B17: occurrences keep their wall-clock duration across DST --
+
+    def _weekend_series(self):
+        # Sat 9:00 -> Mon 9:00 PT weekly; DST ends Sun 2026-11-01.
+        return self.create(start_at="2026-10-24T16:00:00Z", end_at="2026-10-26T16:00:00Z", timezone=LA,
+                           rrule="FREQ=WEEKLY;BYDAY=SA")  # fmt: skip
+
+    def test_multi_day_occurrence_across_dst_ends_at_local_time(self):
+        self._weekend_series()
+        evs = self.events(start="2026-10-30T00:00:00Z", end="2026-11-08T00:00:00Z")
+        self.assertEqual(
+            (evs[0]["start_at"], evs[0]["end_at"]), ("2026-10-31T16:00:00+00:00", "2026-11-02T17:00:00+00:00")
+        )
+
+    def test_edits_from_dst_crossing_instance_keep_series_duration(self):
+        m = self._weekend_series()
+        self.put_occ(m["id"], "2026-10-31T16:00:00Z", {"scope": "all", "title": "Trip"})
+        self.assertEqual(self.row(m["id"])["end_at"], "2026-10-26T16:00:00+00:00")
+        new = self.put_occ(m["id"], "2026-11-07T17:00:00Z", {"scope": "following", "title": "Later"})
+        self.assertEqual((new["start_at"], new["end_at"]), ("2026-11-07T17:00:00+00:00", "2026-11-09T17:00:00+00:00"))
 
     # -- basics --
 

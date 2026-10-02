@@ -2,10 +2,8 @@ from datetime import UTC, datetime
 
 from app import validation as v
 from app.errors import first_row
-from app.extensions.cache import cache
+from app.extensions import cache as c
 from app.extensions.supabase import supabase
-
-TASKS_ALL_KEY = "tasks:all"
 
 # Matches the tasks.status_check constraint.
 TASK_STATUSES = ("todo", "active", "complete", "cancelled")
@@ -23,11 +21,13 @@ def _validate(fields: dict):
     v.check_text(fields, "feature_id")
 
 
-@cache.cached(key_prefix=TASKS_ALL_KEY)
 def get_all_tasks():
-    res = supabase.table("tasks").select("*").execute()
+    """All tasks, oldest first (id breaks created_at ties) so the order is stable."""
 
-    return res.data
+    def load():
+        return supabase.table("tasks").select("*").order("created_at").order("id").execute().data
+
+    return c.get_or_load(c.TASKS, load)
 
 
 def get_task(task_id: str):
@@ -42,7 +42,7 @@ def create_task(data: dict):
 
     res = supabase.table("tasks").insert(row).execute()
 
-    cache.delete(TASKS_ALL_KEY)
+    c.invalidate(c.TASKS)
 
     return res.data[0]
 
@@ -53,17 +53,21 @@ def update_task(task_id: str, data: dict):
     if not updates:
         return get_task(task_id)
 
-    if updates.get("status") == "complete":
-        updates["completed_at"] = str(datetime.now(UTC))
+    if "status" in updates:
+        if updates["status"] != "complete":
+            updates["completed_at"] = None
+        elif get_task(task_id)["status"] != "complete":
+            # Stamp only the transition, so re-saving a complete task keeps its time.
+            updates["completed_at"] = datetime.now(UTC).isoformat()
 
     res = supabase.table("tasks").update(updates).eq("id", task_id).execute()
 
-    cache.delete(TASKS_ALL_KEY)
+    c.invalidate(c.TASKS)
 
     return first_row(res.data, f"task {task_id}")
 
 
 def delete_task(task_id: str):
     res = supabase.table("tasks").delete().eq("id", task_id).execute()
-    cache.delete(TASKS_ALL_KEY)
+    c.invalidate(c.TASKS)
     return first_row(res.data, f"task {task_id}")
