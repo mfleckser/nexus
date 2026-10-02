@@ -16,25 +16,25 @@ Scratch backlog for the Fable availability window (~Jul 1–8, 2026). Coding age
 
 ### Finish F1 — Project Workshop (dogfooding: get Nexus tracking itself)
 - [x] Project edit — wire Edit menu (title/desc/type/status) + `PUT /projects/:id` endpoint + service · H·stamp·M — done, committed to `main` (shared ProjectModal replaces NewProjectModal; status options: planning/active/paused/complete/archived)
-- [ ] Project notes — edit UI + PUT support (notes field already in schema) · H·stamp·S
+- [x] Project notes — edit UI + PUT support (notes field already in schema) · H·stamp·S — done 6c6c2f2 (NotesPanel autosave)
 - [ ] Task ↔ project on Home — show which project each task belongs to; allow assigning an unscoped task to current project from TaskView · H·stamp·M
-- [ ] Cache consistency — **DECIDED:** add caching for projects, and make it the standard pattern applied to every new entity type going forward. Bring projects in line with the tasks/events caching approach. · M·stamp·S
+- [x] Cache consistency — **DECIDED:** add caching for projects, and make it the standard pattern applied to every new entity type going forward. Bring projects in line with the tasks/events caching approach. · M·stamp·S — done on `review-cleanup` (`get_or_load`/`invalidate` in `app/extensions/cache.py`)
 
 ### F3 — Backend hygiene (cheap, unblocks all downstream work)
-- [ ] Fix `requirements.txt` — add `supabase`, `flask-caching`; remove unused Flask-SQLAlchemy / psycopg2; update CLAUDE.md to say "Supabase client" not SQLAlchemy · H·stamp·S
-- [ ] Consistent API responses — `{ "data": ... }` on success, `{ "error": { "code", "message" } }` on failure; proper status codes (404 missing id, 400 bad input) · H·stamp·M
-- [ ] Input validation — required fields, enum checks (status in `todo|active|complete|cancelled`); stop passing raw `request.json` straight to Supabase · H·stamp·M
-- [ ] Filtered list endpoints — `GET /tasks?project_id=&status=&due_before=`, `GET /events?start=&end=` (date range) · H·stamp·M
-- [ ] Health check — return `{ "status": "ok", "db": "connected" }` instead of "Hello World" · M·stamp·S
+- [x] Fix `requirements.txt` — add `supabase`, `flask-caching`; remove unused Flask-SQLAlchemy / psycopg2; update CLAUDE.md to say "Supabase client" not SQLAlchemy · H·stamp·S — done 46bf231; trimmed to direct deps on `review-cleanup`
+- [ ] Consistent API responses — `{ "data": ... }` on success, `{ "error": { "code", "message" } }` on failure; proper status codes (404 missing id, 400 bad input) · H·stamp·M — PARTIAL on `review-cleanup`: error shape + status codes done; `{data}` success envelope not adopted (owner call)
+- [x] Input validation — required fields, enum checks (status in `todo|active|complete|cancelled`); stop passing raw `request.json` straight to Supabase · H·stamp·M — done on `review-cleanup` (`app/validation.py`)
+- [ ] Filtered list endpoints — `GET /tasks?project_id=&status=&due_before=`, `GET /events?start=&end=` (date range) · H·stamp·M — PARTIAL: events range done; tasks unfiltered
+- [x] Health check — return `{ "status": "ok", "db": "connected" }` instead of "Hello World" · M·stamp·S — done on `review-cleanup`
 
 ---
 
 ## Tier 2 — daily-use payoff (replace Google Calendar)
 - [ ] Task ↔ event time-blocking — add `event_id` to task update API fields; UI to block a task on the calendar (create event + link); show linked tasks on event chips · H·stamp·M
-- [ ] Event editing — edit/delete existing events (create flow exists; verify edit path) · H·stamp·S
+- [x] Event editing — edit/delete existing events (create flow exists; verify edit path) · H·stamp·S — done (EventChip edit popover, incl. recurring scopes)
 - [ ] Search — `GET /search?q=` across tasks + events (title/description) + search bar in sidebar or Home header · M·stamp·M
 - [ ] ⚠️ Recurring / all-day / multi-day events — UI + service logic (schema supports some). Bigger job — defer unless time remains · M·**deep**·L
-  - [x] Recurring part done on branch `recurring-events` (RRULE series, server-side expansion, this/following/all scopes, picker). All-day / multi-day still open.
+  - [x] Recurring part done, merged b5e5fce (RRULE series, server-side expansion, this/following/all scopes, picker). All-day / multi-day creation still open (multi-day events now render per day on `review-cleanup`).
 - [ ] Day / month calendar views — add or stub (week view exists) · L·stamp·M
 
 ---
@@ -42,7 +42,7 @@ Scratch backlog for the Fable availability window (~Jul 1–8, 2026). Coding age
 ## Tier 3 — quality + unblocks agent writes showing in the UI
 - [ ] Refresh on write — after any mutation, refetch that resource; keep `useNow` poll as fallback only · H·stamp·M
 - [ ] Route-scoped providers — move `ProjectsProvider` inside `/projects` route (don't load projects on Home); same pattern for future pillars · M·stamp·S
-- [ ] Error rollback — on failed `updateTask`/`updateEvent`, revert optimistic state + show toast · M·stamp·S
+- [x] Error rollback — on failed `updateTask`/`updateEvent`, revert optimistic state + show toast · M·stamp·S — done on `review-cleanup` (ErrorNotices + useReportError)
 - [ ] Shared fetch helper — extract repeated context pattern (fetch, sameSet, mutate, refresh) into one hook · M·stamp·M
 
 ---
