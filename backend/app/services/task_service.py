@@ -48,8 +48,12 @@ def update_task(task_id: str, data: dict):
     if not updates:
         return get_task(task_id)
 
-    if updates.get("status") == "complete":
-        updates["completed_at"] = str(datetime.now(UTC))
+    if "status" in updates:
+        if updates["status"] != "complete":
+            updates["completed_at"] = None
+        elif get_task(task_id)["status"] != "complete":
+            # Stamp only the transition, so re-saving a complete task keeps its time.
+            updates["completed_at"] = datetime.now(UTC).isoformat()
 
     res = supabase.table("tasks").update(updates).eq("id", task_id).execute()
 

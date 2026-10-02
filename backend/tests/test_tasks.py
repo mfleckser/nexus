@@ -1,6 +1,7 @@
 """Task API against the fake Supabase."""
 
 import unittest
+from datetime import UTC, datetime, timedelta
 
 from app_case import AppTestCase
 
@@ -50,6 +51,23 @@ class TasksTest(AppTestCase):
         for status in ("todo", "active", "complete", "cancelled"):
             self.assertEqual(self.put(t["id"], {"status": status})["status"], status)
         self.assertIsNone(self.put(t["id"], {"due_at": None})["due_at"])
+
+    def test_completed_at_tracks_transitions(self):
+        t = self.create()
+        self.assertIsNone(t["completed_at"])
+
+        done = self.put(t["id"], {"status": "complete"})
+        stamp = datetime.fromisoformat(done["completed_at"])
+        self.assertIsNotNone(stamp.tzinfo)
+        self.assertLess(abs(datetime.now(UTC) - stamp), timedelta(minutes=1))
+
+        # Re-saving a complete task (or editing other fields) keeps the original stamp.
+        self.assertEqual(self.put(t["id"], {"status": "complete", "title": "x"})["completed_at"], done["completed_at"])
+        self.assertEqual(self.put(t["id"], {"title": "y"})["completed_at"], done["completed_at"])
+
+        for status in ("todo", "active", "cancelled"):
+            self.put(t["id"], {"status": "complete"})
+            self.assertIsNone(self.put(t["id"], {"status": status})["completed_at"])
 
     def test_update_without_known_fields_returns_current_row(self):
         t = self.create()
