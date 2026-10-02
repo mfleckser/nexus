@@ -97,6 +97,14 @@ body {
     user-select: none;
 }
 
+/* Keyboard focus ring (mouse focus stays unstyled). Form fields are left
+   out: browsers match them on mouse focus too, and they style their own
+   focused border. */
+:focus-visible:not(input, textarea, select) {
+    outline: 1.5px solid var(--border-focus);
+    outline-offset: 1px;
+}
+
 ::selection {
     background: var(--accent-muted);
     color: var(--text-primary);

@@ -9,16 +9,19 @@
 
 #calendar-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 8px 12px;
     font-family: var(--font-sans);
 }
 
 .header-left {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 8px 12px;
+    min-width: 0;
 }
 
 .today-button {
@@ -30,6 +33,7 @@
     font-family: inherit;
     font-size: 13px;
     font-weight: 500;
+    white-space: nowrap;
     cursor: pointer;
     transition:
         background-color 0.1s,
@@ -45,6 +49,7 @@
     font-family: inherit;
     font-size: 13px;
     font-weight: 600;
+    white-space: nowrap;
     cursor: pointer;
     transition:
         background-color 0.1s,
@@ -111,6 +116,7 @@
     color: var(--text-primary);
     letter-spacing: 0.2px;
     margin-left: 4px;
+    white-space: nowrap;
 }
 
 .select-wrapper {
