@@ -1,17 +1,18 @@
 import "./taskPin.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Task } from "@renderer/types";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import TaskPopover from "@renderer/features/calendar/TaskPopover";
-import { formatTime } from "@renderer/lib/time";
-
-const PX_PER_HOUR = 48;
-const PX_PER_MIN = PX_PER_HOUR / 60;
-const POPOVER_GAP = 8;
-// Mouse travel (px) below which a press on the pin is a click, not a drag.
-const DRAG_THRESHOLD = 3;
-const SNAP_MINUTES = 15;
-export const TASK_PIN_HEIGHT = 18;
+import { formatTime, MINUTES_PER_DAY, shiftDays } from "@renderer/lib/time";
+import useReportError from "@renderer/hooks/useReportError";
+import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
+import {
+    DRAG_THRESHOLD,
+    POPOVER_GAP,
+    PX_PER_MIN,
+    TASK_PIN_HEIGHT,
+    TASK_SNAP_MINUTES,
+} from "@renderer/features/calendar/constants";
 
 type TaskPinProps = {
     // Due date is non-null for anything rendered on the calendar.
@@ -23,6 +24,7 @@ type TaskPinProps = {
 
 function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
     const { updateTask } = useTasks();
+    const reportError = useReportError();
     const pinRef = useRef<HTMLDivElement>(null);
     const parentRectRef = useRef<DOMRect | null>(null);
     const grabOffsetRef = useRef({ x: 0, y: 0 });
@@ -32,7 +34,7 @@ function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
     const suppressClickRef = useRef(false);
     const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
     // Popover anchor, captured from the pin's rect when it opens; null = closed.
-    const [popoverAnchor, setPopoverAnchor] = useState<{ x: number; y: number; flipX: number } | null>(null);
+    const [popoverAnchor, setPopoverAnchor] = useState<PopoverAnchor | null>(null);
 
     const due = task.due_at;
     const dayIdx = due.getDay();
@@ -40,11 +42,9 @@ function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
     const cancelled = task.status === "cancelled";
 
     function toggleComplete(): void {
-        updateTask(task.id, { status: done ? "todo" : "complete" }).catch(console.error);
-    }
-
-    function movedPastThreshold(e: MouseEvent): boolean {
-        return Math.hypot(e.clientX - pressPosRef.current.x, e.clientY - pressPosRef.current.y) > DRAG_THRESHOLD;
+        updateTask(task.id, { status: done ? "todo" : "complete" }).catch((err) =>
+            reportError("Couldn't update task", err),
+        );
     }
 
     function onMouseDown(e: React.MouseEvent): void {
@@ -69,44 +69,42 @@ function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
 
     const dragging = dragPos !== null;
 
+    const onDragMove = useEffectEvent((e: MouseEvent) => {
+        const parentRect = parentRectRef.current;
+        if (!parentRect) return;
+        setDragPos({
+            left: e.clientX - parentRect.left - grabOffsetRef.current.x,
+            top: e.clientY - parentRect.top - grabOffsetRef.current.y,
+        });
+    });
+
+    const onDragEnd = useEffectEvent((e: MouseEvent) => {
+        setDragPos(null);
+        const parentRect = parentRectRef.current;
+        const moved = Math.hypot(e.clientX - pressPosRef.current.x, e.clientY - pressPosRef.current.y) > DRAG_THRESHOLD;
+        if (!parentRect || !moved) return;
+        suppressClickRef.current = true;
+
+        const newDayIdx = Math.min(6, Math.max(0, Math.floor((7 * (e.clientX - parentRect.left)) / parentRect.width)));
+        const rawMins = (e.clientY - parentRect.top - grabOffsetRef.current.y) / PX_PER_MIN;
+        const mins = Math.min(
+            Math.max(0, TASK_SNAP_MINUTES * Math.round(rawMins / TASK_SNAP_MINUTES)),
+            MINUTES_PER_DAY - TASK_SNAP_MINUTES,
+        );
+        const newDue = shiftDays(due, newDayIdx - dayIdx);
+        newDue.setHours(0, mins, 0, 0);
+        if (newDue.getTime() === due.getTime()) return;
+        updateTask(task.id, { due_at: newDue }).catch((err) => reportError("Couldn't move task", err));
+    });
+
     useEffect(() => {
         if (!dragging) return;
-        function onMove(e: MouseEvent): void {
-            const parentRect = parentRectRef.current;
-            if (!parentRect) return;
-            setDragPos({
-                left: e.clientX - parentRect.left - grabOffsetRef.current.x,
-                top: e.clientY - parentRect.top - grabOffsetRef.current.y,
-            });
-        }
-        function onUp(e: MouseEvent): void {
-            setDragPos(null);
-            const parentRect = parentRectRef.current;
-            if (!parentRect || !movedPastThreshold(e)) return;
-            suppressClickRef.current = true;
-
-            const newDayIdx = Math.min(
-                6,
-                Math.max(0, Math.floor((7 * (e.clientX - parentRect.left)) / parentRect.width)),
-            );
-            const rawMins = (e.clientY - parentRect.top - grabOffsetRef.current.y) / PX_PER_MIN;
-            const mins = Math.min(
-                Math.max(0, SNAP_MINUTES * Math.round(rawMins / SNAP_MINUTES)),
-                24 * 60 - SNAP_MINUTES,
-            );
-            const newDue = new Date(due);
-            newDue.setDate(newDue.getDate() + newDayIdx - dayIdx);
-            newDue.setHours(0, mins, 0, 0);
-            if (newDue.getTime() === due.getTime()) return;
-            updateTask(task.id, { due_at: newDue }).catch(console.error);
-        }
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
+        window.addEventListener("mousemove", onDragMove);
+        window.addEventListener("mouseup", onDragEnd);
         return () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", onUp);
+            window.removeEventListener("mousemove", onDragMove);
+            window.removeEventListener("mouseup", onDragEnd);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dragging]);
 
     const style: React.CSSProperties = dragPos
@@ -130,6 +128,9 @@ function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
                 className={`task-pin${done ? " done" : ""}${cancelled ? " cancelled" : ""}${dragging ? " dragging" : ""}`}
                 style={style}
                 title={task.title}
+                role="button"
+                tabIndex={0}
+                aria-expanded={popoverAnchor !== null}
                 onMouseDown={onMouseDown}
                 onClick={() => {
                     if (suppressClickRef.current) {
@@ -138,11 +139,17 @@ function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
                     }
                     togglePopover();
                 }}
+                onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+                    e.preventDefault();
+                    togglePopover();
+                }}
             >
                 <button
                     type="button"
                     className="task-pin-check"
                     aria-label={done ? "Mark incomplete" : "Mark complete"}
+                    aria-pressed={done}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                         e.stopPropagation();

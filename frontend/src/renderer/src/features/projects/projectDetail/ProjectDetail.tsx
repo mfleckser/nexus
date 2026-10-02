@@ -2,12 +2,12 @@ import { useProjects } from "@renderer/features/projects/useProjects";
 import { ChevronLeft, Ellipsis, FolderX, NotebookPen } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import "./projectDetail.css";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import ProjectModal from "@renderer/components/ProjectModal";
 import KanbanBoard from "./KanbanBoard";
-import { ProjectStatus } from "@renderer/types";
 import NotesPanel from "./NotesPanel";
+import useReportError, { errorMessage } from "@renderer/hooks/useReportError";
 
 function ProjectDetail(): React.JSX.Element {
     const [showProjectMenu, setShowProjectMenu] = useState(false);
@@ -15,13 +15,34 @@ function ProjectDetail(): React.JSX.Element {
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
     const [showNotes, setShowNotes] = useState(false);
 
+    // Notes load failure, tagged with the project it belongs to.
+    const [notesError, setNotesError] = useState<{ projectId: string; message: string } | null>(null);
+
+    const nav = useNavigate();
+    const reportError = useReportError();
     const { projectId } = useParams();
-    const { projects, updateProject, deleteProject, notesByProjectId, loadNotes, updateNotes } = useProjects();
+    const { projects, projectsLoaded, updateProject, deleteProject, notesByProjectId, loadNotes, updateNotes } =
+        useProjects();
     const project = projects.find((p) => p.id === projectId);
 
+    const fetchNotes = useCallback(
+        (id: string) => {
+            loadNotes(id).catch((err) => setNotesError({ projectId: id, message: errorMessage(err) }));
+        },
+        [loadNotes],
+    );
+
     useEffect(() => {
-        if (projectId) loadNotes(projectId);
-    }, [projectId]);
+        if (projectId) fetchNotes(projectId);
+    }, [projectId, fetchNotes]);
+
+    if (!project && !projectsLoaded) {
+        return (
+            <div className="pd-not-found">
+                <span className="pd-loading">Loading project…</span>
+            </div>
+        );
+    }
 
     if (!project) {
         return (
@@ -41,7 +62,8 @@ function ProjectDetail(): React.JSX.Element {
         );
     }
 
-    const nav = useNavigate();
+    const saveNotes = (notes: string) =>
+        updateNotes(project.id, notes).catch((err) => reportError("Couldn't save notes", err));
 
     return (
         <div
@@ -56,12 +78,13 @@ function ProjectDetail(): React.JSX.Element {
                     Back to Project List
                 </Link>
                 <div className="pd-header-main">
-                    <h1 className="pd-title">{project?.title}</h1>
+                    <h1 className="pd-title">{project.title}</h1>
                     <div className="pd-header-actions">
                         <button
                             type="button"
                             className={`pd-notes-toggle${showNotes ? " pd-notes-toggle-active" : ""}`}
                             aria-label={showNotes ? "Close notes" : "Open notes"}
+                            aria-pressed={showNotes}
                             onClick={() => setShowNotes((prev) => !prev)}
                         >
                             <NotebookPen size={18} />
@@ -119,8 +142,8 @@ function ProjectDetail(): React.JSX.Element {
                                         updateProject(project.id, {
                                             ...values,
                                             type: values.type || null,
-                                            status: (values.status || null) as ProjectStatus | null,
-                                        })
+                                            status: values.status || null,
+                                        }).catch((err) => reportError("Couldn't save project", err))
                                     }
                                 />
                             )}
@@ -128,7 +151,9 @@ function ProjectDetail(): React.JSX.Element {
                                 <ConfirmDelete
                                     onClose={() => setShowConfirmDelete(false)}
                                     onDelete={() => {
-                                        deleteProject(project?.id || "");
+                                        deleteProject(project.id).catch((err) =>
+                                            reportError("Couldn't delete project", err),
+                                        );
                                         setShowConfirmDelete(false);
                                         nav("/projects");
                                     }}
@@ -138,14 +163,20 @@ function ProjectDetail(): React.JSX.Element {
                         </div>
                     </div>
                 </div>
-                {project?.description && <p className="pd-description">{project?.description}</p>}
+                {project.description && <p className="pd-description">{project.description}</p>}
             </div>
             <div className="pd-body">
                 <KanbanBoard project={project} />
                 {showNotes && (
                     <NotesPanel
-                        notes={projectId ? notesByProjectId[projectId] : undefined}
-                        onSave={(notes) => updateNotes(project.id, notes)}
+                        key={project.id}
+                        notes={notesByProjectId[project.id]}
+                        loadError={notesError?.projectId === project.id ? notesError.message : null}
+                        onRetry={() => {
+                            setNotesError(null);
+                            fetchNotes(project.id);
+                        }}
+                        onSave={saveNotes}
                     />
                 )}
             </div>

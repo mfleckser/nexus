@@ -1,13 +1,16 @@
 import "./taskPopover.css";
-import { RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Task } from "@renderer/types";
+import { RefObject, useRef, useState } from "react";
+import { Task, TaskStatus } from "@renderer/types";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import { useProjects } from "@renderer/features/projects/useProjects";
 import TaskForm from "@renderer/components/TaskForm";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import { formatDueDisplay, toDatetimeLocal } from "@renderer/lib/time";
+import useDismiss from "@renderer/hooks/useDismiss";
+import usePopoverPosition, { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
+import useReportError from "@renderer/hooks/useReportError";
 
-const STATUS_LABELS: Record<string, string> = {
+const STATUS_LABELS: Record<TaskStatus, string> = {
     todo: "To do",
     active: "In progress",
     complete: "Complete",
@@ -16,9 +19,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 type TaskPopoverProps = {
     task: Task;
-    // flipX: right edge to place the popover against when it would overflow
-    // the window's right side at x (the left edge of the pin).
-    anchor: { x: number; y: number; flipX?: number };
+    anchor: PopoverAnchor;
     // Presses inside this element don't count as outside clicks (the pin
     // toggles the popover itself).
     ignoreRef?: RefObject<HTMLElement | null>;
@@ -32,46 +33,13 @@ function TaskPopover({ task, anchor, ignoreRef, onToggleComplete, onClose }: Tas
     const rootRef = useRef<HTMLDivElement>(null);
     const [editing, setEditing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
-    const [top, setTop] = useState(anchor.y);
-    const [left, setLeft] = useState(anchor.x);
+    const { left, top } = usePopoverPosition(rootRef, anchor);
+    const reportError = useReportError();
 
     const done = task.status === "complete";
     const project = task.project_id ? projects.find((p) => p.id === task.project_id) : undefined;
 
-    // Re-clamp whenever the popover grows/shrinks (edit form, long description).
-    useLayoutEffect(() => {
-        const el = rootRef.current;
-        if (!el) return;
-        const margin = 8;
-        const clamp = (): void => {
-            const maxTop = window.innerHeight - el.offsetHeight - margin;
-            setTop(Math.max(margin, Math.min(anchor.y, maxTop)));
-            const maxLeft = window.innerWidth - el.offsetWidth - margin;
-            const x = anchor.x > maxLeft && anchor.flipX !== undefined ? anchor.flipX - el.offsetWidth : anchor.x;
-            setLeft(Math.max(margin, Math.min(x, maxLeft)));
-        };
-        clamp();
-        const observer = new ResizeObserver(clamp);
-        observer.observe(el);
-        return () => observer.disconnect();
-    }, [anchor.x, anchor.y, anchor.flipX]);
-
-    useEffect(() => {
-        function onKey(e: KeyboardEvent): void {
-            if (e.key === "Escape") onClose();
-        }
-        function onClick(e: MouseEvent): void {
-            const target = e.target as Node;
-            if (rootRef.current?.contains(target) || ignoreRef?.current?.contains(target)) return;
-            onClose();
-        }
-        window.addEventListener("keydown", onKey);
-        window.addEventListener("mousedown", onClick);
-        return () => {
-            window.removeEventListener("keydown", onKey);
-            window.removeEventListener("mousedown", onClick);
-        };
-    }, [onClose, ignoreRef]);
+    useDismiss(rootRef, onClose, { ignoreRef });
 
     return (
         <div
@@ -89,7 +57,7 @@ function TaskPopover({ task, anchor, ignoreRef, onToggleComplete, onClose }: Tas
                     initialDueAt={toDatetimeLocal(task.due_at)}
                     onSubmit={(v) => {
                         updateTask(task.id, { title: v.title, description: v.description, due_at: v.dueAt }).catch(
-                            console.error,
+                            (err) => reportError("Couldn't save task", err),
                         );
                         setEditing(false);
                     }}
@@ -140,7 +108,7 @@ function TaskPopover({ task, anchor, ignoreRef, onToggleComplete, onClose }: Tas
                     onDelete={() => {
                         setConfirmDelete(false);
                         onClose();
-                        deleteTask(task.id).catch(console.error);
+                        deleteTask(task.id).catch((err) => reportError("Couldn't delete task", err));
                     }}
                     itemName="task"
                 />

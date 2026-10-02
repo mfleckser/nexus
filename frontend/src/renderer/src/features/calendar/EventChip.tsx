@@ -1,33 +1,62 @@
-import { useEvents } from "@renderer/features/calendar/useEvents";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Repeat } from "lucide-react";
+import { useEvents } from "@renderer/features/calendar/useEvents";
+import { EventUpdate } from "@renderer/features/calendar/events.api";
 import { CalendarEvent, NewEventDraft, RecurrenceScope } from "@renderer/types";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import RecurrenceScopePrompt from "@renderer/components/RecurrenceScopePrompt";
-import categoryData from "./categories.json";
-import { browserTimeZone, formatTime as fmtTime } from "@renderer/lib/time";
+import { categoryColor } from "@renderer/features/calendar/categories";
+import {
+    DRAG_THRESHOLD,
+    MIN_EVENT_MINUTES,
+    POPOVER_GAP,
+    PX_PER_MIN,
+    SLOT_MINUTES,
+} from "@renderer/features/calendar/constants";
+import {
+    addDays,
+    atMinutes,
+    browserTimeZone,
+    calendarDaysBetween,
+    formatTime as fmtTime,
+    minutesIntoDay,
+    MINUTES_PER_DAY,
+    shiftDays,
+} from "@renderer/lib/time";
 import { describeRrule, sameRrule } from "@renderer/lib/rrule";
+import { DaySegment, daySegment } from "@renderer/lib/eventLayout";
+import useReportError from "@renderer/hooks/useReportError";
+import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 
-const PX_PER_HOUR = 48;
-const PX_PER_MIN = PX_PER_HOUR / 60;
-const POPOVER_GAP = 8;
-// Mouse travel (px) below which a press on the chip is a click, not a drag/resize.
-const DRAG_THRESHOLD = 3;
-const MIN_DURATION = 30;
+// Chips shorter than this (px) show title and time on a single line.
+const COMPACT_CHIP_PX = 30;
+
+const snap = (minutes: number): number => SLOT_MINUTES * Math.round(minutes / SLOT_MINUTES);
+const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 // A mutation of a recurring occurrence waiting on the scope prompt.
-type PendingScope =
-    | { action: "edit"; data: Record<string, unknown>; scopes?: RecurrenceScope[] }
-    | { action: "delete" };
+type PendingScope = { action: "edit"; data: EventUpdate; scopes?: RecurrenceScope[] } | { action: "delete" };
+
+type ChipBox = { dayIndex: number; startMin: number; endMin: number };
+
+function chipStyle(box: ChipBox, column: number, columns: number, color: string): React.CSSProperties {
+    return {
+        width: `${100 / 7 / columns}%`,
+        height: (box.endMin - box.startMin) * PX_PER_MIN,
+        left: `${((box.dayIndex + column / columns) * 100) / 7}%`,
+        top: box.startMin * PX_PER_MIN,
+        ["--chip-background" as string]: color,
+    };
+}
 
 type EventChipProps = {
-    event: CalendarEvent;
-    cols: number;
-    colIdx: number;
+    // This chip's day slice of the event (multi-day events render one chip per day).
+    segment: DaySegment<CalendarEvent>;
 };
 
-function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
+function EventChip({ segment }: EventChipProps): React.JSX.Element {
+    const event = segment.item;
     const chipRef = useRef<HTMLDivElement>(null);
     const parentRectRef = useRef<DOMRect | null>(null);
     const grabOffsetRef = useRef({ x: 0, y: 0 });
@@ -37,30 +66,47 @@ function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
     const suppressClickRef = useRef(false);
     const [dragging, setDragging] = useState(false);
     const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
-    const [adjustingDuration, setAdjustingDuration] = useState(false);
-    // Live height while resizing; null otherwise.
-    const [resizeDuration, setResizeDuration] = useState<number | null>(null);
+    const [resizing, setResizing] = useState(false);
+    // Snapped end (minutes into this segment's day) while resizing.
+    const [resizeEndMin, setResizeEndMin] = useState<number | null>(null);
     // Dropped/resized times of a recurring occurrence, shown while the scope
     // prompt is open. Nothing is committed until a scope is chosen; Cancel
     // just clears this and the chip falls back to `event`.
     const [preview, setPreview] = useState<{ start: Date; end: Date } | null>(null);
     const [pendingScope, setPendingScope] = useState<PendingScope | null>(null);
-    const [showPopover, setShowPopover] = useState(false);
+    // Edit popover anchor, captured from the chip's rect on open; null = closed.
+    const [popoverAnchor, setPopoverAnchor] = useState<PopoverAnchor | null>(null);
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
     const { updateEvent, deleteEvent } = useEvents();
+    const reportError = useReportError();
 
-    const shownStart = preview?.start ?? event.start_at;
-    const shownEnd = preview?.end ?? event.end_at;
-    const duration = resizeDuration ?? (shownEnd.getTime() - shownStart.getTime()) / (1000 * 60);
-    const dayIdx = shownStart.getDay();
-    const baseTop = (60 * shownStart.getHours() + shownStart.getMinutes()) * PX_PER_MIN;
     const isOccurrence = event.recurring_event_id !== null;
+    const eventMinutes = (event.end_at.getTime() - event.start_at.getTime()) / 60000;
+    const singleDay = !segment.clippedStart && !segment.clippedEnd;
+
+    // Where the chip sits: the pending preview's slice of the (shifted) day,
+    // the live resize, or the segment itself.
+    let box: ChipBox = segment;
+    if (preview) {
+        const days = calendarDaysBetween(event.start_at, preview.start);
+        const day = addDays(segment.dayStart, days);
+        const shifted = daySegment({ start_at: preview.start, end_at: preview.end }, 0, day, addDays(day, 1));
+        if (shifted) box = { dayIndex: segment.dayIndex + days, startMin: shifted.startMin, endMin: shifted.endMin };
+    } else if (resizeEndMin !== null) {
+        box = { ...segment, endMin: resizeEndMin };
+    }
+    const shownStart = preview?.start ?? event.start_at;
+    const shownEnd = preview?.end ?? (resizeEndMin !== null ? atMinutes(segment.dayStart, resizeEndMin) : event.end_at);
+
+    const style = chipStyle(box, segment.column, segment.columns, categoryColor(event.category));
+    if (dragging && dragPos) Object.assign(style, { left: dragPos.left, top: dragPos.top, width: `${100 / 7}%` });
+    const compact = (box.endMin - box.startMin) * PX_PER_MIN < COMPACT_CHIP_PX;
 
     // Plain events commit straight away; occurrences wait for a scope.
-    function requestUpdate(data: Record<string, unknown>, scopes?: RecurrenceScope[]): void {
+    function requestUpdate(data: EventUpdate, scopes?: RecurrenceScope[]): void {
         if (!isOccurrence) {
-            updateEvent(event, data).catch(console.error);
+            updateEvent(event, data).catch((err) => reportError("Couldn't save event", err));
             return;
         }
         setPendingScope({ action: "edit", data, scopes });
@@ -69,7 +115,7 @@ function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
     // Drag/resize result. Only changed fields are sent; a drop back onto the
     // same slot sends nothing.
     function commitTimes(start: Date, end: Date): void {
-        const data: Record<string, unknown> = {};
+        const data: EventUpdate = {};
         if (start.getTime() !== event.start_at.getTime()) data.start_at = start;
         if (end.getTime() !== event.end_at.getTime()) data.end_at = end;
         if (!Object.keys(data).length) return;
@@ -85,11 +131,11 @@ function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
         // the old position before the post-mutation refetch remounts it.
         setPendingScope(null);
         setPreview(null);
-        setShowPopover(false);
+        setPopoverAnchor(null);
         if (pending.action === "delete") {
-            deleteEvent(event, scope).catch(console.error);
+            deleteEvent(event, scope).catch((err) => reportError("Couldn't delete event", err));
         } else {
-            updateEvent(event, pending.data, scope).catch(console.error);
+            updateEvent(event, pending.data, scope).catch((err) => reportError("Couldn't save event", err));
         }
     }
 
@@ -101,7 +147,7 @@ function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
     const handlePopoverSave = (draft: NewEventDraft): void => {
         // Only fields the user changed: an unchanged field must not overwrite
         // other occurrences' values under "all"/"following".
-        const data: Record<string, unknown> = {};
+        const data: EventUpdate = {};
         const end = new Date(draft.start_at.getTime() + draft.duration * 1000 * 60);
         if (draft.title !== event.title) data.title = draft.title;
         if (draft.description !== (event.description ?? "")) data.description = draft.description;
@@ -121,12 +167,12 @@ function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
         }
 
         if (!Object.keys(data).length) {
-            setShowPopover(false);
+            setPopoverAnchor(null);
             return;
         }
         if (!isOccurrence) {
             requestUpdate(data);
-            setShowPopover(false);
+            setPopoverAnchor(null);
             return;
         }
         // The popover stays open behind the prompt so Cancel returns to the
@@ -141,20 +187,31 @@ function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
         else setShowConfirmDelete(true);
     };
 
+    function openPopover(): void {
+        const rect = chipRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        setPopoverAnchor({ x: rect.right + POPOVER_GAP, y: rect.top, flipX: rect.left - POPOVER_GAP });
+    }
+
     function movedPastThreshold(e: MouseEvent): boolean {
         return Math.hypot(e.clientX - pressPosRef.current.x, e.clientY - pressPosRef.current.y) > DRAG_THRESHOLD;
     }
 
-    function onMouseDown(e: React.MouseEvent): void {
-        if (e.button !== 0) return;
+    // Records the press and the grid's rect; false if the chip isn't mounted.
+    function beginPress(e: React.MouseEvent): boolean {
         const chip = chipRef.current;
-        if (!chip) return;
+        if (!chip) return false;
         suppressClickRef.current = false;
         pressPosRef.current = { x: e.clientX, y: e.clientY };
-        const chipRect = chip.getBoundingClientRect();
         const parent = chip.offsetParent as HTMLElement | null;
-        const parentRect = parent ? parent.getBoundingClientRect() : null;
-        parentRectRef.current = parentRect;
+        parentRectRef.current = parent ? parent.getBoundingClientRect() : null;
+        return true;
+    }
+
+    function onMouseDown(e: React.MouseEvent): void {
+        if (e.button !== 0 || !beginPress(e)) return;
+        const chipRect = chipRef.current!.getBoundingClientRect();
+        const parentRect = parentRectRef.current;
         grabOffsetRef.current = {
             x: e.clientX - chipRect.left,
             y: e.clientY - chipRect.top,
@@ -166,123 +223,116 @@ function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
         setDragging(true);
     }
 
-    function snapTime(hour: number): { hour: number; minute: number } {
-        const roundedHour = Math.round(2 * hour) / 2;
-        return { hour: roundedHour, minute: 60 * (roundedHour % 1) };
-    }
+    const onDragMove = useEffectEvent((e: MouseEvent) => {
+        const parentRect = parentRectRef.current;
+        if (!parentRect) return;
+        setDragPos({
+            left: e.clientX - parentRect.left - grabOffsetRef.current.x,
+            top: e.clientY - parentRect.top - grabOffsetRef.current.y,
+        });
+    });
 
-    function onMouseUp(e: MouseEvent): void {
+    const onDragEnd = useEffectEvent((e: MouseEvent) => {
         setDragging(false);
         setDragPos(null);
         const parentRect = parentRectRef.current;
         if (!parentRect || !movedPastThreshold(e)) return;
         suppressClickRef.current = true;
 
-        // New Date objects: `event` is shared state and must stay untouched
-        // until the change is committed (Cancel on the scope prompt reverts to it).
-        const start = new Date(event.start_at);
-        const newDayIdx = Math.min(6, Math.max(0, Math.floor((7 * (e.clientX - parentRect.left)) / parentRect.width)));
-        start.setDate(start.getDate() + newDayIdx - dayIdx);
-        const roundedTime = snapTime((24 * (e.clientY - parentRect.top - grabOffsetRef.current.y)) / parentRect.height);
-        // Keep the drop inside the target day (dropping above/below the grid
-        // would otherwise roll into the neighbouring day).
-        const startMins = Math.min(Math.max(0, 60 * roundedTime.hour), Math.max(0, 24 * 60 - duration));
-        start.setHours(0, startMins, 0, 0);
-        commitTimes(start, new Date(start.getTime() + duration * 1000 * 60));
-    }
-
-    function durationMouseDown(e: React.MouseEvent): void {
-        e.stopPropagation();
-        if (e.button !== 0) return;
-
-        const chip = chipRef.current;
-        if (!chip) return;
-        suppressClickRef.current = false;
-        pressPosRef.current = { x: e.clientX, y: e.clientY };
-        const parent = chip.offsetParent as HTMLElement | null;
-        const parentRect = parent ? parent.getBoundingClientRect() : null;
-        parentRectRef.current = parentRect;
-
-        setAdjustingDuration(true);
-    }
-
-    function durationMouseUp(e: MouseEvent): void {
-        setAdjustingDuration(false);
-        setResizeDuration(null);
-        const parentRect = parentRectRef.current;
-        if (!parentRect || !movedPastThreshold(e)) return;
-        suppressClickRef.current = true;
-
-        const startMins = 60 * event.start_at.getHours() + event.start_at.getMinutes();
-        const endMins = (e.clientY - parentRect.top) / PX_PER_MIN;
-        const roundedDuration = Math.max(MIN_DURATION, 30 * Math.round((endMins - startMins) / 30));
-        commitTimes(event.start_at, new Date(event.start_at.getTime() + roundedDuration * 1000 * 60));
-    }
+        const newDayIdx = clamp(Math.floor((7 * (e.clientX - parentRect.left)) / parentRect.width), 0, 6);
+        const dayDelta = newDayIdx - segment.dayIndex;
+        const droppedTopMin = (e.clientY - parentRect.top - grabOffsetRef.current.y) / PX_PER_MIN;
+        let start: Date;
+        if (singleDay) {
+            // Snap the start onto the grid, keeping the event inside the
+            // target day (dropping above/below the grid would otherwise roll
+            // into the neighbouring day).
+            const startMin = clamp(snap(droppedTopMin), 0, Math.max(0, MINUTES_PER_DAY - eventMinutes));
+            start = atMinutes(addDays(segment.dayStart, dayDelta), startMin);
+        } else {
+            // A slice of a multi-day event: shift the whole event by however
+            // far this slice moved.
+            start = shiftDays(event.start_at, dayDelta);
+            start.setMinutes(start.getMinutes() + snap(droppedTopMin - segment.startMin));
+        }
+        commitTimes(start, new Date(start.getTime() + eventMinutes * 60000));
+    });
 
     useEffect(() => {
         if (!dragging) return;
-        function onMove(e: MouseEvent): void {
-            const parentRect = parentRectRef.current;
-            if (!parentRect) return;
-            setDragPos({
-                left: e.clientX - parentRect.left - grabOffsetRef.current.x,
-                top: e.clientY - parentRect.top - grabOffsetRef.current.y,
-            });
-        }
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onMouseUp);
+        window.addEventListener("mousemove", onDragMove);
+        window.addEventListener("mouseup", onDragEnd);
         return () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", onMouseUp);
+            window.removeEventListener("mousemove", onDragMove);
+            window.removeEventListener("mouseup", onDragEnd);
         };
     }, [dragging]);
 
-    useEffect(() => {
-        if (!adjustingDuration) return;
-        function onMove(e: MouseEvent): void {
-            if (!parentRectRef.current) return;
-            const startMins = 60 * event.start_at.getHours() + event.start_at.getMinutes();
-            const endMins = (e.clientY - parentRectRef.current.top) / PX_PER_MIN;
-            setResizeDuration(endMins - startMins);
+    // Only the slice holding the event's real end gets a resize handle.
+    function resizeMouseDown(e: React.MouseEvent): void {
+        e.stopPropagation();
+        if (e.button !== 0 || !beginPress(e)) return;
+        setResizing(true);
+    }
+
+    // New end (minutes into this slice's day) for the pointer's y, snapped,
+    // at least MIN_EVENT_MINUTES after the event's start and within the day.
+    function resizedEndMin(clientY: number, parentRect: DOMRect): number {
+        const pointerMin = (clientY - parentRect.top) / PX_PER_MIN;
+        const endMin = segment.startMin + snap(pointerMin - segment.startMin);
+        let minEnd = segment.startMin + MIN_EVENT_MINUTES;
+        if (segment.clippedStart) {
+            // The event began on an earlier day: keep at least one slot here,
+            // and MIN_EVENT_MINUTES overall if it started just before midnight.
+            const earliestEnd = new Date(event.start_at.getTime() + MIN_EVENT_MINUTES * 60000);
+            minEnd = Math.max(SLOT_MINUTES, earliestEnd > segment.dayStart ? minutesIntoDay(earliestEnd) : 0);
         }
+        return clamp(endMin, Math.min(minEnd, MINUTES_PER_DAY), MINUTES_PER_DAY);
+    }
 
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", durationMouseUp);
+    const onResizeMove = useEffectEvent((e: MouseEvent) => {
+        if (parentRectRef.current) setResizeEndMin(resizedEndMin(e.clientY, parentRectRef.current));
+    });
+
+    const onResizeEnd = useEffectEvent((e: MouseEvent) => {
+        setResizing(false);
+        setResizeEndMin(null);
+        const parentRect = parentRectRef.current;
+        if (!parentRect || !movedPastThreshold(e)) return;
+        suppressClickRef.current = true;
+        commitTimes(event.start_at, atMinutes(segment.dayStart, resizedEndMin(e.clientY, parentRect)));
+    });
+
+    useEffect(() => {
+        if (!resizing) return;
+        window.addEventListener("mousemove", onResizeMove);
+        window.addEventListener("mouseup", onResizeEnd);
         return () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", durationMouseUp);
+            window.removeEventListener("mousemove", onResizeMove);
+            window.removeEventListener("mouseup", onResizeEnd);
         };
-    }, [adjustingDuration]);
-
-    const color = event.category ? categoryData.filter((v) => v.name === event.category)[0].color : "#8a8a99";
-
-    const style = {
-        width: `${100 / 7 / (dragging ? 1 : cols)}%`,
-        height: duration * PX_PER_MIN,
-        left: dragging && dragPos ? dragPos.left : `${((dayIdx + colIdx / cols) * 100) / 7}%`,
-        top: dragging && dragPos ? dragPos.top : baseTop,
-        "--chip-background": color,
-    };
-
-    const rect = chipRef.current?.getBoundingClientRect();
+    }, [resizing]);
 
     return (
         <div>
             <div
                 ref={chipRef}
-                key={event.id}
-                className={`event-chip ${adjustingDuration ? "event-chip-adjusting" : ""}`}
+                className={`event-chip${resizing ? " event-chip-adjusting" : ""}${compact ? " event-chip-compact" : ""}`}
+                role="button"
+                tabIndex={0}
+                aria-expanded={popoverAnchor !== null}
                 onMouseDown={onMouseDown}
                 onClick={() => {
                     if (suppressClickRef.current) {
                         suppressClickRef.current = false;
                         return;
                     }
-                    setShowPopover(true);
+                    openPopover();
                 }}
-                onContextMenu={(e) => {
-                    e.stopPropagation();
-                    alert("HI");
+                onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+                    e.preventDefault();
+                    openPopover();
                 }}
                 style={style}
             >
@@ -297,40 +347,33 @@ function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
                 <div className="event-chip-time">
                     {fmtTime(shownStart)} – {fmtTime(shownEnd)}
                 </div>
-                <div className="event-chip-duration-adjuster" onMouseDown={durationMouseDown}></div>
+                {!segment.clippedEnd && (
+                    <div className="event-chip-duration-adjuster" onMouseDown={resizeMouseDown}></div>
+                )}
             </div>
             {/* Inert behind the scope prompt: its form must not be edited or
                 submitted while a pending change is waiting on a scope. */}
-            {showPopover && (
+            {popoverAnchor && (
                 <div inert={pendingScope !== null}>
                     <NewEventPopover
-                        anchor={{
-                            x: (rect?.right || 0) + POPOVER_GAP,
-                            y: rect?.top || 0,
-                            flipX: (rect?.left || 0) - POPOVER_GAP,
-                        }}
+                        anchor={popoverAnchor}
                         initialStart={event.start_at}
-                        initialDuration={duration}
+                        initialDuration={eventMinutes}
                         initialTitle={event.title}
                         initialDescription={event.description || ""}
                         initialCategory={event.category || ""}
                         initialRrule={event.rrule}
                         onSave={handlePopoverSave}
-                        onClose={() => {
-                            setShowPopover(false);
-                        }}
+                        onClose={() => setPopoverAnchor(null)}
                         onDelete={handlePopoverDelete}
-                        setEventDraft={(_) => {}}
                     />
                 </div>
             )}
             {showConfirmDelete && (
                 <ConfirmDelete
-                    onClose={() => {
-                        setShowConfirmDelete(false);
-                    }}
+                    onClose={() => setShowConfirmDelete(false)}
                     onDelete={() => {
-                        deleteEvent(event).catch(console.error);
+                        deleteEvent(event).catch((err) => reportError("Couldn't delete event", err));
                         setShowConfirmDelete(false);
                     }}
                     itemName="event"
@@ -348,35 +391,36 @@ function EventChip({ event, cols, colIdx }: EventChipProps): React.JSX.Element {
     );
 }
 
-function EventDraftChip({ draft }: { draft: NewEventDraft }) {
-    const [event, setEvent] = useState<CalendarEvent>({
-        id: "DRAFT",
-        created_at: new Date(),
-        updated_at: new Date(),
-        title: draft.title,
-        description: draft.description,
-        start_at: draft.start_at,
-        end_at: new Date(draft.start_at.getTime() + draft.duration * 1000 * 60),
-        all_day: false,
-        category: draft.category,
-        timezone: browserTimeZone(),
-        rrule: draft.rrule ?? null,
-        recurring_event_id: null,
-        original_start_at: null,
-    });
+type EventDraftPreviewProps = {
+    draft: NewEventDraft;
+    // Local midnight of the first visible day.
+    weekStart: Date;
+};
 
-    useEffect(() => {
-        setEvent((prev) => ({
-            ...prev,
-            title: draft.title,
-            description: draft.description,
-            start_at: draft.start_at,
-            end_at: new Date(draft.start_at.getTime() + draft.duration * 1000 * 60),
-        }));
-    }, [draft]);
-
-    return <EventChip event={event} cols={1} colIdx={0} />;
+// Non-interactive placeholder for an event being created (drag-to-create or
+// the new-event popover). Hidden when the draft starts outside the week.
+function EventDraftPreview({ draft, weekStart }: EventDraftPreviewProps): React.JSX.Element | null {
+    const dayIndex = calendarDaysBetween(weekStart, draft.start_at);
+    if (dayIndex < 0 || dayIndex > 6) return null;
+    const startMin = minutesIntoDay(draft.start_at);
+    const endMin = Math.min(MINUTES_PER_DAY, startMin + draft.duration);
+    const end = new Date(draft.start_at.getTime() + draft.duration * 60000);
+    const compact = (endMin - startMin) * PX_PER_MIN < COMPACT_CHIP_PX;
+    return (
+        <div
+            className={`event-chip event-chip-draft${compact ? " event-chip-compact" : ""}`}
+            style={chipStyle({ dayIndex, startMin, endMin }, 0, 1, categoryColor(draft.category))}
+            aria-hidden
+        >
+            <div className="event-chip-title">
+                <span className="event-chip-title-text">{draft.title || "(No title)"}</span>
+            </div>
+            <div className="event-chip-time">
+                {fmtTime(draft.start_at)} – {fmtTime(end)}
+            </div>
+        </div>
+    );
 }
 
 export default EventChip;
-export { EventDraftChip };
+export { EventDraftPreview };

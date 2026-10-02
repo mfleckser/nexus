@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Ellipsis } from "lucide-react";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
+import useDismiss from "@renderer/hooks/useDismiss";
 
 type FeatureLabelProps = {
     name: string;
@@ -17,16 +18,7 @@ function FeatureLabel({ name, featureId, onEdit, onDelete }: FeatureLabelProps):
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        if (!menuOpen) return;
-        const handleClick = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-                setMenuOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClick);
-        return () => document.removeEventListener("mousedown", handleClick);
-    }, [menuOpen]);
+    useDismiss(menuRef, () => setMenuOpen(false), { enabled: menuOpen });
 
     const handleEditSubmit = () => {
         const next = editInput.trim();
@@ -88,6 +80,8 @@ function FeatureLabel({ name, featureId, onEdit, onDelete }: FeatureLabelProps):
                         type="button"
                         className={`kb-feature-menu-btn${menuOpen ? " open" : ""}`}
                         aria-label="Feature actions"
+                        aria-haspopup="menu"
+                        aria-expanded={menuOpen}
                         onClick={() => setMenuOpen((prev) => !prev)}
                     >
                         <Ellipsis size={15} />

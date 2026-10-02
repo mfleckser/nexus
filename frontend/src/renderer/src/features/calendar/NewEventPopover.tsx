@@ -1,8 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import "./newEventPopover.css";
 import categoryData from "./categories.json";
 import { NewEventDraft } from "@renderer/types";
+import { parseDateTimeInputs, toDateInput, toTimeInput } from "@renderer/lib/time";
+import useDismiss from "@renderer/hooks/useDismiss";
+import usePopoverPosition, { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 import {
     Recurrence,
     RecurrenceFreq,
@@ -26,16 +29,10 @@ const DURATION_PRESETS = [30, 45, 60, 90, 120];
 const REPEAT_PRESETS: RepeatPreset[] = ["none", "daily", "weekdays", "weekly", "monthly", "yearly"];
 const FREQ_UNITS: Record<RecurrenceFreq, string> = { DAILY: "day", WEEKLY: "week", MONTHLY: "month", YEARLY: "year" };
 
-const toDateInput = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const parseDateInput = (s: string): Date | null => parseDateTimeInputs(s, "00:00");
 
-const toTimeInput = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-
-const parseDateInput = (s: string): Date | null => {
-    const [y, mo, da] = s.split("-").map(Number);
-    const d = new Date(y, mo - 1, da);
-    return s && !Number.isNaN(d.getTime()) ? d : null;
-};
+// Positive whole minutes, or null.
+const parseMinutes = (s: string): number | null => (/^\d+$/.test(s.trim()) && Number(s) > 0 ? Number(s) : null);
 
 type RepeatMode = RepeatPreset | "custom";
 
@@ -102,9 +99,7 @@ function initialRepeatState(
 }
 
 export type NewEventPopoverProps = {
-    // flipX: right edge to place the popover against when it would overflow
-    // the window's right side at x (e.g. the left edge of the chip it edits).
-    anchor: { x: number; y: number; flipX?: number };
+    anchor: PopoverAnchor;
     initialStart: Date;
     initialDuration?: number;
     initialTitle?: string;
@@ -116,7 +111,9 @@ export type NewEventPopoverProps = {
     onSave: (draft: NewEventDraft) => void;
     onClose: () => void;
     onDelete?: () => void;
-    setEventDraft: (draft: NewEventDraft) => void;
+    // Live form values, for a preview on the grid; not called while the
+    // date/time/duration fields are invalid.
+    onDraftChange?: (draft: NewEventDraft) => void;
 };
 
 function NewEventPopover({
@@ -130,10 +127,11 @@ function NewEventPopover({
     onSave,
     onClose,
     onDelete,
-    setEventDraft,
+    onDraftChange,
 }: NewEventPopoverProps): React.JSX.Element {
     const rootRef = useRef<HTMLDivElement>(null);
     const titleRef = useRef<HTMLInputElement>(null);
+    const ids = useId();
 
     const [title, setTitle] = useState(initialTitle);
     const [description, setDescription] = useState(initialDescription);
@@ -144,8 +142,7 @@ function NewEventPopover({
     const [customDuration, setCustomDuration] = useState(
         DURATION_PRESETS.includes(initialDuration) ? "" : String(initialDuration),
     );
-    const [top, setTop] = useState(anchor.y);
-    const [left, setLeft] = useState(anchor.x);
+    const { left, top } = usePopoverPosition(rootRef, anchor);
 
     const [initialRepeat] = useState(() => initialRepeatState(initialRrule, initialStart));
     const [repeatMode, setRepeatMode] = useState<RepeatMode>(initialRepeat.mode);
@@ -153,67 +150,35 @@ function NewEventPopover({
     const [repeatTouched, setRepeatTouched] = useState(false);
     const showUnknownRule = initialRepeat.unknown && !repeatTouched;
 
-    const startAt = getStartAt();
+    // null while the date/time inputs are empty or mid-edit.
+    const startAt = parseDateTimeInputs(dateStr, timeStr);
+    const startMs = startAt?.getTime() ?? null;
+    // A non-empty custom duration must itself be valid (the last good value
+    // stays in `duration` while it's being typed).
+    const durationValid = duration > 0 && (customDuration === "" || parseMinutes(customDuration) !== null);
     // Labels/presets follow the chosen start; fall back while the date input is mid-edit.
-    const repeatStart = Number.isNaN(startAt.getTime()) ? initialStart : startAt;
+    const repeatStart = startAt ?? initialStart;
     const customRecurrence = repeatMode === "custom" ? customFormToRecurrence(customRepeat, repeatStart) : null;
     const rrule = computeRrule();
+    const canSave = !!title.trim() && startAt !== null && durationValid && rrule !== undefined;
 
     useEffect(() => {
         titleRef.current?.focus();
     }, []);
 
-    // Re-clamp whenever the popover grows/shrinks (custom repeat section, textarea resize).
-    useLayoutEffect(() => {
-        const el = rootRef.current;
-        if (!el) return;
-        const margin = 8;
-        const clamp = () => {
-            const maxTop = window.innerHeight - el.offsetHeight - margin;
-            setTop(Math.max(margin, Math.min(anchor.y, maxTop)));
-            const maxLeft = window.innerWidth - el.offsetWidth - margin;
-            const x = anchor.x > maxLeft && anchor.flipX !== undefined ? anchor.flipX - el.offsetWidth : anchor.x;
-            setLeft(Math.max(margin, Math.min(x, maxLeft)));
-        };
-        clamp();
-        const observer = new ResizeObserver(clamp);
-        observer.observe(el);
-        return () => observer.disconnect();
-    }, [anchor.x, anchor.y, anchor.flipX]);
-
     useEffect(() => {
-        setEventDraft({
-            title: title,
-            description: description,
-            start_at: getStartAt(),
-            duration: duration,
-            category: category,
+        if (startMs === null || !durationValid || !onDraftChange) return;
+        onDraftChange({
+            title,
+            description,
+            start_at: new Date(startMs),
+            duration,
+            category,
             rrule: rrule ?? null,
         });
-    }, [title, description, dateStr, timeStr, duration, category, rrule]);
+    }, [title, description, startMs, duration, durationValid, category, rrule, onDraftChange]);
 
-    useEffect(() => {
-        function onKey(e: KeyboardEvent) {
-            if (e.key === "Escape") onClose();
-        }
-        function onClick(e: MouseEvent) {
-            if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-                onClose();
-            }
-        }
-        window.addEventListener("keydown", onKey);
-        window.addEventListener("mousedown", onClick);
-        return () => {
-            window.removeEventListener("keydown", onKey);
-            window.removeEventListener("mousedown", onClick);
-        };
-    }, [onClose]);
-
-    function getStartAt() {
-        const [y, mo, da] = dateStr.split("-").map(Number);
-        const [h, mi] = timeStr.split(":").map(Number);
-        return new Date(y, mo - 1, da, h, mi);
-    }
+    useDismiss(rootRef, onClose);
 
     // undefined = custom form currently invalid.
     function computeRrule(): string | null | undefined {
@@ -225,12 +190,11 @@ function NewEventPopover({
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (!title.trim() || rrule === undefined) return;
-        const start_at = getStartAt();
+        if (!canSave || startAt === null || rrule === undefined) return;
         onSave({
             title: title.trim(),
             description: description.trim(),
-            start_at,
+            start_at: startAt,
             duration,
             category,
             rrule,
@@ -267,8 +231,8 @@ function NewEventPopover({
 
     function onCustomChange(v: string) {
         setCustomDuration(v);
-        const n = parseInt(v, 10);
-        if (!Number.isNaN(n) && n > 0) setDuration(n);
+        const n = parseMinutes(v);
+        if (n !== null) setDuration(n);
     }
 
     const style: React.CSSProperties = {
@@ -281,6 +245,8 @@ function NewEventPopover({
             ref={rootRef}
             className="new-event-popover themed-scroll"
             style={style}
+            role="dialog"
+            aria-label={onDelete ? "Edit event" : "New event"}
             onMouseDown={(e) => e.stopPropagation()}
         >
             <form onSubmit={handleSubmit}>
@@ -289,6 +255,7 @@ function NewEventPopover({
                     className="nep-title"
                     type="text"
                     placeholder="Add title"
+                    aria-label="Title"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                 />
@@ -296,14 +263,17 @@ function NewEventPopover({
                 <textarea
                     className="nep-description"
                     placeholder="Description (optional)"
+                    aria-label="Description"
                     rows={2}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                 />
 
                 <div className="nep-field-row">
-                    <label className="nep-label">Category</label>
-                    <div className="nep-category-container">
+                    <span className="nep-label" id={`${ids}-category`}>
+                        Category
+                    </span>
+                    <div className="nep-category-container" role="group" aria-labelledby={`${ids}-category`}>
                         {categoryData
                             .filter((cat) => cat.name !== "none")
                             .map((cat) => (
@@ -311,6 +281,7 @@ function NewEventPopover({
                                     key={cat.name}
                                     type="button"
                                     className={`nep-category-option${category === cat.name ? " nep-category-option-selected" : ""}`}
+                                    aria-pressed={category === cat.name}
                                     onClick={() => setCategory(category === cat.name ? "" : cat.name)}
                                 >
                                     {cat.name}
@@ -320,9 +291,12 @@ function NewEventPopover({
                 </div>
 
                 <div className="nep-field-row">
-                    <label className="nep-label">Start</label>
+                    <label className="nep-label" htmlFor={`${ids}-date`}>
+                        Start
+                    </label>
                     <div className="nep-datetime">
                         <input
+                            id={`${ids}-date`}
                             className="nep-input"
                             type="date"
                             value={dateStr}
@@ -331,6 +305,7 @@ function NewEventPopover({
                         <input
                             className="nep-input"
                             type="time"
+                            aria-label="Start time"
                             value={timeStr}
                             onChange={(e) => setTimeStr(e.target.value)}
                         />
@@ -338,14 +313,17 @@ function NewEventPopover({
                 </div>
 
                 <div className="nep-field-row">
-                    <label className="nep-label">Duration</label>
+                    <label className="nep-label" htmlFor={`${ids}-duration`}>
+                        Duration
+                    </label>
                     <div className="nep-duration">
-                        <div className="nep-chips">
+                        <div className="nep-chips" role="group" aria-label="Duration presets">
                             {DURATION_PRESETS.map((mins) => (
                                 <button
                                     key={mins}
                                     type="button"
                                     className={`nep-chip${duration === mins && customDuration === "" ? " nep-chip-active" : ""}`}
+                                    aria-pressed={duration === mins && customDuration === ""}
                                     onClick={() => selectPreset(mins)}
                                 >
                                     {mins < 60
@@ -357,6 +335,7 @@ function NewEventPopover({
                             ))}
                         </div>
                         <input
+                            id={`${ids}-duration`}
                             className="nep-input nep-custom"
                             type="number"
                             min={1}
@@ -368,9 +347,12 @@ function NewEventPopover({
                 </div>
 
                 <div className="nep-field-row">
-                    <label className="nep-label">Repeat</label>
+                    <label className="nep-label" htmlFor={`${ids}-repeat`}>
+                        Repeat
+                    </label>
                     <div className="nep-select-wrapper">
                         <select
+                            id={`${ids}-repeat`}
                             className="nep-select"
                             value={repeatMode}
                             onChange={(e) => onRepeatModeChange(e.target.value as RepeatMode)}
@@ -395,7 +377,8 @@ function NewEventPopover({
                         (showUnknownRule ? (
                             <div className="nep-repeat-custom">
                                 <p className="nep-repeat-note">
-                                    This event uses a rule the picker can't edit. It's kept as-is unless you change it.
+                                    This event uses a rule the picker can&apos;t edit. It&apos;s kept as-is unless you
+                                    change it.
                                 </p>
                                 <code className="nep-repeat-rule">{initialRrule}</code>
                                 <button
@@ -414,12 +397,14 @@ function NewEventPopover({
                                         className="nep-input nep-input-narrow"
                                         type="number"
                                         min={1}
+                                        aria-label="Repeat interval"
                                         value={customRepeat.interval}
                                         onChange={(e) => updateCustomRepeat({ interval: e.target.value })}
                                     />
                                     <div className="nep-select-wrapper nep-select-grow">
                                         <select
                                             className="nep-select"
+                                            aria-label="Repeat unit"
                                             value={customRepeat.freq}
                                             onChange={(e) =>
                                                 updateCustomRepeat({ freq: e.target.value as RecurrenceFreq })
@@ -443,6 +428,7 @@ function NewEventPopover({
                                                 type="button"
                                                 title={weekdayShort(day)}
                                                 className={`nep-chip nep-weekday${customRepeat.byday.includes(day) ? " nep-chip-active" : ""}`}
+                                                aria-pressed={customRepeat.byday.includes(day)}
                                                 onClick={() => toggleWeekday(day)}
                                             >
                                                 {weekdayShort(day).slice(0, 2)}
@@ -459,6 +445,7 @@ function NewEventPopover({
                                                 key={t}
                                                 type="button"
                                                 className={`nep-chip${customRepeat.endType === t ? " nep-chip-active" : ""}`}
+                                                aria-pressed={customRepeat.endType === t}
                                                 onClick={() => updateCustomRepeat({ endType: t })}
                                             >
                                                 {t === "never" ? "Never" : t === "until" ? "On date" : "After"}
@@ -470,6 +457,7 @@ function NewEventPopover({
                                     <input
                                         className="nep-input"
                                         type="date"
+                                        aria-label="End date"
                                         min={toDateInput(repeatStart)}
                                         max={toDateInput(maxUntilDate(repeatStart))}
                                         value={customRepeat.until}
@@ -483,6 +471,7 @@ function NewEventPopover({
                                             type="number"
                                             min={1}
                                             max={MAX_COUNT}
+                                            aria-label="Occurrence count"
                                             value={customRepeat.count}
                                             onChange={(e) => updateCustomRepeat({ count: e.target.value })}
                                         />
@@ -497,7 +486,7 @@ function NewEventPopover({
 
                 <div className="nep-bottom-row">
                     {onDelete && (
-                        <button type="button" className="nep-btn-delete" onClick={onDelete}>
+                        <button type="button" className="nep-btn-delete" aria-label="Delete event" onClick={onDelete}>
                             <Trash2 size={20} />
                         </button>
                     )}
@@ -506,11 +495,7 @@ function NewEventPopover({
                         <button type="button" className="nep-btn nep-btn-secondary" onClick={onClose}>
                             Cancel
                         </button>
-                        <button
-                            type="submit"
-                            className="nep-btn nep-btn-primary"
-                            disabled={!title.trim() || rrule === undefined}
-                        >
+                        <button type="submit" className="nep-btn nep-btn-primary" disabled={!canSave}>
                             Save
                         </button>
                     </div>
