@@ -304,11 +304,6 @@
     pointer-events: none;
 }
 
-.day-event-column {
-    position: relative;
-    pointer-events: none;
-}
-
 .event-chip {
     position: absolute;
     box-sizing: border-box;
@@ -377,6 +372,38 @@
     position: absolute;
     bottom: 0;
     cursor: ns-resize;
+}
+
+/* Short chips: title and time on one centred line, so the title isn't cut
+   through the middle; slimmer resize handle so the chip can still be moved. */
+.event-chip-compact {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: 10px;
+    line-height: 1;
+}
+
+.event-chip-compact .event-chip-title {
+    min-width: 0;
+    flex-shrink: 1;
+}
+
+.event-chip-compact .event-chip-time {
+    flex-shrink: 100;
+    min-width: 0;
+    font-size: 9px;
+}
+
+.event-chip-compact .event-chip-duration-adjuster {
+    height: 4px;
+}
+
+/* Placeholder for an event being created; purely visual. */
+.event-chip-draft {
+    pointer-events: none;
 }
 
 #month-container {
@@ -452,7 +479,7 @@
 .cursor-now {
     width: calc(100% / 7);
     height: 1px;
-    background-color: red;
+    background-color: var(--now-indicator);
     position: absolute;
 }
 
@@ -461,7 +488,7 @@
     content: " ";
     width: 6px;
     height: 6px;
-    background-color: red;
+    background-color: var(--now-indicator);
     position: absolute;
     left: -3px;
     top: -3px;

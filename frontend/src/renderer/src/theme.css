@@ -49,6 +49,10 @@
     --pillar-project:  #7cc7e0; /* cyan   — execution */
     --pillar-coach:    #ff9b85; /* coral  — AI warmth */
 
+    /* ===== Calendar ===== */
+    --event-uncategorized: #8a8a99; /* chip tint for events without a known category */
+    --now-indicator:       var(--status-danger); /* current-time line in the week grid */
+
     /* ===== Status ===== */
     --status-success: #6dd4a3;
     --status-warning: #f5c772;

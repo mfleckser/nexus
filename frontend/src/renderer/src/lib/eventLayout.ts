@@ -30,7 +30,14 @@ export function overlapsRange(item: Timed, rangeStart: Date, rangeEnd: Date): bo
     return s < rangeEnd.getTime() && e > rangeStart.getTime();
 }
 
-function daySegment<T extends Timed>(item: T, dayIndex: number, dayStart: Date, dayEnd: Date): DaySegment<T> | null {
+// `item`'s slice of the day [dayStart, dayEnd), not yet placed in a column;
+// null if it doesn't touch that day.
+export function daySegment<T extends Timed>(
+    item: T,
+    dayIndex: number,
+    dayStart: Date,
+    dayEnd: Date,
+): DaySegment<T> | null {
     if (!overlapsRange(item, dayStart, dayEnd)) return null;
     const clippedStart = item.start_at < dayStart;
     const clippedEnd = item.end_at > dayEnd;
