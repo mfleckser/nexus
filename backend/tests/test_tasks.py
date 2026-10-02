@@ -23,6 +23,12 @@ class TasksTest(AppTestCase):
         self.assertEqual(self.request("DELETE", f"/api/tasks/{t['id']}")["id"], t["id"])
         self.assertEqual(self.request("GET", "/api/tasks"), [])
 
+    def test_list_is_ordered_by_creation(self):
+        ids = [self.create(title=str(i))["id"] for i in range(5)]
+        # Shuffle storage order; the API must still return oldest first.
+        self.db.tables["tasks"].reverse()
+        self.assertEqual([t["id"] for t in self.request("GET", "/api/tasks")], ids)
+
     def test_create_validation(self):
         for body in [
             {},

@@ -22,7 +22,12 @@ def _validate(fields: dict):
 
 
 def get_all_tasks():
-    return c.get_or_load(c.TASKS, lambda: supabase.table("tasks").select("*").execute().data)
+    """All tasks, oldest first (id breaks created_at ties) so the order is stable."""
+
+    def load():
+        return supabase.table("tasks").select("*").order("created_at").order("id").execute().data
+
+    return c.get_or_load(c.TASKS, load)
 
 
 def get_task(task_id: str):
