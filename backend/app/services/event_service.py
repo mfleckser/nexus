@@ -3,7 +3,7 @@ from functools import wraps
 
 from app import validation as v
 from app.errors import ValidationError, first_row
-from app.extensions.cache import cache
+from app.extensions.cache import TASKS, cache, invalidate
 from app.extensions.supabase import supabase
 from app.services import recurrence as rr
 from app.validation import parse_instant
@@ -145,6 +145,9 @@ def invalidates_events(fn):
             return fn(*args, **kwargs)
         finally:
             cache.delete_memoized(get_events)
+            # Deleting an event row (plain, master or override) nulls
+            # tasks.event_id via its FK; many paths delete rows, so always clear.
+            invalidate(TASKS)
 
     return wrapper
 

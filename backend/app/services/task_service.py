@@ -2,10 +2,8 @@ from datetime import UTC, datetime
 
 from app import validation as v
 from app.errors import first_row
-from app.extensions.cache import cache
+from app.extensions import cache as c
 from app.extensions.supabase import supabase
-
-TASKS_ALL_KEY = "tasks:all"
 
 # Matches the tasks.status_check constraint.
 TASK_STATUSES = ("todo", "active", "complete", "cancelled")
@@ -23,11 +21,8 @@ def _validate(fields: dict):
     v.check_text(fields, "feature_id")
 
 
-@cache.cached(key_prefix=TASKS_ALL_KEY)
 def get_all_tasks():
-    res = supabase.table("tasks").select("*").execute()
-
-    return res.data
+    return c.get_or_load(c.TASKS, lambda: supabase.table("tasks").select("*").execute().data)
 
 
 def get_task(task_id: str):
@@ -42,7 +37,7 @@ def create_task(data: dict):
 
     res = supabase.table("tasks").insert(row).execute()
 
-    cache.delete(TASKS_ALL_KEY)
+    c.invalidate(c.TASKS)
 
     return res.data[0]
 
@@ -58,12 +53,12 @@ def update_task(task_id: str, data: dict):
 
     res = supabase.table("tasks").update(updates).eq("id", task_id).execute()
 
-    cache.delete(TASKS_ALL_KEY)
+    c.invalidate(c.TASKS)
 
     return first_row(res.data, f"task {task_id}")
 
 
 def delete_task(task_id: str):
     res = supabase.table("tasks").delete().eq("id", task_id).execute()
-    cache.delete(TASKS_ALL_KEY)
+    c.invalidate(c.TASKS)
     return first_row(res.data, f"task {task_id}")

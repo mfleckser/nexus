@@ -1,6 +1,6 @@
 from app import validation as v
 from app.errors import first_row
-from app.extensions.cache import cache
+from app.extensions import cache as c
 from app.extensions.supabase import supabase
 
 # The choices ProjectModal offers. The DB column is free text; "" from the
@@ -31,9 +31,7 @@ def _validate(fields: dict):
 
 
 def get_all_projects():
-    res = supabase.table("projects").select(*PROJECT_LIST_COLUMNS).execute()
-
-    return res.data
+    return c.get_or_load(c.PROJECTS, lambda: supabase.table("projects").select(*PROJECT_LIST_COLUMNS).execute().data)
 
 
 def get_project(project_id: str):
@@ -41,11 +39,12 @@ def get_project(project_id: str):
     return first_row(res.data, f"project {project_id}")
 
 
-@cache.memoize()
 def get_project_notes(project_id: str):
-    res = supabase.table("projects").select("notes").eq("id", project_id).execute()
+    def load():
+        res = supabase.table("projects").select("notes").eq("id", project_id).execute()
+        return first_row(res.data, f"project {project_id}")
 
-    return first_row(res.data, f"project {project_id}")
+    return c.get_or_load(c.project_notes(project_id), load)
 
 
 def create_project(data: dict):
@@ -54,6 +53,8 @@ def create_project(data: dict):
     _validate(row)
 
     res = supabase.table("projects").insert(row).execute()
+
+    c.invalidate(c.PROJECTS)
 
     return res.data[0]
 
@@ -66,22 +67,24 @@ def update_project(project_id: str, data: dict):
 
     res = supabase.table("projects").update(updates).eq("id", project_id).execute()
 
-    if "notes" in updates:
-        cache.delete_memoized(get_project_notes, project_id)
+    # The list carries notes_updated_at, so notes edits invalidate it too.
+    c.invalidate(c.PROJECTS, c.project_notes(project_id))
 
     return first_row(res.data, f"project {project_id}")
 
 
 def delete_project(project_id: str):
     res = supabase.table("projects").delete().eq("id", project_id).execute()
-    cache.delete_memoized(get_project_notes, project_id)
+    # Features cascade; tasks.project_id / feature_id are set null.
+    c.invalidate(c.PROJECTS, c.project_notes(project_id), c.project_features(project_id), c.TASKS)
     return first_row(res.data, f"project {project_id}")
 
 
 def get_project_features(project_id: str):
-    res = supabase.table("features").select(*FEATURE_LIST_COLUMNS).eq("project_id", project_id).execute()
+    def load():
+        return supabase.table("features").select(*FEATURE_LIST_COLUMNS).eq("project_id", project_id).execute().data
 
-    return res.data
+    return c.get_or_load(c.project_features(project_id), load)
 
 
 def create_feature(project_id: str, data: dict):
@@ -90,9 +93,14 @@ def create_feature(project_id: str, data: dict):
 
     res = supabase.table("features").insert({"name": data["name"], "project_id": project_id}).execute()
 
+    c.invalidate(c.project_features(project_id))
+
     return res.data[0]
 
 
 def delete_feature(feature_id: str):
     res = supabase.table("features").delete().eq("id", feature_id).execute()
-    return first_row(res.data, f"feature {feature_id}")
+    feature = first_row(res.data, f"feature {feature_id}")
+    # tasks.feature_id is set null.
+    c.invalidate(c.project_features(feature["project_id"]), c.TASKS)
+    return feature
