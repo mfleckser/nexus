@@ -66,6 +66,16 @@ class ParseAndNormalizeTest(unittest.TestCase):
         rr.normalize_rrule("FREQ=DAILY;COUNT=1000", self.start, LA)
         rr.normalize_rrule("FREQ=DAILY;UNTIL=20751231T000000Z", self.start, LA)
         rr.normalize_rrule("FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29", self.start, LA)  # leap days exist
+        rr.normalize_rrule("FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-29", self.start, LA)
+        rr.normalize_rrule("FREQ=YEARLY;BYMONTH=2,3;BYMONTHDAY=-31", self.start, LA)  # March 1st
+
+    def test_rejects_negative_month_days_naming_no_date(self):
+        for body in ["FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-30", "FREQ=YEARLY;BYMONTH=4,6;BYMONTHDAY=-31"]:
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                rr.normalize_rrule(body, self.start, LA)
+            # Rejected up front, not after dateutil scans to year 9999 for a match.
+            with self.subTest(body=body), self.assertRaisesRegex(ValueError, "name no real date"):
+                rr._check_month_days(rr.parse_rule(body))
 
     def test_rejects_unknown_timezone(self):
         with self.assertRaises(ValueError):
@@ -84,6 +94,22 @@ class ExpandTest(unittest.TestCase):
         self.assertEqual(occ[2][0], utc(2026, 11, 2, 17))  # PST, UTC-8
         self.assertTrue(all(s.tzinfo == UTC for s, _ in occ))
         self.assertTrue(all(e - s == timedelta(hours=1) for s, e in occ))
+
+    def test_multi_day_event_keeps_wall_clock_end_across_dst(self):
+        # Sat 9:00 -> Mon 9:00 PT, weekly; the Oct 31 occurrence ends after DST ends (Nov 1).
+        start = datetime(2026, 10, 24, 9, tzinfo=ZoneInfo(LA))
+        end = start + timedelta(days=2)
+        occ = rr.expand("FREQ=WEEKLY", start, end, LA, utc(2026, 10, 30), utc(2026, 11, 10))
+        self.assertEqual(occ[0], (utc(2026, 10, 31, 16), utc(2026, 11, 2, 17)))  # 49h: still Mon 9:00 PST
+        self.assertEqual(occ[1], (utc(2026, 11, 7, 17), utc(2026, 11, 9, 17)))
+        self.assertEqual(rr.recurrence_end("FREQ=WEEKLY;COUNT=2", start, end, LA), utc(2026, 11, 2, 17))
+
+    def test_window_overlap_uses_wall_clock_end(self):
+        # The Oct 31 occurrence runs until Mon Nov 2 17:00Z; a window starting at
+        # 16:30Z must still see it (an absolute 48h end would be 16:00Z).
+        start = datetime(2026, 10, 24, 9, tzinfo=ZoneInfo(LA))
+        occ = rr.expand("FREQ=WEEKLY", start, start + timedelta(days=2), LA, utc(2026, 11, 2, 16, 30), utc(2026, 11, 3))
+        self.assertEqual([s for s, _ in occ], [utc(2026, 10, 31, 16)])
 
     def test_until_inclusive(self):
         start = utc(2026, 10, 1, 12)
@@ -266,6 +292,25 @@ class MoveTest(unittest.TestCase):
         self.assertEqual(
             rr.shift_rule_days("FREQ=YEARLY;BYMONTH=10;BYMONTHDAY=31", utc(2026, 10, 31, 16), utc(2026, 11, 1, 17), LA),
             "FREQ=YEARLY;BYMONTH=11;BYMONTHDAY=1",
+        )
+
+    def test_shift_multi_value_monthday_and_month(self):
+        self.assertEqual(
+            rr.shift_rule_days("FREQ=MONTHLY;BYMONTHDAY=1,15", utc(2026, 10, 15, 16), utc(2026, 10, 17, 16), LA),
+            "FREQ=MONTHLY;BYMONTHDAY=3,17",
+        )
+        self.assertEqual(
+            rr.shift_rule_days("FREQ=YEARLY;BYMONTH=1,7;BYMONTHDAY=31", utc(2027, 1, 31, 17), utc(2027, 2, 1, 17), LA),
+            "FREQ=YEARLY;BYMONTH=2,8;BYMONTHDAY=1",
+        )
+        # Negative (from-the-end) days shift too, and values wrap within the month.
+        self.assertEqual(
+            rr.shift_rule_days("FREQ=MONTHLY;BYMONTHDAY=2,-1", utc(2026, 10, 2, 16), utc(2026, 10, 1, 16), LA),
+            "FREQ=MONTHLY;BYMONTHDAY=1,-2",
+        )
+        self.assertEqual(
+            rr.shift_rule_days("FREQ=MONTHLY;BYMONTHDAY=20,30", utc(2026, 10, 20, 16), utc(2026, 10, 22, 16), LA),
+            "FREQ=MONTHLY;BYMONTHDAY=22,1",
         )
 
     def test_has_visible_occurrence(self):
