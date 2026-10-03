@@ -118,7 +118,17 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
         try {
             await projectsApi.deleteFeature(feature_id);
         } catch (err) {
-            if (project_id) setFeaturesByProjectId((prev) => ({ ...prev, [project_id]: snapshot[project_id] }));
+            // Re-insert just this feature so features added meanwhile survive.
+            const before = project_id ? snapshot[project_id].find((f) => f.id === feature_id) : undefined;
+            if (project_id && before) {
+                setFeaturesByProjectId((prev) => {
+                    const current = prev[project_id] ?? [];
+                    if (current.some((f) => f.id === feature_id)) return prev;
+                    const order = snapshot[project_id].map((f) => f.id);
+                    const restored = [...current, before].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+                    return { ...prev, [project_id]: restored };
+                });
+            }
             throw err;
         }
     }, []);

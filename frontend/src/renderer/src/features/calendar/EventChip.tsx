@@ -255,7 +255,11 @@ function EventChip({ segment }: EventChipProps): React.JSX.Element {
             start = shiftDays(event.start_at, dayDelta);
             start.setMinutes(start.getMinutes() + snap(droppedTopMin - segment.startMin));
         }
-        commitTimes(start, new Date(start.getTime() + eventMinutes * 60000));
+        // Move the end by the same wall-clock shift as the start, so the local
+        // end time survives a DST change between the old and new dates.
+        const end = shiftDays(event.end_at, calendarDaysBetween(event.start_at, start));
+        end.setMinutes(end.getMinutes() + minutesIntoDay(start) - minutesIntoDay(event.start_at));
+        commitTimes(start, end);
     });
 
     useEffect(() => {
