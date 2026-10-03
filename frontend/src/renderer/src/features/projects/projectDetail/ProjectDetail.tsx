@@ -2,12 +2,13 @@ import { useProjects } from "@renderer/features/projects/useProjects";
 import { ChevronLeft, Ellipsis, FolderX, NotebookPen } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import "./projectDetail.css";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import ProjectModal from "@renderer/components/ProjectModal";
 import KanbanBoard from "./KanbanBoard";
 import NotesPanel from "./NotesPanel";
 import useReportError, { errorMessage } from "@renderer/hooks/useReportError";
+import useDismiss from "@renderer/hooks/useDismiss";
 
 function ProjectDetail(): React.JSX.Element {
     const [showProjectMenu, setShowProjectMenu] = useState(false);
@@ -24,6 +25,9 @@ function ProjectDetail(): React.JSX.Element {
     const { projects, projectsLoaded, updateProject, deleteProject, notesByProjectId, loadNotes, updateNotes } =
         useProjects();
     const project = projects.find((p) => p.id === projectId);
+
+    const projectMenuRef = useRef<HTMLDivElement>(null);
+    useDismiss(projectMenuRef, () => setShowProjectMenu(false), { enabled: showProjectMenu });
 
     const fetchNotes = useCallback(
         (id: string) => {
@@ -66,12 +70,7 @@ function ProjectDetail(): React.JSX.Element {
         updateNotes(project.id, notes).catch((err) => reportError("Couldn't save notes", err));
 
     return (
-        <div
-            className="pd-container"
-            onClick={() => {
-                setShowProjectMenu(false);
-            }}
-        >
+        <div className="pd-container">
             <div className="pd-header">
                 <Link className="pd-back-link" to="/projects">
                     <ChevronLeft size={16} />
@@ -89,12 +88,7 @@ function ProjectDetail(): React.JSX.Element {
                         >
                             <NotebookPen size={18} />
                         </button>
-                        <div
-                            className="pd-project-menu-container"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                            }}
-                        >
+                        <div className="pd-project-menu-container" ref={projectMenuRef}>
                             <button
                                 type="button"
                                 className="pd-project-menu-btn"
