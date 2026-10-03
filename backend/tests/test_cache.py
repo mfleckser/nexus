@@ -22,6 +22,18 @@ class CacheTest(AppTestCase):
     def task(self, **body):
         return self.request("POST", "/api/tasks", {"title": "T", **body}, status=201)
 
+    def test_load_racing_an_invalidate_is_not_cached(self):
+        from app.extensions.cache import TASKS, cache, get_or_load, invalidate
+
+        with self.app.app_context():
+
+            def loader():
+                invalidate(TASKS)  # a write lands while this read is in flight
+                return ["stale"]
+
+            self.assertEqual(get_or_load(TASKS, loader), ["stale"])
+            self.assertIsNone(cache.get(TASKS))
+
     def test_reads_are_cached(self):
         p = self.project()
         for path in (

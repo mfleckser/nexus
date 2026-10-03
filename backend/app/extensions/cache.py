@@ -25,12 +25,19 @@ def project_features(project_id: str) -> str:
     return f"projects:{project_id}:features"
 
 
+# Per-key write generation. A load that started before an invalidate must not
+# put its (pre-write) rows back into the cache once the write has cleared it.
+_generations: dict[str, int] = {}
+
+
 def get_or_load(key: str, loader):
     """Cached value for key, calling loader() to fill it on a miss."""
     value = cache.get(key)
     if value is None:
+        generation = _generations.get(key, 0)
         value = loader()
-        cache.set(key, value)
+        if _generations.get(key, 0) == generation:
+            cache.set(key, value)
     return value
 
 
@@ -38,4 +45,5 @@ def invalidate(*keys: str):
     # Not cache.delete_many: Flask-Caching's version stops at the first key
     # that isn't cached (unless CACHE_IGNORE_ERRORS is set).
     for key in keys:
+        _generations[key] = _generations.get(key, 0) + 1
         cache.delete(key)
