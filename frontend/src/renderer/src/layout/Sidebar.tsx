@@ -1,8 +1,8 @@
 import { SidebarIcon, Home as HomeIcon, FolderKanban, Dumbbell, CircleDollarSign, Bot } from "lucide-react";
-import { useState } from "react"
-import { Link, NavLink } from "react-router-dom"
-import logo from "@renderer/assets/logo.png"
-import "./sidebar.css"
+import { useState } from "react";
+import { Link, NavLink } from "react-router-dom";
+import logo from "@renderer/assets/logo.png";
+import "./sidebar.css";
 
 function Sidebar(): React.JSX.Element {
     const [shown, setShown] = useState(false);
@@ -10,15 +10,17 @@ function Sidebar(): React.JSX.Element {
     return (
         <aside className={`sidebar ${shown ? "expanded" : "collapsed"}`}>
             <div className="sidebar-top">
-                {shown && <div className="sidebar-brand">
-                    <img src={logo} alt="Nexus logo" className="sidebar-logo" />
-                    <span className="sidebar-title">Nexus</span>
-                </div>}
+                {shown && (
+                    <div className="sidebar-brand">
+                        <img src={logo} alt="Nexus logo" className="sidebar-logo" />
+                        <span className="sidebar-title">Nexus</span>
+                    </div>
+                )}
                 <button
                     type="button"
                     className="sidebar-toggle"
                     aria-label="Toggle sidebar"
-                    onClick={() => setShown(prev => !prev)}
+                    onClick={() => setShown((prev) => !prev)}
                 >
                     <SidebarIcon size={18} />
                 </button>
@@ -46,7 +48,7 @@ function Sidebar(): React.JSX.Element {
                 </Link>
             </nav>
         </aside>
-    )
+    );
 }
 
-export default Sidebar
+export default Sidebar;

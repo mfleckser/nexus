@@ -7,8 +7,9 @@
   a calm late-night planning session; each life pillar feels like a room in the
   same house, not a separate app.
 
-  **All color, spacing, typography, shadow, and radius decisions go through
-  CSS custom properties defined in `frontend/src/renderer/src/theme.css`.**
+  **All color, shadow, radius, and font-family decisions go through CSS custom
+  properties defined in `frontend/src/renderer/src/theme.css`.** (No spacing or
+  type-size scale tokens exist yet.)
   Never hardcode hex values, rgba, px shadows, or font stacks in component CSS
   — reference a token. If no token fits, add one to `theme.css` rather than
   inlining. `theme.css` is imported once in `App.tsx` before `root.css`.
@@ -30,11 +31,9 @@
     element. Default scrollbars are hidden in calendar's vertical scroll.
 
   **Per-feature CSS lives next to the component** (e.g. `calendar.css`
-  alongside `Calendar.tsx`). One CSS file per logical view. Avoid global
+  alongside `Calendar.tsx`). One CSS file per logical view. File names: components
+  PascalCase (`TaskForm.tsx`), CSS and non-component modules camelCase
+  (`taskForm.css`, `useNow.ts`), directories camelCase. Avoid global
   utility sprawl; tokens + locally-scoped class names is enough at this size.
 
   No CSS-in-JS, no Tailwind. Plain CSS files + custom properties.
-
-  **Scaffold leftovers**: `assets/base.css` and `assets/main.css` are
-  electron-vite scaffold remnants and are **not imported**. Do not revive
-  them; extend `theme.css` instead.

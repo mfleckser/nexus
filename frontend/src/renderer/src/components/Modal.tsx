@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import "./modal.css";
 import { X } from "lucide-react";
@@ -9,8 +9,20 @@ type ModalProps = {
     children: ReactNode;
 };
 
-export default function Modal({ onClose, title, children } : ModalProps) {
+export default function Modal({ onClose, title, children }: ModalProps) {
     const containerRef = useRef<HTMLDivElement>(null);
+    const titleId = useId();
+
+    // Move focus into the dialog unless a child already took it (children's
+    // effects run first, e.g. a form focusing its first field).
+    useEffect(() => {
+        const panel = containerRef.current;
+        if (!panel || panel.contains(document.activeElement)) return;
+        const first = panel.querySelector<HTMLElement>(
+            ".modal-body button, .modal-body input, .modal-body textarea, .modal-body select",
+        );
+        (first ?? panel).focus();
+    }, []);
 
     useEffect(() => {
         // Escape belongs to the modal: stop it reaching window listeners
@@ -37,9 +49,18 @@ export default function Modal({ onClose, title, children } : ModalProps) {
     // stopPropagation keeps outside-click listeners (popovers) from firing.
     return createPortal(
         <div className="modal-backdrop" onMouseDown={onBackdropMouseDown}>
-            <div className="modal-panel" ref={containerRef} role="dialog" aria-modal="true">
+            <div
+                className="modal-panel"
+                ref={containerRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                tabIndex={-1}
+            >
                 <div className="modal-header">
-                    <h2 className="modal-title">{title}</h2>
+                    <h2 className="modal-title" id={titleId}>
+                        {title}
+                    </h2>
                     <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>
                         <X size={18} />
                     </button>
@@ -47,6 +68,6 @@ export default function Modal({ onClose, title, children } : ModalProps) {
                 <div className="modal-body">{children}</div>
             </div>
         </div>,
-        document.body
+        document.body,
     );
 }

@@ -4,16 +4,18 @@ A series is described by an RFC 5545 RRULE *body* (no "RRULE:" prefix, no
 DTSTART), the master's first-occurrence start/end, and an IANA timezone name.
 Expansion happens in that timezone so wall-clock times stay put across DST.
 All datetimes accepted and returned here are timezone-aware; returned ones are UTC.
+Bad input raises ValidationError (a ValueError subclass).
 """
 
 import calendar
 import re
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dateutil.rrule import rrulestr
 
-UTC = dt_timezone.utc
+from app.errors import ValidationError
+
 UNTIL_FORMAT = "%Y%m%dT%H%M%SZ"
 
 # Keep rules to the subset the UI emits, and bound how much work one can cause.
@@ -22,6 +24,7 @@ ALLOWED_KEYS = ("FREQ", "INTERVAL", "COUNT", "UNTIL", "BYDAY", "BYMONTHDAY", "BY
 MAX_COUNT = 1000
 HORIZON = timedelta(days=round(365.25 * 50))  # UNTIL / first-occurrence search limit
 MAX_SCAN = 20000  # > daily for 50 years
+DST_SLACK = timedelta(hours=3)  # > any real-world UTC offset change
 WEEKDAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
 BYDAY_TOKEN = re.compile(r"^([+-]?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)$")
 
@@ -33,8 +36,8 @@ def to_utc(dt: datetime) -> datetime:
 def get_zone(tz_name: str) -> ZoneInfo:
     try:
         return ZoneInfo(tz_name)
-    except (ZoneInfoNotFoundError, ValueError):
-        raise ValueError(f"unknown timezone: {tz_name!r}")
+    except (ZoneInfoNotFoundError, ValueError, TypeError):
+        raise ValidationError(f"unknown timezone: {tz_name!r}") from None
 
 
 def format_until(dt: datetime) -> str:
@@ -43,16 +46,17 @@ def format_until(dt: datetime) -> str:
 
 # ---- rule body <-> parts -------------------------------------------------
 
+
 def parse_rule(body: str) -> dict:
     """Split an RRULE body into an ordered {KEY: value} dict. Light syntactic
     checks only; semantic validation happens in normalize_rrule."""
     if not isinstance(body, str) or not body.strip():
-        raise ValueError("rrule must be a non-empty string")
+        raise ValidationError("rrule must be a non-empty string")
     body = body.strip()
     if body.upper().startswith("RRULE:"):
-        body = body[len("RRULE:"):]
+        body = body[len("RRULE:") :]
     if "\n" in body or "\r" in body:
-        raise ValueError("rrule must be a single RRULE body")
+        raise ValidationError("rrule must be a single RRULE body")
 
     parts = {}
     for item in body.split(";"):
@@ -61,9 +65,9 @@ def parse_rule(body: str) -> dict:
         key, sep, value = item.partition("=")
         key = key.strip().upper()
         if not sep or not key or not value.strip():
-            raise ValueError(f"malformed rrule part: {item!r}")
+            raise ValidationError(f"malformed rrule part: {item!r}")
         if key in parts:
-            raise ValueError(f"duplicate rrule part: {key}")
+            raise ValidationError(f"duplicate rrule part: {key}")
         parts[key] = value.strip().upper()
     return parts
 
@@ -83,6 +87,7 @@ def without_bounds(parts: dict) -> dict:
 
 # ---- building / validating ----------------------------------------------
 
+
 def build_rule(body: str, start: datetime, tz_name: str):
     """dateutil rrule whose DTSTART is `start` expressed in `tz_name`."""
     dtstart = start.astimezone(get_zone(tz_name))
@@ -91,39 +96,39 @@ def build_rule(body: str, start: datetime, tz_name: str):
 
 def normalize_rrule(body: str, start: datetime, tz_name: str) -> str:
     """Validate an RRULE body against a series start and return its canonical
-    form (upper-case, UNTIL in UTC Z form). Raises ValueError on bad input,
+    form (upper-case, UNTIL in UTC Z form). Raises ValidationError on bad input,
     including rules that produce no occurrence at or after `start`."""
     parts = parse_rule(body)
 
     unknown = [k for k in parts if k not in ALLOWED_KEYS]
     if unknown:
-        raise ValueError(f"unsupported rrule part(s): {', '.join(unknown)}")
+        raise ValidationError(f"unsupported rrule part(s): {', '.join(unknown)}")
     if parts.get("FREQ") not in FREQS:
-        raise ValueError(f"rrule FREQ must be one of {', '.join(FREQS)}")
+        raise ValidationError(f"rrule FREQ must be one of {', '.join(FREQS)}")
     if "COUNT" in parts and "UNTIL" in parts:
-        raise ValueError("rrule cannot have both COUNT and UNTIL")
+        raise ValidationError("rrule cannot have both COUNT and UNTIL")
     for key in ("COUNT", "INTERVAL"):
         if key in parts and (not parts[key].isdigit() or int(parts[key]) < 1):
-            raise ValueError(f"rrule {key} must be a positive integer")
+            raise ValidationError(f"rrule {key} must be a positive integer")
     if int(parts.get("COUNT", 1)) > MAX_COUNT:
-        raise ValueError(f"rrule COUNT must be at most {MAX_COUNT}")
+        raise ValidationError(f"rrule COUNT must be at most {MAX_COUNT}")
     _check_month_days(parts)
 
     try:
         rule = build_rule(format_rule(parts), start, tz_name)
-    except ValueError:
+    except ValidationError:
         raise
     except Exception as e:  # dateutil raises assorted types on bad input
-        raise ValueError(f"invalid rrule: {e}")
+        raise ValidationError(f"invalid rrule: {e}") from e
 
     if "UNTIL" in parts:
         if rule._until > start + HORIZON:
-            raise ValueError("rrule UNTIL must be within 50 years of the start")
+            raise ValidationError("rrule UNTIL must be within 50 years of the start")
         parts["UNTIL"] = format_until(rule._until)
 
     body = format_rule(parts)
     if first_occurrence(body, start, tz_name) is None:
-        raise ValueError("rrule produces no occurrences")
+        raise ValidationError("rrule produces no occurrences")
     return body
 
 
@@ -136,13 +141,14 @@ def _check_month_days(parts: dict):
         months = [int(m) for m in parts["BYMONTH"].split(",")]
         days = [int(d) for d in parts["BYMONTHDAY"].split(",")]
     except ValueError:
-        raise ValueError("rrule BYMONTH / BYMONTHDAY must be integers")
+        raise ValidationError("rrule BYMONTH / BYMONTHDAY must be integers") from None
     longest = {m: calendar.monthrange(2024, m)[1] for m in range(1, 13)}  # leap year
-    if not any(d < 0 or d <= longest.get(m, 0) for m in months for d in days):
-        raise ValueError("rrule BYMONTH / BYMONTHDAY name no real date")
+    if not any(0 < abs(d) <= longest.get(m, 0) for m in months for d in days):
+        raise ValidationError("rrule BYMONTH / BYMONTHDAY name no real date")
 
 
 # ---- occurrences ---------------------------------------------------------
+
 
 def first_occurrence(body: str, start: datetime, tz_name: str):
     """First occurrence at or after `start` (DTSTART only counts if the rule
@@ -168,22 +174,31 @@ def is_occurrence(body: str, start: datetime, tz_name: str, instant: datetime) -
     return any(to_utc(o) == to_utc(instant) for o in rule.between(instant, instant, inc=True))
 
 
+def occurrence_end(occ_start: datetime, start: datetime, end: datetime, tz_name: str) -> datetime:
+    """End of the occurrence starting at `occ_start` of a series whose first
+    occurrence is [start, end): the same wall-clock duration in `tz_name`, so
+    a multi-day event spanning a DST change still ends at its usual local time."""
+    return shift_wall(occ_start, wall_delta(start, end, tz_name), tz_name)
+
+
 def expand(body, start, end, tz_name, window_start, window_end, excluded=()):
     """Occurrences (start, end) of the series overlapping [window_start, window_end),
     skipping original starts in `excluded` (exdates / overridden occurrences).
-    Overlap: occ_start < window_end and occ_start + duration > window_start."""
-    duration = end - start
+    Overlap: occ_start < window_end and occ_end > window_start."""
     excluded = {to_utc(x) for x in excluded}
     rule = build_rule(body, start, tz_name)
+    # An occurrence's absolute length can differ from the first one's by a DST offset.
+    lookback = (end - start) + DST_SLACK
 
     result = []
-    for occ in rule.between(window_start - duration, window_end, inc=True):
+    for occ in rule.between(window_start - lookback, window_end, inc=True):
         occ = to_utc(occ)
-        if not (occ < window_end and occ + duration > window_start):
+        occ_end = occurrence_end(occ, start, end, tz_name)
+        if not (occ < window_end and occ_end > window_start):
             continue
         if occ in excluded:
             continue
-        result.append((occ, occ + duration))
+        result.append((occ, occ_end))
     return result
 
 
@@ -192,15 +207,17 @@ def recurrence_end(body: str, start: datetime, end: datetime, tz_name: str):
     if not is_bounded(body):
         return None
     last = None
-    for i, last in enumerate(build_rule(body, start, tz_name)):
+    for i, occ in enumerate(build_rule(body, start, tz_name)):
         if i >= MAX_SCAN:
-            raise ValueError("rrule has too many occurrences")
+            raise ValidationError("rrule has too many occurrences")
+        last = occ
     if last is None:
         return None
-    return to_utc(last) + (end - start)
+    return occurrence_end(to_utc(last), start, end, tz_name)
 
 
 # ---- splitting a series --------------------------------------------------
+
 
 def truncate(body: str, start: datetime, tz_name: str, split_at: datetime):
     """Cut a series so it ends before `split_at`.
@@ -250,6 +267,7 @@ def partition_instants(instants, split_at: datetime):
 
 # ---- moving a series -----------------------------------------------------
 
+
 def _local_naive(dt: datetime, tz_name: str) -> datetime:
     return dt.astimezone(get_zone(tz_name)).replace(tzinfo=None)
 
@@ -266,9 +284,10 @@ def shift_wall(dt: datetime, delta: timedelta, tz_name: str) -> datetime:
 
 def shift_rule_days(body: str, old_anchor: datetime, new_anchor: datetime, tz_name: str) -> str:
     """Re-aim a rule when its series moves to another local day (GCal-style):
-    BYDAY weekdays shift by the day delta, BYMONTHDAY / BYMONTH become the new
-    local day / month. A single ordinal BYDAY (e.g. 2TU, -1FR) gets its ordinal
-    recomputed from the new date; with several, ordinals are kept as-is."""
+    BYDAY weekdays shift by the day delta, BYMONTHDAY / BYMONTH values move
+    with the new local day / month (see _shift_values). A single ordinal BYDAY
+    (e.g. 2TU, -1FR) gets its ordinal recomputed from the new date; with
+    several, ordinals are kept as-is."""
     old_date = _local_naive(old_anchor, tz_name).date()
     new_date = _local_naive(new_anchor, tz_name).date()
     days = (new_date - old_date).days
@@ -279,7 +298,7 @@ def shift_rule_days(body: str, old_anchor: datetime, new_anchor: datetime, tz_na
     if "BYDAY" in parts:
         tokens = [BYDAY_TOKEN.match(t) for t in parts["BYDAY"].split(",")]
         if not all(tokens):
-            raise ValueError(f"invalid BYDAY: {parts['BYDAY']}")
+            raise ValidationError(f"invalid BYDAY: {parts['BYDAY']}")
         shifted = []
         for m in tokens:
             ordinal, day = m.group(1), m.group(2)
@@ -289,10 +308,34 @@ def shift_rule_days(body: str, old_anchor: datetime, new_anchor: datetime, tz_na
             shifted.append(f"{ordinal or ''}{day}")
         parts["BYDAY"] = ",".join(shifted)
     if "BYMONTHDAY" in parts:
-        parts["BYMONTHDAY"] = str(new_date.day)
+        parts["BYMONTHDAY"] = _shift_values(parts["BYMONTHDAY"], old_date.day, new_date.day, days, 31)
     if "BYMONTH" in parts:
-        parts["BYMONTH"] = str(new_date.month)
+        months = (new_date.year - old_date.year) * 12 + new_date.month - old_date.month
+        parts["BYMONTH"] = _shift_values(parts["BYMONTH"], old_date.month, new_date.month, months, 12)
     return format_rule(parts)
+
+
+def _shift_values(value: str, old_anchor: int, new_anchor: int, delta: int, size: int) -> str:
+    """Shift a BYMONTHDAY / BYMONTH list by `delta`. A single value, and the
+    value naming the anchor itself, become `new_anchor` exactly; others shift
+    by `delta`, wrapping within 1..size (negative ones within -size..-1)."""
+    try:
+        values = [int(x) for x in value.split(",")]
+    except ValueError:
+        raise ValidationError(f"invalid rrule value list: {value}") from None
+    if len(values) == 1:
+        return str(new_anchor)
+    shifted = []
+    for n in values:
+        if n == old_anchor:
+            n = new_anchor
+        elif n > 0:
+            n = (n - 1 + delta) % size + 1
+        else:
+            n = -((-n - 1 - delta) % size + 1)
+        if n not in shifted:
+            shifted.append(n)
+    return ",".join(map(str, shifted))
 
 
 def _nth_weekday_ordinal(d, negative: bool) -> int:

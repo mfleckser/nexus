@@ -39,7 +39,9 @@
     border: 1.5px solid var(--border-strong);
     background: transparent;
     cursor: pointer;
-    transition: border-color 0.1s, background-color 0.1s;
+    transition:
+        border-color 0.1s,
+        background-color 0.1s;
 }
 
 .tp-check:hover {

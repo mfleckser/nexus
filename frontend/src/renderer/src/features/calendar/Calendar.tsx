@@ -1,165 +1,101 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import "./calendar.css"
+import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import "./calendar.css";
 import { useEvents } from "@renderer/features/calendar/useEvents";
-import EventChip, { EventDraftChip } from "./EventChip";
+import EventChip, { EventDraftPreview } from "./EventChip";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
-import TaskPin, { TASK_PIN_HEIGHT } from "@renderer/features/calendar/TaskPin";
+import TaskPin from "@renderer/features/calendar/TaskPin";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import { useProjects } from "@renderer/features/projects/useProjects";
 import useNow from "@renderer/hooks/useNow";
+import useReportError from "@renderer/hooks/useReportError";
+import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 import { DateRange, NewEventDraft, Task } from "@renderer/types";
-import { addDays, startOfDay } from "@renderer/lib/time";
+import {
+    addDays,
+    atMinutes,
+    calendarDaysBetween,
+    minutesIntoDay,
+    MINUTES_PER_DAY,
+    startOfDay,
+    startOfWeek,
+} from "@renderer/lib/time";
+import { layoutDays, overlapsRange } from "@renderer/lib/eventLayout";
+import {
+    DEFAULT_EVENT_MINUTES,
+    DRAG_THRESHOLD,
+    POPOVER_GAP,
+    PX_PER_MIN,
+    SLOT_MINUTES,
+    TASK_PIN_HEIGHT,
+} from "@renderer/features/calendar/constants";
 
-const PX_PER_HOUR = 48;
-const PX_PER_MIN = PX_PER_HOUR / 60;
-const POPOVER_WIDTH = 320;
-const POPOVER_GAP = 8;
 const BUFFER_DAYS = 7;
+const SLOTS_PER_DAY = MINUTES_PER_DAY / SLOT_MINUTES;
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+type ViewType = "DAY" | "WEEK" | "MONTH";
+
+// In-progress drag-to-create, in grid slots of SLOT_MINUTES.
+type CreateDrag = {
+    dayIndex: number;
+    anchorSlot: number;
+    pointerSlot: number;
+    // Pointer travel past DRAG_THRESHOLD; a plain click creates a default-length event.
+    moved: boolean;
+    pressX: number;
+    pressY: number;
+};
+
+// The slot range a drag covers, inclusive of both ends, in either direction.
+function dragMinutes(drag: CreateDrag): { startMin: number; duration: number } {
+    if (!drag.moved) return { startMin: drag.anchorSlot * SLOT_MINUTES, duration: DEFAULT_EVENT_MINUTES };
+    const first = Math.min(drag.anchorSlot, drag.pointerSlot);
+    const last = Math.max(drag.anchorSlot, drag.pointerSlot);
+    return { startMin: first * SLOT_MINUTES, duration: (last - first + 1) * SLOT_MINUTES };
+}
+
+// Keys belong to whatever has focus, or to an open dialog/popover.
+function shortcutsBlocked(e: KeyboardEvent): boolean {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return true;
+    const active = document.activeElement as HTMLElement | null;
+    if (active && (active.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName))) return true;
+    return document.querySelector('[role="dialog"]') !== null;
+}
+
+const formatHour = (hour: number) => {
+    if (hour === 0) return "";
+    const h = hour % 12 || 12;
+    return `${h} ${hour >= 12 ? "PM" : "AM"}`;
+};
 
 function Calendar(): React.JSX.Element {
-    const today = new Date();
     const now = useNow();
-    const [focusedDay, setFocusedDay] = useState<Date>(() => {
-        return new Date(today.getTime() - today.getDay() * 1000 * 60 * 60 * 24)
-    });
-    const [viewType, setViewType] = useState("WEEK");
-    const {events, addEvent, setRange} = useEvents();
-    const {tasks} = useTasks();
-    const {projects} = useProjects();
-    const [popover, setPopover] = useState<{ anchor: { x: number; y: number }; start: Date; duration?: number } | null>(null);
+    // Local midnight; for week view, any day of the shown week.
+    const [focusedDay, setFocusedDay] = useState<Date>(() => startOfWeek(new Date()));
+    const [viewType, setViewType] = useState<ViewType>("WEEK");
+    const { events, addEvent, setRange } = useEvents();
+    const { tasks } = useTasks();
+    const { projects } = useProjects();
+    const reportError = useReportError();
+    const [popover, setPopover] = useState<{ anchor: PopoverAnchor; start: Date; duration?: number } | null>(null);
+    // Live values of the new-event popover, previewed on the grid.
     const [eventDraft, setEventDraft] = useState<NewEventDraft | null>(null);
+    const [createDrag, setCreateDrag] = useState<CreateDrag | null>(null);
+    const overlayRef = useRef<HTMLDivElement>(null);
 
-    const clampPopoverAnchor = (x: number, y: number) => {
-        const margin = 12;
-        const maxX = window.innerWidth - POPOVER_WIDTH - margin;
-        const maxY = window.innerHeight - 360;
-        return {
-            x: Math.max(margin, Math.min(x, maxX)),
-            y: Math.max(margin, Math.min(y, maxY)),
-        };
-    };
-
-    const openNewEventAt = (start: Date, anchor: { x: number; y: number }, duration: number = 60) => {
-        setPopover({ anchor: clampPopoverAnchor(anchor.x, anchor.y), start, duration });
-    };
-
-    const handleSlotMouseMove = useCallback((ev: MouseEvent) => {
-        setEventDraft(prev => prev && ({...prev, duration: prev.duration + (ev.movementY / PX_PER_MIN)}));
-    }, []);
-
-    const handleSlotMouseDown = (day: number, hour: number) => (e: React.MouseEvent<HTMLDivElement>) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const minuteOffset = ((e.clientY - rect.top) / rect.height) * 60;
-        const snappedMinute = Math.round(minuteOffset / 30) * 30;
-        const base = startOfWeek(focusedDay);
-        const start = new Date(base.getFullYear(), base.getMonth(), base.getDate() + day, hour, snappedMinute);
-        setEventDraft({title: "", description: "", start_at: start, duration: 0, top: rect.top, category: "none"});
-        
-        window.addEventListener("mousemove", handleSlotMouseMove);
-    }
-
-    useEffect(() => window.removeEventListener("mousemove", handleSlotMouseMove), []);
-
-    const handleSlotMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!eventDraft) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const roundedDuration = eventDraft.duration ? Math.round(eventDraft.duration / 30) * 30 : 60;
-        openNewEventAt(eventDraft.start_at, { x: rect.right + POPOVER_GAP, y: eventDraft.top || rect.top }, roundedDuration);
-
-        window.removeEventListener("mousemove", handleSlotMouseMove);
-    }
-
-    const handleNewEventButton = (e: React.MouseEvent<HTMLButtonElement>) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const now = new Date();
-        now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0);
-        openNewEventAt(now, { x: rect.left, y: rect.bottom + POPOVER_GAP });
-    };
-
-    const handlePopoverSave = (draft: NewEventDraft) => {
-        addEvent(draft).catch(console.error);
-        setPopover(null);
-        setEventDraft(null);
-    };
-
-    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-    const isToday = (d: Date) =>
-        d.getDate() === now.getDate() &&
-        d.getMonth() === now.getMonth() &&
-        d.getFullYear() === now.getFullYear();
-
-    const formatHour = (hour: number) => {
-        if (hour === 0) return "";
-        const h = (hour % 12) || 12;
-        return `${h} ${hour >= 12 ? "PM" : "AM"}`;
-    };
-
-    const startOfWeek = (d: Date) =>
-        new Date(d.getTime() - d.getDay() * 1000 * 60 * 60 * 24);
-
-    const goPrev = () => {
-        setFocusedDay(prev =>
-            viewType === "MONTH"
-                ? new Date(prev.getFullYear(), prev.getMonth() - 1, 1)
-                : new Date(prev.getTime() - 1000 * 60 * 60 * 24 * 7)
-        );
-    };
-
-    const goNext = () => {
-        setFocusedDay(prev =>
-            viewType === "MONTH"
-                ? new Date(prev.getFullYear(), prev.getMonth() + 1, 1)
-                : new Date(prev.getTime() + 1000 * 60 * 60 * 24 * 7)
-        );
-    };
-
-    const goToday = () => {
-        setFocusedDay(now);
-    };
-
-    const onViewChange = (v: string) => {
-        setViewType(v);
-    };
-
-    function handleKeyPress(event) {
-        const active = document.activeElement;
-        if (active) {
-            // Don't process keyboard shortcuts while typing
-            const tag = active.tagName.toLowerCase();
-            if (tag === "input" || tag == "textarea" || (active as HTMLElement).isContentEditable) {
-                return;
-            }
-        }
-        if (event.key === "ArrowLeft") {
-            goPrev();
-        } else if (event.key === "ArrowRight") {
-            goNext();
-        } else if (event.key === "w") {
-            setViewType("WEEK");
-        } else if (event.key === "m") {
-            setViewType("MONTH");
-        } else if (event.key === "t") {
-            goToday();
-        }
-    }
-
-    useEffect(() => {
-        window.addEventListener("keydown", handleKeyPress);
-        return () => {window.removeEventListener("keydown", handleKeyPress)}
-    }, [focusedDay, viewType]);
+    const year = focusedDay.getFullYear();
+    const month = focusedDay.getMonth();
 
     const monthGrid = useMemo(() => {
-        const firstOfMonth = new Date(focusedDay.getFullYear(), focusedDay.getMonth(), 1);
-        const lastOfMonth = new Date(focusedDay.getFullYear(), focusedDay.getMonth() + 1, 0);
+        const firstOfMonth = new Date(year, month, 1);
+        const lastOfMonth = new Date(year, month + 1, 0);
         const gridStart = addDays(firstOfMonth, -firstOfMonth.getDay());
         const gridEnd = addDays(lastOfMonth, 6 - lastOfMonth.getDay());
         const cells: Date[] = [];
         for (let d = gridStart; d <= gridEnd; d = addDays(d, 1)) cells.push(d);
         return { gridStart, gridEnd, cells };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [focusedDay.getFullYear(), focusedDay.getMonth()]);
+    }, [year, month]);
 
     const monthCells = viewType === "MONTH" ? monthGrid.cells : [];
 
@@ -168,41 +104,59 @@ function Calendar(): React.JSX.Element {
         if (viewType === "MONTH") {
             return { start: monthGrid.gridStart, end: addDays(monthGrid.gridEnd, 1) };
         }
-        const weekStart = startOfDay(startOfWeek(focusedDay));
+        const weekStart = startOfWeek(focusedDay);
         return { start: weekStart, end: addDays(weekStart, 7) };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewType, focusedDay, monthGrid]);
+    const weekStart = visible.start;
 
     // What we ask the server for: visible ± one buffer period, so the next
     // nav step usually renders from memory while the refetch confirms it.
-    const fetchWindow = useMemo<DateRange>(() => ({
-        start: addDays(visible.start, -BUFFER_DAYS),
-        end: addDays(visible.end, BUFFER_DAYS)
-    }), [visible]);
+    // setRange ignores a value-equal range, so recomputing this is harmless.
+    const fetchWindow = useMemo<DateRange>(
+        () => ({
+            start: addDays(visible.start, -BUFFER_DAYS),
+            end: addDays(visible.end, BUFFER_DAYS),
+        }),
+        [visible],
+    );
 
     useEffect(() => {
         setRange(fetchWindow);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fetchWindow.start.getTime(), fetchWindow.end.getTime(), setRange]);
+    }, [fetchWindow, setRange]);
+
+    // Per-day slices of every event overlapping the week, laid out in columns.
+    const segments = useMemo(
+        () =>
+            viewType === "MONTH"
+                ? []
+                : layoutDays(
+                      events.filter((e) => overlapsRange(e, visible.start, visible.end)),
+                      visible.start,
+                      7,
+                  ),
+        [events, visible, viewType],
+    );
 
     // Due tasks in the visible week, with each pin's top pushed below any
     // earlier pin on the same day it would overlap. Completed/cancelled stay
     // visible; tasks of projects hidden from the main view don't.
     const taskPins = useMemo(() => {
-        const hiddenProjectIds = new Set(projects.filter(p => !p.show_tasks_in_main_view).map(p => p.id));
+        const hiddenProjectIds = new Set(projects.filter((p) => !p.show_tasks_in_main_view).map((p) => p.id));
         const lastBottom = Array(7).fill(-Infinity);
         return tasks
-            .filter((t): t is Task & { due_at: Date } =>
-                t.due_at !== null
-                && t.due_at.getTime() >= visible.start.getTime()
-                && t.due_at.getTime() < visible.end.getTime()
-                && (t.project_id === null || !hiddenProjectIds.has(t.project_id)))
-            .toSorted((a, b) => (a.due_at.getTime() - b.due_at.getTime()) || a.title.localeCompare(b.title))
-            .map(task => {
+            .filter(
+                (t): t is Task & { due_at: Date } =>
+                    t.due_at !== null &&
+                    t.due_at.getTime() >= visible.start.getTime() &&
+                    t.due_at.getTime() < visible.end.getTime() &&
+                    (t.project_id === null || !hiddenProjectIds.has(t.project_id)),
+            )
+            .toSorted((a, b) => a.due_at.getTime() - b.due_at.getTime() || a.title.localeCompare(b.title))
+            .map((task) => {
                 const day = task.due_at.getDay();
                 const dueTop = Math.min(
-                    (task.due_at.getHours() * 60 + task.due_at.getMinutes()) * PX_PER_MIN,
-                    24 * PX_PER_HOUR - TASK_PIN_HEIGHT,
+                    minutesIntoDay(task.due_at) * PX_PER_MIN,
+                    MINUTES_PER_DAY * PX_PER_MIN - TASK_PIN_HEIGHT,
                 );
                 const top = Math.max(dueTop, lastBottom[day] + 1);
                 lastBottom[day] = top + TASK_PIN_HEIGHT;
@@ -210,33 +164,171 @@ function Calendar(): React.JSX.Element {
             });
     }, [tasks, projects, visible]);
 
-    const calcCursorPos = (): React.CSSProperties => {
-        const left = now.getDay() * 100 / 7;
-        const top = (now.getHours() * 60 + now.getMinutes()) * PX_PER_MIN
-        
-        return {
-            left: `${left}%`,
-            top: top
-        }
+    const goPrev = () => {
+        setFocusedDay((prev) =>
+            viewType === "MONTH" ? new Date(prev.getFullYear(), prev.getMonth() - 1, 1) : addDays(prev, -7),
+        );
+    };
+
+    const goNext = () => {
+        setFocusedDay((prev) =>
+            viewType === "MONTH" ? new Date(prev.getFullYear(), prev.getMonth() + 1, 1) : addDays(prev, 7),
+        );
+    };
+
+    // Reads the clock rather than `now`, which can be up to a minute stale.
+    const goToday = () => {
+        setFocusedDay(startOfDay(new Date()));
+    };
+
+    const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
+        if (shortcutsBlocked(e)) return;
+        if (e.key === "ArrowLeft") goPrev();
+        else if (e.key === "ArrowRight") goNext();
+        else if (e.key === "w") setViewType("WEEK");
+        else if (e.key === "m") setViewType("MONTH");
+        else if (e.key === "t") goToday();
+    });
+
+    useEffect(() => {
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, []);
+
+    const openNewEventAt = (start: Date, anchor: PopoverAnchor, duration: number = DEFAULT_EVENT_MINUTES) => {
+        setPopover({ anchor, start, duration });
+    };
+
+    // Grid slot under the pointer's y, clamped to the day.
+    const slotAt = (clientY: number): number => {
+        const rect = overlayRef.current?.getBoundingClientRect();
+        if (!rect) return 0;
+        return Math.min(SLOTS_PER_DAY - 1, Math.max(0, Math.floor((clientY - rect.top) / PX_PER_MIN / SLOT_MINUTES)));
+    };
+
+    const handleSlotMouseDown = (day: number) => (e: React.MouseEvent<HTMLDivElement>) => {
+        if (e.button !== 0) return;
+        e.preventDefault(); // no text selection while dragging
+        const slot = slotAt(e.clientY);
+        setCreateDrag({
+            dayIndex: day,
+            anchorSlot: slot,
+            pointerSlot: slot,
+            moved: false,
+            pressX: e.clientX,
+            pressY: e.clientY,
+        });
+    };
+
+    const onCreateDragMove = useEffectEvent((e: MouseEvent) => {
+        setCreateDrag(
+            (prev) =>
+                prev && {
+                    ...prev,
+                    pointerSlot: slotAt(e.clientY),
+                    moved: prev.moved || Math.hypot(e.clientX - prev.pressX, e.clientY - prev.pressY) > DRAG_THRESHOLD,
+                },
+        );
+    });
+
+    // Window-level, so releasing anywhere (over a chip, outside the grid or
+    // the window) finishes the drag.
+    const onCreateDragEnd = useEffectEvent(() => {
+        const drag = createDrag;
+        setCreateDrag(null);
+        const rect = overlayRef.current?.getBoundingClientRect();
+        if (!drag || !rect) return;
+        const { startMin, duration } = dragMinutes(drag);
+        const colWidth = rect.width / 7;
+        openNewEventAt(
+            atMinutes(addDays(weekStart, drag.dayIndex), startMin),
+            {
+                x: rect.left + (drag.dayIndex + 1) * colWidth + POPOVER_GAP,
+                y: rect.top + startMin * PX_PER_MIN,
+                flipX: rect.left + drag.dayIndex * colWidth - POPOVER_GAP,
+            },
+            duration,
+        );
+    });
+
+    const dragActive = createDrag !== null;
+    useEffect(() => {
+        if (!dragActive) return;
+        window.addEventListener("mousemove", onCreateDragMove);
+        window.addEventListener("mouseup", onCreateDragEnd);
+        return () => {
+            window.removeEventListener("mousemove", onCreateDragMove);
+            window.removeEventListener("mouseup", onCreateDragEnd);
+        };
+    }, [dragActive]);
+
+    const handleNewEventButton = (e: React.MouseEvent<HTMLButtonElement>) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const start = new Date();
+        start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0);
+        openNewEventAt(start, { x: rect.left, y: rect.bottom + POPOVER_GAP });
+    };
+
+    const closePopover = () => {
+        setPopover(null);
+        setEventDraft(null);
+    };
+
+    const handlePopoverSave = (draft: NewEventDraft) => {
+        addEvent(draft).catch((err) => reportError("Couldn't create event", err));
+        closePopover();
+    };
+
+    const isToday = (d: Date) =>
+        d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+
+    // While dragging, the preview follows the drag; afterwards, the popover's form.
+    let previewDraft = eventDraft;
+    if (createDrag) {
+        const { startMin, duration } = dragMinutes(createDrag);
+        previewDraft = {
+            title: "",
+            description: "",
+            start_at: atMinutes(addDays(weekStart, createDrag.dayIndex), startMin),
+            duration,
+            category: "",
+        };
     }
+
+    const nowDayIndex = calendarDaysBetween(weekStart, now);
+    const nowLineStyle: React.CSSProperties = {
+        left: `${(nowDayIndex * 100) / 7}%`,
+        top: minutesIntoDay(now) * PX_PER_MIN,
+    };
 
     return (
         <div id="calendar-container">
             <div id="calendar-header">
                 <div className="header-left">
-                    <button className="new-event-button" onClick={handleNewEventButton}>+ New Event</button>
-                    <button className="today-button" onClick={goToday}>Today</button>
+                    <button className="new-event-button" onClick={handleNewEventButton}>
+                        + New Event
+                    </button>
+                    <button className="today-button" onClick={goToday}>
+                        Today
+                    </button>
                     <div className="nav-group">
-                        <button className="nav-button" aria-label="Previous" onClick={goPrev}>‹</button>
-                        <button className="nav-button" aria-label="Next" onClick={goNext}>›</button>
+                        <button className="nav-button" aria-label="Previous" onClick={goPrev}>
+                            ‹
+                        </button>
+                        <button className="nav-button" aria-label="Next" onClick={goNext}>
+                            ›
+                        </button>
                     </div>
-                    <span className="month-year-label">{monthNames[focusedDay.getMonth()]} {focusedDay.getFullYear()}</span>
+                    <span className="month-year-label">
+                        {MONTH_NAMES[month]} {year}
+                    </span>
                 </div>
                 <div className="select-wrapper">
                     <select
                         className="view-select"
+                        aria-label="View"
                         value={viewType}
-                        onChange={e => onViewChange(e.target.value)}
+                        onChange={(e) => setViewType(e.target.value as ViewType)}
                     >
                         <option value="DAY">Day</option>
                         <option value="WEEK">Week</option>
@@ -247,18 +339,18 @@ function Calendar(): React.JSX.Element {
             {viewType === "MONTH" ? (
                 <div id="month-container">
                     <div className="month-header">
-                        {dayNames.map(name => (
+                        {DAY_NAMES.map((name) => (
                             <div key={name} className="day-header">
                                 <span className="day-name">{name}</span>
                             </div>
                         ))}
                     </div>
                     <div className="month-grid">
-                        {monthCells.map((d, i) => {
-                            const outOfMonth = d.getMonth() !== focusedDay.getMonth();
+                        {monthCells.map((d) => {
+                            const outOfMonth = d.getMonth() !== month;
                             return (
                                 <div
-                                    key={i}
+                                    key={d.getTime()}
                                     className={`month-day-cell${isToday(d) ? " today-cell" : ""}${outOfMonth ? " out-of-month" : ""}`}
                                 >
                                     <span className="date-num">{d.getDate()}</span>
@@ -271,12 +363,11 @@ function Calendar(): React.JSX.Element {
                 <div id="week-container">
                     <div className="gutter-spacer" />
                     <div className="header-container">
-                        {[...Array(7).keys()].map(idx => {
-                            const d = startOfWeek(focusedDay);
-                            d.setDate(d.getDate() + idx);
+                        {DAY_NAMES.map((name, idx) => {
+                            const d = addDays(weekStart, idx);
                             return (
-                                <div key={idx} className={`day-header${isToday(d) ? " today-header" : ""}`}>
-                                    <span className="day-name">{dayNames[idx]}</span>
+                                <div key={name} className={`day-header${isToday(d) ? " today-header" : ""}`}>
+                                    <span className="day-name">{name}</span>
                                     <span className="date-num">{d.getDate()}</span>
                                 </div>
                             );
@@ -284,47 +375,31 @@ function Calendar(): React.JSX.Element {
                     </div>
                     <div className="gutter-spacer all-day-gutter" />
                     <div className="all-day-container">
-                        {[...Array(7).keys()].map(idx => (
-                            <div key={idx} className="all-day-cell" />
+                        {DAY_NAMES.map((name) => (
+                            <div key={name} className="all-day-cell" />
                         ))}
                     </div>
                     <div className="day-events-scroll">
                         <div className="day-events">
-                            {[...Array(24).keys()].map(hour => (
-                                <>
-                                    <div key={`label-${hour}`} className="hour-label">{formatHour(hour)}</div>
-                                    {[...Array(7).keys()].map(day => (
-                                        <div
-                                            key={`${hour}-${day}`}
-                                            className="hour-block"
-                                            onMouseDown={handleSlotMouseDown(day, hour)}
-                                            onMouseUp={handleSlotMouseUp}
-                                        />
+                            {[...Array(24).keys()].map((hour) => (
+                                <Fragment key={hour}>
+                                    <div className="hour-label">{formatHour(hour)}</div>
+                                    {[...Array(7).keys()].map((day) => (
+                                        <div key={day} className="hour-block" onMouseDown={handleSlotMouseDown(day)} />
                                     ))}
-                                </>
+                                </Fragment>
                             ))}
-                            <div className="events-overlay">
-                                {events.filter(e => e.start_at.getTime() >= visible.start.getTime()
-                                                  && e.start_at.getTime() <  visible.end.getTime())
-                                    .toSorted((a, b) => (a.start_at.getTime() - b.start_at.getTime()) || (b.end_at.getTime() - a.end_at.getTime()))
-                                    .map((event, idx, filteredEvents) => {
-                                    let cols = 1, colIdx = 0;
-                                    const start = event.start_at.getTime();
-                                    const end = event.end_at.getTime();
-                                    for (let i = 0; i < filteredEvents.length; i++) {
-                                        const e_start = filteredEvents[i].start_at.getTime();
-                                        const e_end = filteredEvents[i].end_at.getTime();
-                                        if ((e_start < start && e_end > start) || (e_start < end && e_end > end)) {
-                                            cols++;
-                                            if (idx > i) colIdx++;
-                                        }
-                                    }
-                                    return <EventChip key={event.id} event={event} cols={cols} colIdx={colIdx} />
-                                })}
-                                {taskPins.map(({ task, top }) => <TaskPin key={task.id} task={task} top={top} />)}
-                                {eventDraft && <EventDraftChip draft={eventDraft} />}
-                                {startOfWeek(today).toDateString() === startOfWeek(focusedDay).toDateString() &&
-                                    <div className="cursor-now" style={calcCursorPos()}></div>}
+                            <div className="events-overlay" ref={overlayRef}>
+                                {segments.map((segment) => (
+                                    <EventChip key={`${segment.item.id}:${segment.dayIndex}`} segment={segment} />
+                                ))}
+                                {taskPins.map(({ task, top }) => (
+                                    <TaskPin key={task.id} task={task} top={top} />
+                                ))}
+                                {previewDraft && <EventDraftPreview draft={previewDraft} weekStart={weekStart} />}
+                                {nowDayIndex >= 0 && nowDayIndex < 7 && (
+                                    <div className="cursor-now" style={nowLineStyle}></div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -332,16 +407,17 @@ function Calendar(): React.JSX.Element {
             )}
             {popover && (
                 <NewEventPopover
+                    key={`${popover.start.getTime()}:${popover.duration}`}
                     anchor={popover.anchor}
                     initialStart={popover.start}
                     initialDuration={popover.duration}
                     onSave={handlePopoverSave}
-                    onClose={() => {setPopover(null); setEventDraft(null)}}
-                    setEventDraft={setEventDraft}
+                    onClose={closePopover}
+                    onDraftChange={setEventDraft}
                 />
             )}
         </div>
     );
 }
 
-export default Calendar
+export default Calendar;

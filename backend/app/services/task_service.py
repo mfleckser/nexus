@@ -1,43 +1,73 @@
+from datetime import UTC, datetime
+
+from app import validation as v
+from app.errors import first_row
+from app.extensions import cache as c
 from app.extensions.supabase import supabase
-from app.extensions.cache import cache
-from datetime import datetime, timezone
 
-TASKS_ALL_KEY = "tasks:all"
+# Matches the tasks.status_check constraint.
+TASK_STATUSES = ("todo", "active", "complete", "cancelled")
+CREATE_FIELDS = ("title", "description", "due_at", "project_id", "feature_id")
+UPDATE_FIELDS = (*CREATE_FIELDS, "status")
 
-@cache.cached(key_prefix=TASKS_ALL_KEY)
+
+def _validate(fields: dict):
+    v.check_title(fields)
+    v.check_text(fields, "description")
+    v.check_instant(fields, "due_at")
+    v.check_choice(fields, "status", TASK_STATUSES)
+    # Malformed ids are rejected by Postgres (22P02 -> 400).
+    v.check_text(fields, "project_id")
+    v.check_text(fields, "feature_id")
+
+
 def get_all_tasks():
-    res = supabase.table("tasks").select("*").execute()
+    """All tasks, oldest first (id breaks created_at ties) so the order is stable."""
 
-    return res.data
+    def load():
+        return supabase.table("tasks").select("*").order("created_at").order("id").execute().data
+
+    return c.get_or_load(c.TASKS, load)
+
+
+def get_task(task_id: str):
+    res = supabase.table("tasks").select("*").eq("id", task_id).execute()
+    return first_row(res.data, f"task {task_id}")
+
 
 def create_task(data: dict):
-    res = supabase.table("tasks").insert({
-        "title": data["title"],
-        "description": data.get("description"),
-        "due_at": data.get("due_at"),
-        "project_id": data.get("project_id"),
-        "feature_id": data.get("feature_id")
-    }).execute()
+    v.require(data, "title")
+    row = v.pick(data, CREATE_FIELDS)
+    _validate(row)
 
-    cache.delete(TASKS_ALL_KEY)
+    res = supabase.table("tasks").insert(row).execute()
+
+    c.invalidate(c.TASKS)
 
     return res.data[0]
 
-def update_task(task_id: str, data: dict):
-    updates = {}
-    fields = ["title", "description", "due_at", "status", "project_id", "feature_id"]
 
-    updates = {f: data[f] for f in fields if f in data}
-    if updates.get("status") == "complete":
-        updates["completed_at"] = str(datetime.now(timezone.utc))
+def update_task(task_id: str, data: dict):
+    updates = v.pick(data, UPDATE_FIELDS)
+    _validate(updates)
+    if not updates:
+        return get_task(task_id)
+
+    if "status" in updates:
+        if updates["status"] != "complete":
+            updates["completed_at"] = None
+        elif get_task(task_id)["status"] != "complete":
+            # Stamp only the transition, so re-saving a complete task keeps its time.
+            updates["completed_at"] = datetime.now(UTC).isoformat()
 
     res = supabase.table("tasks").update(updates).eq("id", task_id).execute()
 
-    cache.delete(TASKS_ALL_KEY)
+    c.invalidate(c.TASKS)
 
-    return res.data[0]
+    return first_row(res.data, f"task {task_id}")
+
 
 def delete_task(task_id: str):
     res = supabase.table("tasks").delete().eq("id", task_id).execute()
-    cache.delete(TASKS_ALL_KEY)
-    return res.data[0]
+    c.invalidate(c.TASKS)
+    return first_row(res.data, f"task {task_id}")

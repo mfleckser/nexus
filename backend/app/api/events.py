@@ -1,81 +1,61 @@
-from functools import wraps
+from flask import Blueprint, jsonify, request
 
-from flask import Blueprint, request, jsonify
-
+from app.errors import ValidationError
 from app.services.event_service import (
-    get_events,
-    parse_instant,
     create_event,
-    update_event,
     delete_event,
-    update_occurrence,
     delete_occurrence,
-    NotFound,
+    get_events,
+    update_event,
+    update_occurrence,
 )
+from app.validation import json_body, parse_instant
 
 events_bp = Blueprint("events", __name__)
 
 
-def bad_input_as_http(view):
-    """ValueError (bad rrule / scope / timestamp) -> 400, NotFound -> 404."""
-    @wraps(view)
-    def wrapper(*args, **kwargs):
-        try:
-            return view(*args, **kwargs)
-        except NotFound as e:
-            return jsonify({"error": str(e)}), 404
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 400
-    return wrapper
-
-
 @events_bp.route("/events", methods=["GET"])
-def list():
+def list_events():
     start = request.args.get("start")
     end = request.args.get("end")
 
     if not start or not end:
-        return jsonify({"error": "start and end query params are required"}), 400
+        raise ValidationError("start and end query params are required")
 
     try:
         start_dt = parse_instant(start)
         end_dt = parse_instant(end)
-    except ValueError:
-        return jsonify({"error": "start and end must be ISO-8601 timestamps"}), 400
+    except ValidationError:
+        raise ValidationError("start and end must be ISO-8601 timestamps") from None
 
     if start_dt >= end_dt:
-        return jsonify({"error": "start must be before end"}), 400
+        raise ValidationError("start must be before end")
 
     return get_events(start_dt.isoformat(), end_dt.isoformat())
 
-@events_bp.route("/events", methods=["POST"])
-@bad_input_as_http
-def create():
-    data = request.json
 
-    event = create_event(data)
+@events_bp.route("/events", methods=["POST"])
+def create():
+    event = create_event(json_body())
 
     return jsonify(event), 201
 
-@events_bp.route("/events/<id>", methods=["PUT"])
-@bad_input_as_http
-def update(id):
-    data = request.json
 
-    return update_event(id, data)
+@events_bp.route("/events/<event_id>", methods=["PUT"])
+def update(event_id):
+    return update_event(event_id, json_body())
 
-@events_bp.route("/events/<id>", methods=["DELETE"])
-def delete(id):
-    return delete_event(id)
 
-@events_bp.route("/events/<id>/occurrences/<original_start>", methods=["PUT"])
-@bad_input_as_http
-def update_occ(id, original_start):
-    data = request.json or {}
+@events_bp.route("/events/<event_id>", methods=["DELETE"])
+def delete(event_id):
+    return delete_event(event_id)
 
-    return update_occurrence(id, parse_instant(original_start), data)
 
-@events_bp.route("/events/<id>/occurrences/<original_start>", methods=["DELETE"])
-@bad_input_as_http
-def delete_occ(id, original_start):
-    return delete_occurrence(id, parse_instant(original_start), request.args.get("scope"))
+@events_bp.route("/events/<event_id>/occurrences/<original_start>", methods=["PUT"])
+def update_occ(event_id, original_start):
+    return update_occurrence(event_id, parse_instant(original_start), json_body())
+
+
+@events_bp.route("/events/<event_id>/occurrences/<original_start>", methods=["DELETE"])
+def delete_occ(event_id, original_start):
+    return delete_occurrence(event_id, parse_instant(original_start), request.args.get("scope"))

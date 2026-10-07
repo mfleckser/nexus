@@ -1,7 +1,6 @@
-
 type SetItem = {
-    id: string,
-    updated_at: Date
+    id: string;
+    updated_at: Date;
 };
 
 function sameSet(a: SetItem[], b: SetItem[]): boolean {
