@@ -32,6 +32,17 @@ The frontend's main process calls the backend at `http://127.0.0.1:5000/api`
 (`frontend/src/main/client.ts`). On macOS, port 5000 can clash with AirPlay Receiver
 (System Settings → General → AirDrop & Handoff).
 
+## Build
+
+```sh
+cd frontend
+npm run build          # typecheck + electron-vite build into out/
+npm run build:mac      # build + package the app with electron-builder into dist/
+npm run build:unpack   # build + unpacked app only (quick local check)
+```
+
+`build:win` and `build:linux` package for those platforms.
+
 ## Test and lint
 
 ```sh
