@@ -1,11 +1,15 @@
 import axios, { AxiosError, Method } from "axios";
 import type { ApiResult } from "../shared/ipc";
 
-const BASE_URL = "http://127.0.0.1:5000/api";
+// Backend location + token come from frontend/.env (see .env.example) and are
+// baked into the main-process build; the renderer never sees them.
+const ORIGIN = (import.meta.env.MAIN_VITE_NEXUS_API_URL || "http://127.0.0.1:5000").replace(/\/+$/, "");
+const BASE_URL = `${ORIGIN}/api`;
 
 const client = axios.create({
     baseURL: BASE_URL,
     timeout: 5000,
+    headers: { Authorization: `Bearer ${import.meta.env.MAIN_VITE_NEXUS_API_TOKEN ?? ""}` },
     // Paths always resolve against baseURL; an absolute URL from the renderer
     // must never redirect the request elsewhere.
     allowAbsoluteUrls: false,

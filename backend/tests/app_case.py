@@ -9,6 +9,7 @@ from unittest import mock
 
 os.environ.setdefault("SUPABASE_URL", "http://localhost:1")  # never contacted; supabase is faked
 os.environ.setdefault("SUPABASE_KEY", "test")
+os.environ.setdefault("NEXUS_API_TOKEN", "test-token")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fake_supabase import FakeSupabase  # noqa: E402
@@ -30,6 +31,7 @@ class AppTestCase(unittest.TestCase):
                 self.addCleanup(patcher.stop)
         self.app = create_app()
         self.client = self.app.test_client()
+        self.client.environ_base["HTTP_AUTHORIZATION"] = f"Bearer {os.environ['NEXUS_API_TOKEN']}"
 
     def quiet_errors(self):
         """Silence the logged traceback of an expected 500."""
