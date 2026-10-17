@@ -1,0 +1,18 @@
+# systemd user unit for the Nexus backend. Assumes the repo is cloned at ~/nexus.
+#   mkdir -p ~/.config/systemd/user
+#   cp ~/nexus/backend/deploy/nexus-backend.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now nexus-backend
+#   sudo loginctl enable-linger "$USER"   # start at boot, keep running after logout
+# Logs: journalctl --user -u nexus-backend -f
+
+[Unit]
+Description=Nexus backend (gunicorn)
+
+[Service]
+ExecStart=%h/nexus/backend/serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

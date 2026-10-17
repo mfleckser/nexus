@@ -48,7 +48,6 @@
   - Initial project-type templates beyond `coding`
   - Habit trigger model flexibility
   - Plugin/integration API shape
-  - Auth model (bearer token vs Supabase Auth)
 
   ## Recurring Events
 
@@ -62,8 +61,16 @@
   ## Architecture
 
   - Request path: renderer → preload IPC (`window.api`) → main-process axios
-    (`frontend/src/main/client.ts`) → Flask on `127.0.0.1:5000/api`. Renderer is
-    sandboxed with no direct network or Node access.
+    (`frontend/src/main/client.ts`) → Flask at `MAIN_VITE_NEXUS_API_URL` + `/api`
+    (`frontend/.env`, default `127.0.0.1:5000`). Renderer is sandboxed with no direct
+    network or Node access.
+  - Hosting: always-on backend on a Raspberry Pi — gunicorn (`backend/serve`, 1 worker
+    × 8 threads, binds 127.0.0.1) behind `tailscale serve` HTTPS; systemd user unit in
+    `backend/deploy/`. Steps in `README.md`. `backend/start` stays the dev server.
+  - Auth: static bearer token. Every route except `/api/health` needs
+    `Authorization: Bearer <NEXUS_API_TOKEN>` (`app/auth.py`); desktop sends
+    `MAIN_VITE_NEXUS_API_TOKEN`. Supabase RLS is on with no policies; backend uses the
+    secret key, clients only ever talk to the Flask API.
   - Frontend data: one React context provider per entity (`useEvents`, `useTasks`,
     `useProjects`) with optimistic updates that roll back on failure, `useNow` polling
     plus refetch on window focus. Failures surface via `useReportError()` toasts.
@@ -73,9 +80,12 @@
     input, 404 missing id, 500 otherwise. Success bodies are bare JSON.
   - Caching: Flask-Caching SimpleCache, keys + `get_or_load`/`invalidate` in
     `app/extensions/cache.py`. Standard for every entity: cached reads, and every write
-    invalidates each key it can change, including FK on-delete side effects.
-  - Config: `backend/.env` (`SUPABASE_URL`, `SUPABASE_KEY`; see `.env.example`).
-    `NEXUS_DEBUG=1` enables debugger + reloader.
+    invalidates each key it can change, including FK on-delete side effects. Cache is
+    per-process: keep gunicorn at one worker; 60s TTL bounds staleness from external
+    writers (Studio).
+  - Config: `backend/.env` (`SUPABASE_URL`, `SUPABASE_KEY`, `NEXUS_API_TOKEN`,
+    optional `NEXUS_TRUSTED_HOSTS`, `NEXUS_PORT`; see `.env.example`). `NEXUS_DEBUG=1`
+    enables debugger + reloader.
   - Tests: backend `unittest` against an in-memory fake (`tests/fake_supabase.py`);
     frontend `vitest` for pure helpers in `src/renderer/src/lib`. Setup and commands
     in `README.md`.

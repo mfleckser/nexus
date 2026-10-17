@@ -21,6 +21,10 @@ class ValidationError(AppError, ValueError):
     status = 400
 
 
+class Unauthorized(AppError):
+    status = 401
+
+
 class NotFound(AppError, LookupError):
     status = 404
 

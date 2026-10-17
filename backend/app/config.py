@@ -15,8 +15,21 @@ def env_flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def env_list(name: str) -> list[str]:
+    """Comma-separated env var as a list, blanks dropped."""
+    return [item.strip() for item in os.getenv(name, "").split(",") if item.strip()]
+
+
 # NEXUS_DEBUG=1 turns on Flask's debugger and auto-reloader (off by default).
 DEBUG = env_flag("NEXUS_DEBUG")
+
+
+def port() -> int:
+    value = os.getenv("NEXUS_PORT", "5000")
+    try:
+        return int(value)
+    except ValueError:
+        raise ConfigError(f"NEXUS_PORT must be a port number, got {value!r}") from None
 
 
 def supabase_credentials() -> tuple[str, str]:
@@ -29,11 +42,24 @@ def supabase_credentials() -> tuple[str, str]:
     return os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"]
 
 
+def api_token() -> str:
+    token = os.getenv("NEXUS_API_TOKEN", "").strip()
+    if not token:
+        raise ConfigError(
+            "missing environment variable: NEXUS_API_TOKEN. Set it in backend/.env "
+            '(generate one with: python3 -c "import secrets; print(secrets.token_urlsafe(32))").'
+        )
+    return token
+
+
 class Config:
     # Cache config
     CACHE_TYPE = "SimpleCache"
-    CACHE_DEFAULT_TIMEOUT = 3600
+    # Short TTL so writes from outside this process (Supabase Studio, a second
+    # backend) show up within a minute; this process's own writes invalidate.
+    CACHE_DEFAULT_TIMEOUT = 60
 
-    # Only the local Electron app talks to this server; rejecting other Host
-    # headers blocks DNS-rebinding requests from web pages.
-    TRUSTED_HOSTS = ["127.0.0.1", "localhost"]
+    # Rejecting unknown Host headers blocks DNS-rebinding requests from web
+    # pages. NEXUS_TRUSTED_HOSTS adds the names the server is reached by
+    # (e.g. the Tailscale name, pi.tailnet-1234.ts.net).
+    TRUSTED_HOSTS = ["127.0.0.1", "localhost", *env_list("NEXUS_TRUSTED_HOSTS")]

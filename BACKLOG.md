@@ -9,22 +9,17 @@ repeated here.
 
 ## 1. Mobile blockers — phone can't safely reach the backend yet
 
-- [ ] **Hosting** (decide) — Flask binds `127.0.0.1`, `TRUSTED_HOSTS` is localhost-only,
-  dev server only. Pick where it runs (cloud host / Mac + tunnel e.g. Tailscale /
-  Supabase Edge Functions); then gunicorn or waitress, HTTPS, update `TRUSTED_HOSTS`.
-- [ ] **Auth** (decide) — none today; open question bearer token vs Supabase Auth. Must
-  gate every route once the API is reachable off-machine.
-- [ ] **RLS + secret key** — RLS is off on every table and the backend uses the
-  publishable/anon key, so anyone with URL + key has full read/delete via PostgREST.
-  Enable RLS (no anon policies), move backend to the secret key, mobile talks only to
-  the Flask API.
-- [ ] **Cache design** (decide) — Flask-Caching SimpleCache is per-process with a 3600s
-  TTL; external writers (Studio, mobile, multiple gunicorn workers) see stale data for
-  up to an hour. Drop caching, short TTL, or shared cache. Conflicts with the earlier
-  "caching is the standard for every entity" decision.
-- [ ] **Backend URL config** — hardcoded `127.0.0.1:5000` in
-  `frontend/src/main/client.ts`; desktop needs a configurable URL once hosted. Also
-  consider moving off port 5000 (clashes with macOS AirPlay Receiver).
+- [x] **Hosting** — Raspberry Pi: gunicorn (1 worker × 8 threads) on 127.0.0.1 behind
+  `tailscale serve` HTTPS, systemd user unit; `NEXUS_TRUSTED_HOSTS` adds the ts.net
+  name. Steps in README "Deploy".
+- [x] **Auth** — static bearer token (`NEXUS_API_TOKEN`) on every route except
+  `/api/health`.
+- [x] **RLS + secret key** — RLS on every table with no policies
+  (`20261016120000_enable_rls.sql`); backend uses the secret key, which bypasses RLS.
+- [x] **Cache design** — kept; one gunicorn worker keeps it coherent, TTL 3600s → 60s
+  bounds staleness from external writers (Studio).
+- [x] **Backend URL config** — `MAIN_VITE_NEXUS_API_URL` / `MAIN_VITE_NEXUS_API_TOKEN`
+  in `frontend/.env`; backend port via `NEXUS_PORT` (default still 5000).
 
 ## 2. API contract — lock before a second client depends on it
 
