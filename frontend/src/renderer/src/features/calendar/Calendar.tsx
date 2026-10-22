@@ -72,8 +72,10 @@ const formatHour = (hour: number) => {
 function Calendar(): React.JSX.Element {
     const now = useNow();
     // Local midnight; for week view, any day of the shown week.
-    const [focusedDay, setFocusedDay] = useState<Date>(() => startOfWeek(new Date()));
+    const [focusedDay, setFocusedDay] = useState<Date>(() => startOfDay(new Date()));
     const [viewType, setViewType] = useState<ViewType>("WEEK");
+    // Day columns in the time grid.
+    const dayCount = viewType === "DAY" ? 1 : 7;
     const { events, addEvent, setRange } = useEvents();
     const { tasks } = useTasks();
     const { projects } = useProjects();
@@ -104,10 +106,14 @@ function Calendar(): React.JSX.Element {
         if (viewType === "MONTH") {
             return { start: monthGrid.gridStart, end: addDays(monthGrid.gridEnd, 1) };
         }
-        const weekStart = startOfWeek(focusedDay);
-        return { start: weekStart, end: addDays(weekStart, 7) };
+        const start = viewType === "DAY" ? focusedDay : startOfWeek(focusedDay);
+        return { start, end: addDays(start, viewType === "DAY" ? 1 : 7) };
     }, [viewType, focusedDay, monthGrid]);
-    const weekStart = visible.start;
+    const rangeStart = visible.start;
+    const gridDays = useMemo(
+        () => Array.from({ length: dayCount }, (_, i) => addDays(rangeStart, i)),
+        [rangeStart, dayCount],
+    );
 
     // What we ask the server for: visible ± one buffer period, so the next
     // nav step usually renders from memory while the refetch confirms it.
@@ -124,7 +130,7 @@ function Calendar(): React.JSX.Element {
         setRange(fetchWindow);
     }, [fetchWindow, setRange]);
 
-    // Per-day slices of every event overlapping the week, laid out in columns.
+    // Per-day slices of every visible event, laid out in columns.
     const segments = useMemo(
         () =>
             viewType === "MONTH"
@@ -132,17 +138,17 @@ function Calendar(): React.JSX.Element {
                 : layoutDays(
                       events.filter((e) => overlapsRange(e, visible.start, visible.end)),
                       visible.start,
-                      7,
+                      dayCount,
                   ),
-        [events, visible, viewType],
+        [events, visible, viewType, dayCount],
     );
 
-    // Due tasks in the visible week, with each pin's top pushed below any
+    // Due tasks in the visible days, with each pin's top pushed below any
     // earlier pin on the same day it would overlap. Completed/cancelled stay
     // visible; tasks of projects hidden from the main view don't.
     const taskPins = useMemo(() => {
         const hiddenProjectIds = new Set(projects.filter((p) => !p.show_tasks_in_main_view).map((p) => p.id));
-        const lastBottom = Array(7).fill(-Infinity);
+        const lastBottom = Array(dayCount).fill(-Infinity);
         return tasks
             .filter(
                 (t): t is Task & { due_at: Date } =>
@@ -153,26 +159,26 @@ function Calendar(): React.JSX.Element {
             )
             .toSorted((a, b) => a.due_at.getTime() - b.due_at.getTime() || a.title.localeCompare(b.title))
             .map((task) => {
-                const day = task.due_at.getDay();
+                const day = calendarDaysBetween(visible.start, task.due_at);
                 const dueTop = Math.min(
                     minutesIntoDay(task.due_at) * PX_PER_MIN,
                     MINUTES_PER_DAY * PX_PER_MIN - TASK_PIN_HEIGHT,
                 );
                 const top = Math.max(dueTop, lastBottom[day] + 1);
                 lastBottom[day] = top + TASK_PIN_HEIGHT;
-                return { task, top };
+                return { task, top, day };
             });
-    }, [tasks, projects, visible]);
+    }, [tasks, projects, visible, dayCount]);
 
     const goPrev = () => {
         setFocusedDay((prev) =>
-            viewType === "MONTH" ? new Date(prev.getFullYear(), prev.getMonth() - 1, 1) : addDays(prev, -7),
+            viewType === "MONTH" ? new Date(prev.getFullYear(), prev.getMonth() - 1, 1) : addDays(prev, -dayCount),
         );
     };
 
     const goNext = () => {
         setFocusedDay((prev) =>
-            viewType === "MONTH" ? new Date(prev.getFullYear(), prev.getMonth() + 1, 1) : addDays(prev, 7),
+            viewType === "MONTH" ? new Date(prev.getFullYear(), prev.getMonth() + 1, 1) : addDays(prev, dayCount),
         );
     };
 
@@ -185,6 +191,7 @@ function Calendar(): React.JSX.Element {
         if (shortcutsBlocked(e)) return;
         if (e.key === "ArrowLeft") goPrev();
         else if (e.key === "ArrowRight") goNext();
+        else if (e.key === "d") setViewType("DAY");
         else if (e.key === "w") setViewType("WEEK");
         else if (e.key === "m") setViewType("MONTH");
         else if (e.key === "t") goToday();
@@ -239,9 +246,9 @@ function Calendar(): React.JSX.Element {
         const rect = overlayRef.current?.getBoundingClientRect();
         if (!drag || !rect) return;
         const { startMin, duration } = dragMinutes(drag);
-        const colWidth = rect.width / 7;
+        const colWidth = rect.width / dayCount;
         openNewEventAt(
-            atMinutes(addDays(weekStart, drag.dayIndex), startMin),
+            atMinutes(addDays(rangeStart, drag.dayIndex), startMin),
             {
                 x: rect.left + (drag.dayIndex + 1) * colWidth + POPOVER_GAP,
                 y: rect.top + startMin * PX_PER_MIN,
@@ -289,15 +296,15 @@ function Calendar(): React.JSX.Element {
         previewDraft = {
             title: "",
             description: "",
-            start_at: atMinutes(addDays(weekStart, createDrag.dayIndex), startMin),
+            start_at: atMinutes(addDays(rangeStart, createDrag.dayIndex), startMin),
             duration,
             category: "",
         };
     }
 
-    const nowDayIndex = calendarDaysBetween(weekStart, now);
+    const nowDayIndex = calendarDaysBetween(rangeStart, now);
     const nowLineStyle: React.CSSProperties = {
-        left: `${(nowDayIndex * 100) / 7}%`,
+        left: `${(nowDayIndex * 100) / dayCount}%`,
         top: minutesIntoDay(now) * PX_PER_MIN,
     };
 
@@ -360,23 +367,20 @@ function Calendar(): React.JSX.Element {
                     </div>
                 </div>
             ) : (
-                <div id="week-container">
+                <div id="week-container" style={{ ["--day-count" as string]: dayCount }}>
                     <div className="gutter-spacer" />
                     <div className="header-container">
-                        {DAY_NAMES.map((name, idx) => {
-                            const d = addDays(weekStart, idx);
-                            return (
-                                <div key={name} className={`day-header${isToday(d) ? " today-header" : ""}`}>
-                                    <span className="day-name">{name}</span>
-                                    <span className="date-num">{d.getDate()}</span>
-                                </div>
-                            );
-                        })}
+                        {gridDays.map((d) => (
+                            <div key={d.getTime()} className={`day-header${isToday(d) ? " today-header" : ""}`}>
+                                <span className="day-name">{DAY_NAMES[d.getDay()]}</span>
+                                <span className="date-num">{d.getDate()}</span>
+                            </div>
+                        ))}
                     </div>
                     <div className="gutter-spacer all-day-gutter" />
                     <div className="all-day-container">
-                        {DAY_NAMES.map((name) => (
-                            <div key={name} className="all-day-cell" />
+                        {gridDays.map((d) => (
+                            <div key={d.getTime()} className="all-day-cell" />
                         ))}
                     </div>
                     <div className="day-events-scroll">
@@ -384,20 +388,30 @@ function Calendar(): React.JSX.Element {
                             {[...Array(24).keys()].map((hour) => (
                                 <Fragment key={hour}>
                                     <div className="hour-label">{formatHour(hour)}</div>
-                                    {[...Array(7).keys()].map((day) => (
+                                    {[...Array(dayCount).keys()].map((day) => (
                                         <div key={day} className="hour-block" onMouseDown={handleSlotMouseDown(day)} />
                                     ))}
                                 </Fragment>
                             ))}
                             <div className="events-overlay" ref={overlayRef}>
                                 {segments.map((segment) => (
-                                    <EventChip key={`${segment.item.id}:${segment.dayIndex}`} segment={segment} />
+                                    <EventChip
+                                        key={`${segment.item.id}:${segment.dayIndex}`}
+                                        segment={segment}
+                                        dayCount={dayCount}
+                                    />
                                 ))}
-                                {taskPins.map(({ task, top }) => (
-                                    <TaskPin key={task.id} task={task} top={top} />
+                                {taskPins.map(({ task, top, day }) => (
+                                    <TaskPin key={task.id} task={task} top={top} dayIdx={day} dayCount={dayCount} />
                                 ))}
-                                {previewDraft && <EventDraftPreview draft={previewDraft} weekStart={weekStart} />}
-                                {nowDayIndex >= 0 && nowDayIndex < 7 && (
+                                {previewDraft && (
+                                    <EventDraftPreview
+                                        draft={previewDraft}
+                                        rangeStart={rangeStart}
+                                        dayCount={dayCount}
+                                    />
+                                )}
+                                {nowDayIndex >= 0 && nowDayIndex < dayCount && (
                                     <div className="cursor-now" style={nowLineStyle}></div>
                                 )}
                             </div>

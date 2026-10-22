@@ -20,9 +20,13 @@ type TaskPinProps = {
     // Pixel top within the day grid. Usually the due time, pushed down when
     // an earlier pin on the same day would overlap it.
     top: number;
+    // Column of the due day among the visible days.
+    dayIdx: number;
+    // Day columns in the grid: 7 in week view, 1 in day view.
+    dayCount: number;
 };
 
-function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
+function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Element {
     const { updateTask } = useTasks();
     const reportError = useReportError();
     const pinRef = useRef<HTMLDivElement>(null);
@@ -37,7 +41,6 @@ function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
     const [popoverAnchor, setPopoverAnchor] = useState<PopoverAnchor | null>(null);
 
     const due = task.due_at;
-    const dayIdx = due.getDay();
     const done = task.status === "complete";
     const cancelled = task.status === "cancelled";
 
@@ -85,7 +88,10 @@ function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
         if (!parentRect || !moved) return;
         suppressClickRef.current = true;
 
-        const newDayIdx = Math.min(6, Math.max(0, Math.floor((7 * (e.clientX - parentRect.left)) / parentRect.width)));
+        const newDayIdx = Math.min(
+            dayCount - 1,
+            Math.max(0, Math.floor((dayCount * (e.clientX - parentRect.left)) / parentRect.width)),
+        );
         const rawMins = (e.clientY - parentRect.top - grabOffsetRef.current.y) / PX_PER_MIN;
         const mins = Math.min(
             Math.max(0, TASK_SNAP_MINUTES * Math.round(rawMins / TASK_SNAP_MINUTES)),
@@ -109,7 +115,7 @@ function TaskPin({ task, top }: TaskPinProps): React.JSX.Element {
 
     const style: React.CSSProperties = dragPos
         ? { left: dragPos.left, top: dragPos.top, height: TASK_PIN_HEIGHT }
-        : { left: `calc(${(dayIdx * 100) / 7}% + 3px)`, top, height: TASK_PIN_HEIGHT };
+        : { left: `calc(${(dayIdx * 100) / dayCount}% + 3px)`, top, height: TASK_PIN_HEIGHT };
 
     function togglePopover(): void {
         if (popoverAnchor) {

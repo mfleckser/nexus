@@ -165,8 +165,10 @@
 }
 
 #week-container {
+    /* Columns shown: 7 in week view, 1 in day view (set inline by Calendar.tsx). */
+    --day-count: 7;
     display: grid;
-    grid-template-columns: 52px repeat(7, 1fr);
+    grid-template-columns: 52px repeat(var(--day-count), 1fr);
     grid-template-rows: auto auto 1fr;
     font-family: var(--font-sans);
     /* height: 100%; */
@@ -185,9 +187,9 @@
 }
 
 .header-container {
-    grid-column: 2 / span 7;
+    grid-column: 2 / -1;
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(var(--day-count), 1fr);
     border-bottom: 1px solid var(--border-default);
     padding: 8px 0;
     background: var(--bg-surface);
@@ -236,9 +238,9 @@
 }
 
 .all-day-container {
-    grid-column: 2 / span 7;
+    grid-column: 2 / -1;
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(var(--day-count), 1fr);
     min-height: 24px;
     border-bottom: 1px solid var(--border-default);
 }
@@ -262,7 +264,7 @@
 
 .day-events {
     display: grid;
-    grid-template-columns: 52px repeat(7, 1fr);
+    grid-template-columns: 52px repeat(var(--day-count), 1fr);
 }
 
 .hour-label {
@@ -306,7 +308,7 @@
     right: 0;
     bottom: 0;
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(var(--day-count), 1fr);
     pointer-events: none;
 }
 
@@ -483,7 +485,7 @@
 }
 
 .cursor-now {
-    width: calc(100% / 7);
+    width: calc(100% / var(--day-count));
     height: 1px;
     background-color: var(--now-indicator);
     position: absolute;

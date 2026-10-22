@@ -36,7 +36,7 @@
 
   - Event CRUD: recurring, all-day, multi-day — done: CRUD + recurring; open: all-day
     and multi-day creation (`all_day` column exists, unused)
-  - Day / week / month views — done: week; open: day (shows week), month (no events)
+  - Day / week / month views — done: day, week; open: month (no events)
   - Task CRUD w/ due dates, optional time-block on calendar — done: CRUD, due dates,
     due-task pins on the week view; open: time-blocking
   - Tasks ↔ events linkable — open (`tasks.event_id` column exists, not in API)

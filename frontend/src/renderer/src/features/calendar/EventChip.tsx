@@ -40,11 +40,17 @@ type PendingScope = { action: "edit"; data: EventUpdate; scopes?: RecurrenceScop
 
 type ChipBox = { dayIndex: number; startMin: number; endMin: number };
 
-function chipStyle(box: ChipBox, column: number, columns: number, color: string): React.CSSProperties {
+function chipStyle(
+    box: ChipBox,
+    column: number,
+    columns: number,
+    dayCount: number,
+    color: string,
+): React.CSSProperties {
     return {
-        width: `${100 / 7 / columns}%`,
+        width: `${100 / dayCount / columns}%`,
         height: (box.endMin - box.startMin) * PX_PER_MIN,
-        left: `${((box.dayIndex + column / columns) * 100) / 7}%`,
+        left: `${((box.dayIndex + column / columns) * 100) / dayCount}%`,
         top: box.startMin * PX_PER_MIN,
         ["--chip-background" as string]: color,
     };
@@ -53,9 +59,11 @@ function chipStyle(box: ChipBox, column: number, columns: number, color: string)
 type EventChipProps = {
     // This chip's day slice of the event (multi-day events render one chip per day).
     segment: DaySegment<CalendarEvent>;
+    // Day columns in the grid: 7 in week view, 1 in day view.
+    dayCount: number;
 };
 
-function EventChip({ segment }: EventChipProps): React.JSX.Element {
+function EventChip({ segment, dayCount }: EventChipProps): React.JSX.Element {
     const event = segment.item;
     const chipRef = useRef<HTMLDivElement>(null);
     const parentRectRef = useRef<DOMRect | null>(null);
@@ -99,8 +107,9 @@ function EventChip({ segment }: EventChipProps): React.JSX.Element {
     const shownStart = preview?.start ?? event.start_at;
     const shownEnd = preview?.end ?? (resizeEndMin !== null ? atMinutes(segment.dayStart, resizeEndMin) : event.end_at);
 
-    const style = chipStyle(box, segment.column, segment.columns, categoryColor(event.category));
-    if (dragging && dragPos) Object.assign(style, { left: dragPos.left, top: dragPos.top, width: `${100 / 7}%` });
+    const style = chipStyle(box, segment.column, segment.columns, dayCount, categoryColor(event.category));
+    if (dragging && dragPos)
+        Object.assign(style, { left: dragPos.left, top: dragPos.top, width: `${100 / dayCount}%` });
     const compact = (box.endMin - box.startMin) * PX_PER_MIN < COMPACT_CHIP_PX;
 
     // Plain events commit straight away; occurrences wait for a scope.
@@ -239,7 +248,11 @@ function EventChip({ segment }: EventChipProps): React.JSX.Element {
         if (!parentRect || !movedPastThreshold(e)) return;
         suppressClickRef.current = true;
 
-        const newDayIdx = clamp(Math.floor((7 * (e.clientX - parentRect.left)) / parentRect.width), 0, 6);
+        const newDayIdx = clamp(
+            Math.floor((dayCount * (e.clientX - parentRect.left)) / parentRect.width),
+            0,
+            dayCount - 1,
+        );
         const dayDelta = newDayIdx - segment.dayIndex;
         const droppedTopMin = (e.clientY - parentRect.top - grabOffsetRef.current.y) / PX_PER_MIN;
         let start: Date;
@@ -398,14 +411,15 @@ function EventChip({ segment }: EventChipProps): React.JSX.Element {
 type EventDraftPreviewProps = {
     draft: NewEventDraft;
     // Local midnight of the first visible day.
-    weekStart: Date;
+    rangeStart: Date;
+    dayCount: number;
 };
 
 // Non-interactive placeholder for an event being created (drag-to-create or
-// the new-event popover). Hidden when the draft starts outside the week.
-function EventDraftPreview({ draft, weekStart }: EventDraftPreviewProps): React.JSX.Element | null {
-    const dayIndex = calendarDaysBetween(weekStart, draft.start_at);
-    if (dayIndex < 0 || dayIndex > 6) return null;
+// the new-event popover). Hidden when the draft starts outside the visible days.
+function EventDraftPreview({ draft, rangeStart, dayCount }: EventDraftPreviewProps): React.JSX.Element | null {
+    const dayIndex = calendarDaysBetween(rangeStart, draft.start_at);
+    if (dayIndex < 0 || dayIndex >= dayCount) return null;
     const startMin = minutesIntoDay(draft.start_at);
     const endMin = Math.min(MINUTES_PER_DAY, startMin + draft.duration);
     const end = new Date(draft.start_at.getTime() + draft.duration * 60000);
@@ -413,7 +427,7 @@ function EventDraftPreview({ draft, weekStart }: EventDraftPreviewProps): React.
     return (
         <div
             className={`event-chip event-chip-draft${compact ? " event-chip-compact" : ""}`}
-            style={chipStyle({ dayIndex, startMin, endMin }, 0, 1, categoryColor(draft.category))}
+            style={chipStyle({ dayIndex, startMin, endMin }, 0, 1, dayCount, categoryColor(draft.category))}
             aria-hidden
         >
             <div className="event-chip-title">
