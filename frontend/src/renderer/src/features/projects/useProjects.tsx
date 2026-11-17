@@ -22,6 +22,8 @@ type ProjectsContextValue = {
     loadFeatures: (project_id: string) => Promise<void>;
     addFeature: (project_id: string, name: string) => Promise<void>;
     // Optimistic; rolls back and rethrows on failure.
+    renameFeature: (feature_id: string, name: string) => Promise<void>;
+    // Optimistic; rolls back and rethrows on failure.
     deleteFeature: (feature_id: string) => Promise<void>;
 };
 
@@ -106,6 +108,36 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
         [loadFeatures],
     );
 
+    const renameFeature = useCallback(async (feature_id: string, name: string) => {
+        // Replace the feature wherever it's loaded; `when` guards against
+        // clobbering a newer value (a later rename or a refetch).
+        const patch = (next: (f: Feature) => Feature, when: (f: Feature) => boolean = () => true) =>
+            setFeaturesByProjectId((prev) => {
+                const out = { ...prev };
+                for (const [project_id, list] of Object.entries(prev)) {
+                    if (list.some((f) => f.id === feature_id && when(f))) {
+                        out[project_id] = list.map((f) => (f.id === feature_id ? next(f) : f));
+                    }
+                }
+                return out;
+            });
+        const before = Object.values(featuresRef.current)
+            .flat()
+            .find((f) => f.id === feature_id);
+        patch((f) => ({ ...f, name }));
+        try {
+            const saved = await projectsApi.updateFeature(feature_id, { name });
+            patch(() => saved);
+        } catch (err) {
+            if (before)
+                patch(
+                    () => before,
+                    (f) => f.name === name,
+                );
+            throw err;
+        }
+    }, []);
+
     const deleteFeature = useCallback(async (feature_id: string) => {
         const snapshot = featuresRef.current;
         const project_id = Object.keys(snapshot).find((p) => snapshot[p].some((f) => f.id === feature_id));
@@ -146,6 +178,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
             featuresByProjectId,
             loadFeatures,
             addFeature,
+            renameFeature,
             deleteFeature,
         }),
         [
@@ -160,6 +193,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
             featuresByProjectId,
             loadFeatures,
             addFeature,
+            renameFeature,
             deleteFeature,
         ],
     );

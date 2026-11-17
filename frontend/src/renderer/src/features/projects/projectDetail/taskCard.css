@@ -25,6 +25,16 @@
     border-left-color: var(--pillar-project);
 }
 
+/* Blocked: warning edge and tint so it stands out on the board. */
+.task-card.blocked,
+.task-card.blocked:hover {
+    border-left-color: var(--status-warning);
+}
+
+.task-card.blocked {
+    background: color-mix(in srgb, var(--status-warning) 8%, var(--bg-elevated));
+}
+
 .task-card:active {
     cursor: grabbing;
 }

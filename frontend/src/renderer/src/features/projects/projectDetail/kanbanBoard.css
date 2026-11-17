@@ -39,7 +39,7 @@
 .kb-grid {
     display: grid;
     /* Columns keep a readable width; the board scrolls sideways when narrow. */
-    grid-template-columns: 200px repeat(3, minmax(180px, 1fr));
+    grid-template-columns: 200px repeat(4, minmax(180px, 1fr));
 }
 
 /* Header row — status columns. Sticky so feature rows scroll beneath it. */
@@ -259,7 +259,7 @@
 }
 
 /* Strip right border off the last status column */
-.kb-grid > *:nth-child(4n) {
+.kb-grid > *:nth-child(5n) {
     border-right: none;
 }
 
@@ -362,4 +362,9 @@
 .kb-feature-btn-secondary:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
+}
+
+/* Blocked column: needs Mark's attention, so its header carries the warning hue. */
+.kb-status-header.kb-status-blocked {
+    color: var(--status-warning);
 }

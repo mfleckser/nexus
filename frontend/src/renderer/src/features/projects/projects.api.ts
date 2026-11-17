@@ -25,11 +25,14 @@ function parseProject(p: Wire<Project>): Project {
     };
 }
 
+// Explicit fields: single-feature responses also carry `notes`, which the board doesn't keep.
 function parseFeature(f: Wire<Feature>): Feature {
     return {
-        ...f,
+        id: f.id,
         created_at: parseDate(f.created_at),
         updated_at: parseDate(f.updated_at),
+        project_id: f.project_id,
+        name: f.name,
         notes_updated_at: parseNullableDate(f.notes_updated_at),
     };
 }
@@ -67,8 +70,23 @@ function addFeature(project_id: string, name: string): Promise<unknown> {
     return api.post(`/projects/${project_id}/features`, { name });
 }
 
+// Resolves to the updated row.
+async function updateFeature(feature_id: string, data: { name?: string; notes?: string | null }): Promise<Feature> {
+    return parseFeature(await api.put<Wire<Feature>>(`/features/${feature_id}`, data));
+}
+
 function deleteFeature(feature_id: string): Promise<unknown> {
     return api.delete(`/features/${feature_id}`);
 }
 
-export { getProjects, getNotes, addProject, updateProject, deleteProject, getFeatures, addFeature, deleteFeature };
+export {
+    getProjects,
+    getNotes,
+    addProject,
+    updateProject,
+    deleteProject,
+    getFeatures,
+    addFeature,
+    updateFeature,
+    deleteFeature,
+};

@@ -13,6 +13,7 @@ import useReportError from "@renderer/hooks/useReportError";
 const STATUS_LABELS: Record<TaskStatus, string> = {
     todo: "To do",
     active: "In progress",
+    blocked: "Blocked",
     complete: "Complete",
     cancelled: "Cancelled",
 };

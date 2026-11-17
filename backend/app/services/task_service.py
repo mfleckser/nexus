@@ -6,7 +6,7 @@ from app.extensions import cache as c
 from app.extensions.supabase import supabase
 
 # Matches the tasks.status_check constraint.
-TASK_STATUSES = ("todo", "active", "complete", "cancelled")
+TASK_STATUSES = ("todo", "active", "blocked", "complete", "cancelled")
 CREATE_FIELDS = ("title", "description", "due_at", "project_id", "feature_id")
 UPDATE_FIELDS = (*CREATE_FIELDS, "status")
 
@@ -28,6 +28,23 @@ def get_all_tasks():
         return supabase.table("tasks").select("*").order("created_at").order("id").execute().data
 
     return c.get_or_load(c.TASKS, load)
+
+
+def list_tasks(args) -> list:
+    """GET /tasks, optionally filtered by project_id, feature_id and status (a
+    comma-separated list). Filters run over the cached full list."""
+    tasks = get_all_tasks()
+    statuses = None
+    if "status" in args:
+        statuses = {s.strip() for s in args["status"].split(",")}
+        for status in statuses:
+            v.check_choice({"status": status}, "status", TASK_STATUSES)
+    return [
+        t
+        for t in tasks
+        if all(t.get(name) == args[name] for name in ("project_id", "feature_id") if name in args)
+        and (statuses is None or t["status"] in statuses)
+    ]
 
 
 def get_task(task_id: str):

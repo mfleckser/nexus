@@ -57,19 +57,19 @@ class ErrorHandlingTest(AppTestCase):
     def test_other_db_error_is_500(self):
         self.quiet_errors()
         err = PostgrestAPIError({"code": "PGRST301", "message": "JWT expired"})
-        with mock.patch("app.api.tasks.get_all_tasks", side_effect=err):
+        with mock.patch("app.api.tasks.list_tasks", side_effect=err):
             self.assert_error(self.client.get("/api/tasks"), 500, "Database error")
 
     def test_unexpected_exception_is_500_without_details(self):
         self.quiet_errors()
-        with mock.patch("app.api.tasks.get_all_tasks", side_effect=KeyError("secret")):
+        with mock.patch("app.api.tasks.list_tasks", side_effect=KeyError("secret")):
             self.assert_error(self.client.get("/api/tasks"), 500, "Internal server error")
         # A stray ValueError is a bug, not bad input.
-        with mock.patch("app.api.tasks.get_all_tasks", side_effect=ValueError("internal")):
+        with mock.patch("app.api.tasks.list_tasks", side_effect=ValueError("internal")):
             self.assert_error(self.client.get("/api/tasks"), 500, "Internal server error")
 
     def test_unexpected_exception_is_logged(self):
-        with mock.patch("app.api.tasks.get_all_tasks", side_effect=RuntimeError("boom")):
+        with mock.patch("app.api.tasks.list_tasks", side_effect=RuntimeError("boom")):
             with self.assertLogs(self.app.logger, level="ERROR") as logs:
                 self.client.get("/api/tasks")
         self.assertIn("RuntimeError: boom", "\n".join(logs.output))

@@ -55,6 +55,14 @@ class CacheTest(AppTestCase):
         self.request("DELETE", f"/api/tasks/{t['id']}")
         self.assertEqual(self.get("/api/tasks"), [])
 
+    def test_filtered_task_lists_share_the_cache(self):
+        self.task(title="a")
+        self.get("/api/tasks")
+        self.assertEqual(self.queries_for("/api/tasks?status=todo"), 0)
+        t = self.task(title="b")
+        self.request("PUT", f"/api/tasks/{t['id']}", {"status": "blocked"})
+        self.assertEqual([x["title"] for x in self.get("/api/tasks?status=blocked")], ["b"])
+
     def test_project_writes_invalidate_projects_and_notes(self):
         self.get("/api/projects")
         p = self.project()
@@ -73,6 +81,8 @@ class CacheTest(AppTestCase):
         self.get(path)
         f = self.request("POST", path, {"name": "F"}, status=201)
         self.assertEqual([x["id"] for x in self.get(path)], [f["id"]])
+        self.request("PUT", f"/api/features/{f['id']}", {"name": "G"})
+        self.assertEqual([x["name"] for x in self.get(path)], ["G"])
         self.request("DELETE", f"/api/features/{f['id']}")
         self.assertEqual(self.get(path), [])
 

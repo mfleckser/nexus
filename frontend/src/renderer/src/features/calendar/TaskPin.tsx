@@ -43,6 +43,7 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
     const due = task.due_at;
     const done = task.status === "complete";
     const cancelled = task.status === "cancelled";
+    const blocked = task.status === "blocked";
 
     function toggleComplete(): void {
         updateTask(task.id, { status: done ? "todo" : "complete" }).catch((err) =>
@@ -131,7 +132,7 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
         <>
             <div
                 ref={pinRef}
-                className={`task-pin${done ? " done" : ""}${cancelled ? " cancelled" : ""}${dragging ? " dragging" : ""}`}
+                className={`task-pin${done ? " done" : ""}${cancelled ? " cancelled" : ""}${blocked ? " blocked" : ""}${dragging ? " dragging" : ""}`}
                 style={style}
                 title={task.title}
                 role="button"

@@ -94,6 +94,11 @@
     border-color: var(--accent-border);
 }
 
+.tp-status-blocked {
+    color: var(--status-warning);
+    border-color: color-mix(in srgb, var(--status-warning) 45%, transparent);
+}
+
 .tp-status-cancelled {
     color: var(--text-muted);
 }

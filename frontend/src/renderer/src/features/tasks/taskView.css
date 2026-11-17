@@ -269,3 +269,22 @@
     color: var(--text-muted);
     text-decoration: line-through;
 }
+
+/* Blocked: needs Mark's attention. */
+.task-row.blocked .task-check {
+    border-color: var(--status-warning);
+}
+
+.task-blocked-badge {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding: 1px 7px;
+    border-radius: var(--radius-pill);
+    border: 1px solid color-mix(in srgb, var(--status-warning) 45%, transparent);
+    background: color-mix(in srgb, var(--status-warning) 12%, transparent);
+    color: var(--status-warning);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}

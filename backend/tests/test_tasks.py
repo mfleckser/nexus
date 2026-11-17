@@ -54,7 +54,7 @@ class TasksTest(AppTestCase):
         ]:
             with self.subTest(body=body):
                 self.put(t["id"], body, status=400)
-        for status in ("todo", "active", "complete", "cancelled"):
+        for status in ("todo", "active", "blocked", "complete", "cancelled"):
             self.assertEqual(self.put(t["id"], {"status": status})["status"], status)
         self.assertIsNone(self.put(t["id"], {"due_at": None})["due_at"])
 
@@ -71,9 +71,35 @@ class TasksTest(AppTestCase):
         self.assertEqual(self.put(t["id"], {"status": "complete", "title": "x"})["completed_at"], done["completed_at"])
         self.assertEqual(self.put(t["id"], {"title": "y"})["completed_at"], done["completed_at"])
 
-        for status in ("todo", "active", "cancelled"):
+        for status in ("todo", "active", "blocked", "cancelled"):
             self.put(t["id"], {"status": "complete"})
             self.assertIsNone(self.put(t["id"], {"status": status})["completed_at"])
+
+    def test_list_filters(self):
+        p1, p2, f1 = (
+            "11111111-1111-1111-1111-111111111111",
+            "22222222-2222-2222-2222-222222222222",
+            "33333333-3333-3333-3333-333333333333",
+        )
+        self.create(title="a", project_id=p1, feature_id=f1)
+        b = self.create(title="b", project_id=p1)
+        c = self.create(title="c", project_id=p2)
+        self.put(b["id"], {"status": "blocked"})
+        self.put(c["id"], {"status": "complete"})
+
+        def titles(query):
+            return [t["title"] for t in self.request("GET", f"/api/tasks?{query}")]
+
+        self.assertEqual(titles(""), ["a", "b", "c"])
+        self.assertEqual(titles(f"project_id={p1}"), ["a", "b"])
+        self.assertEqual(titles(f"feature_id={f1}"), ["a"])
+        self.assertEqual(titles("status=blocked"), ["b"])
+        self.assertEqual(titles("status=todo, blocked"), ["a", "b"])
+        self.assertEqual(titles(f"project_id={p1}&status=complete"), [])
+        self.assertEqual(titles("project_id=nope&bogus=1"), [])
+        for query in ("status=done", "status=todo,done", "status=", "status=,"):
+            with self.subTest(query=query):
+                self.request("GET", f"/api/tasks?{query}", status=400)
 
     def test_update_without_known_fields_returns_current_row(self):
         t = self.create()

@@ -6,8 +6,10 @@ from app.services.project_service import (
     delete_feature,
     delete_project,
     get_all_projects,
+    get_feature,
     get_project_features,
     get_project_notes,
+    update_feature,
     update_project,
 )
 from app.validation import json_body
@@ -52,6 +54,16 @@ def add_feature(project_id):
     feature = create_feature(project_id, json_body())
 
     return jsonify(feature), 201
+
+
+@projects_bp.route("/features/<feature_id>", methods=["GET"])
+def show_feature(feature_id):
+    return get_feature(feature_id)
+
+
+@projects_bp.route("/features/<feature_id>", methods=["PUT"])
+def edit_feature(feature_id):
+    return update_feature(feature_id, json_body())
 
 
 @projects_bp.route("/features/<feature_id>", methods=["DELETE"])

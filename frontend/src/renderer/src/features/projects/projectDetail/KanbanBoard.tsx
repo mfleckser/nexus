@@ -12,6 +12,7 @@ import { toDatetimeLocal } from "@renderer/lib/time";
 const STATUSES: { key: TaskStatus; label: string }[] = [
     { key: "todo", label: "To Do" },
     { key: "active", label: "Active" },
+    { key: "blocked", label: "Blocked" },
     { key: "complete", label: "Complete" },
 ];
 
@@ -27,7 +28,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
     const [featureInput, setFeatureInput] = useState<string>("");
     const [showFeatureInput, setShowFeatureInput] = useState<boolean>(false);
 
-    const { featuresByProjectId, loadFeatures, addFeature, deleteFeature } = useProjects();
+    const { featuresByProjectId, loadFeatures, addFeature, renameFeature, deleteFeature } = useProjects();
     const { tasks, addTask, updateTask } = useTasks();
     const reportError = useReportError();
     const projectTasks = tasks.filter((t) => t.project_id === project.id);
@@ -88,7 +89,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                 <div className="kb-grid">
                     <div className="kb-corner" />
                     {STATUSES.map((s) => (
-                        <div key={s.key} className="kb-status-header">
+                        <div key={s.key} className={`kb-status-header kb-status-${s.key}`}>
                             {s.label}
                         </div>
                     ))}
@@ -101,7 +102,12 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                     <FeatureLabel
                                         name={row.name}
                                         featureId={row.featureId}
-                                        onEdit={() => {}}
+                                        onEdit={(name) => {
+                                            if (!row.featureId || name === row.name) return;
+                                            renameFeature(row.featureId, name).catch((err) =>
+                                                reportError("Couldn't rename feature", err),
+                                            );
+                                        }}
                                         onDelete={() => {
                                             if (!row.featureId) return;
                                             deleteFeature(row.featureId).catch((err) =>
