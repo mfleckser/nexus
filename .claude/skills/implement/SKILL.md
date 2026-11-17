@@ -1,8 +1,7 @@
 ---
 name: implement
-description: Take one Nexus task and implement it end to end without needing Mark. Plans, builds, tests, reviews, commits and pushes to a branch, with effort scaled to the task's size, then returns a summary. Use when asked to implement, build, or complete a specific feature, fix, or chore in Nexus. Invoked with /implement <task> [branch=<name>].
-when_to_use: "Use when a described Nexus feature, fix, or chore should be fully implemented, tested, committed and pushed. Invoked with /implement <task> [branch=<name>] [decisions: ...] [unattended]."
-argument-hint: "<task description> [branch=<name>] [decisions: ...] [unattended]"
+description: "Take one Nexus feature, fix, or chore and implement it end to end without needing Mark: plans, builds, tests, reviews, commits and pushes to a branch, with effort scaled to the task's size, then returns a summary. Invoked with /implement <task> [branch=<name>] [unattended] [decisions: ...]."
+argument-hint: "<task description> [branch=<name>] [unattended] [decisions: ...]"
 ---
 
 # Implement
@@ -17,7 +16,8 @@ Arguments: `$ARGUMENTS`
   or planning files (`BACKLOG.md`, `FABLE-WEEK.md`, etc.). Whoever invoked you tracks
   the task.
 - **`branch=<name>`** (optional): the branch to commit to. If omitted, see step 6.
-- **`decisions:`** (optional): product answers already made. They are settled.
+- **`decisions:`** (optional, always last): product answers already made. They are
+  settled.
 - **`unattended`** (optional): nobody is watching. Never wait on Mark. Also treat
   the run as unattended if `AskUserQuestion` isn't available to you.
 
@@ -130,6 +130,12 @@ repeat until green.
   existing rows pass any new constraint (backfill in the same migration if needed).
   If a migration drops or rewrites existing data, make sure the task really requires
   it, and call it out in the report.
+  **Unattended, until a separate test database exists:** `db push` changes the live
+  database before Mark has reviewed anything, and a closed PR doesn't undo it. So
+  only apply migrations that add things the code on `main` tolerates: new tables,
+  nullable or defaulted columns, indexes, and constraints every existing row passes.
+  If the task needs anything else (drop, rename, type change, rewriting data),
+  escalate it in step 2 as `needs-decision` before writing code.
 - **Frontend**: `cd frontend && npm run typecheck && npm run lint && npm test`. Pure
   helpers in `src/renderer/src/lib` get vitest tests.
 - **UI behavior (M/L tasks with visible changes)**: drive the real app with
@@ -151,6 +157,11 @@ repeat until green.
   - Test data goes in the live DB: name it `ZZ test …` and delete it afterwards, in a
     `finally`, one delete at a time so one failure doesn't leak the rest.
   - Keep scripts and screenshots in the scratchpad. Look at the screenshots.
+- **Evidence (any tier)**: keep 1–2 pieces that show the change works, and list them
+  under **Evidence** in the summary. For a visible change, that's a screenshot
+  cropped to the relevant part of the window, saved as a PNG in the scratchpad and
+  listed by its absolute path. Take one even at tier S. For a non-visual change, use
+  a short excerpt of test output or an API response.
 - **Agent tools (`tools/nexus-mcp`)**: `venv/bin/python -m unittest discover -s tests`
   and `../../backend/venv/bin/ruff check .`. If you add an endpoint agents need, add
   the tool and test it; run `smoke.py` against a local backend
@@ -217,6 +228,7 @@ Changed: <2–5 bullets, what changed for the user, not a file list>
 Product defaults: <product questions you answered yourself, with the choice made — or "none">
 Technical decisions: <notable calls a reviewer might want to revisit — or "none">
 Verified: <tests/lint/typecheck/UI checks run and their results; anything skipped and why>
+Evidence: <1–2 items: absolute PNG path + what it shows, or a short output excerpt — or "none">
 Migrations: <applied migrations, noting any that changed existing data — or "none">
 Manual steps: <Pi deploy (`git pull && systemctl --user restart nexus-backend`) if backend changed, env changes — or "none">
 Remaining: <for partial: what's left to finish the task — or "none">
