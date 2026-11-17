@@ -134,14 +134,27 @@ repeat until green.
   helpers in `src/renderer/src/lib` get vitest tests.
 - **UI behavior (M/L tasks with visible changes)**: drive the real app with
   Playwright `_electron`. Always set `NEXUS_HIDDEN=1` so the window never steals focus.
+  - Playwright isn't a project dependency. Install `playwright-core` in a scratchpad
+    folder (`npm init -y && npm i playwright-core`) and launch with
+    `executablePath` set to the default export of
+    `frontend/node_modules/electron/index.js` and `args: [<frontend dir>]`.
   - If backend code changed, run it locally on a free port
-    (`NEXUS_PORT=5055 backend/start`, in the background) and stop it when you're
-    done.
+    (`NEXUS_PORT=5055 backend/start`, in the background). Restart it after more
+    backend edits (no reloader). Stop it by the PID on that port only
+    (`lsof -ti tcp:5055 -sTCP:LISTEN`); never `pkill` by name, which can hit Mark's
+    own dev server.
   - Build against that backend:
     `MAIN_VITE_NEXUS_API_URL=http://127.0.0.1:5055 npx electron-vite build`.
-    Otherwise a plain build talks to whatever `frontend/.env` points at.
-  - Test data goes in the live DB: name it `ZZ test …` and delete it afterwards.
+    Otherwise a plain build talks to whatever `frontend/.env` points at. When done,
+    rebuild with a plain `npx electron-vite build` so `out/` doesn't keep the test
+    URL baked in.
+  - Test data goes in the live DB: name it `ZZ test …` and delete it afterwards, in a
+    `finally`, one delete at a time so one failure doesn't leak the rest.
   - Keep scripts and screenshots in the scratchpad. Look at the screenshots.
+- **Agent tools (`tools/nexus-mcp`)**: `venv/bin/python -m unittest discover -s tests`
+  and `../../backend/venv/bin/ruff check .`. If you add an endpoint agents need, add
+  the tool and test it; run `smoke.py` against a local backend
+  (`NEXUS_API_URL=http://127.0.0.1:5055`) when the backend changed.
 
 ## 5. Review (scaled to tier)
 
@@ -149,6 +162,8 @@ repeat until green.
   breaks.
 - **M**: invoke the `code-review` skill at `medium` on the diff. Fix the findings that
   hold up after you check them, rerun verification, done.
+- `code-review` runs in the background. Wait for its result before committing, and
+  give every finding a verdict (fixed, or why not) in your summary.
 - **L**: `code-review` at `high` after each major unit lands, then once more over the
   full diff. If the change added a lot of code, run `simplify` too. Loop
   fix → verify → re-review until a pass turns up nothing significant (at most 3
@@ -173,7 +188,8 @@ just at commit time.
   commit them.
 - If you'd have to switch branches under them, build in a worktree at
   `.claude/worktrees/<branch>` (gitignored). Symlink `frontend/node_modules`,
-  `backend/venv`, `frontend/.env` and `backend/.env` into it from the main checkout.
+  `backend/venv`, `tools/nexus-mcp/venv`, `frontend/.env` and `backend/.env` into it
+  from the main checkout.
   Remove the worktree after pushing.
 - If you can stay on the current branch, stage only your own files.
 
