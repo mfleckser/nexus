@@ -38,8 +38,7 @@
 
 .kb-grid {
     display: grid;
-    /* Columns keep a readable width; the board scrolls sideways when narrow. */
-    grid-template-columns: 200px repeat(4, minmax(180px, 1fr));
+    /* grid-template-columns is set inline (gridColumns in KanbanBoard.tsx). */
 }
 
 /* Header row — status columns. Sticky so feature rows scroll beneath it. */
@@ -240,6 +239,17 @@
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-md);
     overflow: hidden;
+}
+
+/* Cells are narrow, so the Due label sits above its input instead of beside it. */
+.kb-task-edit-wrapper .task-form-field {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+}
+
+.kb-task-edit-wrapper .task-form-datetime {
+    flex: none;
 }
 
 /* Feature row — status drop cells */

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import "./kanbanBoard.css";
 import TaskForm from "@renderer/components/TaskForm";
 import { useTasks } from "../../tasks/useTasks";
@@ -18,6 +18,16 @@ const STATUSES: { key: TaskStatus; label: string }[] = [
 
 // "general" is the synthetic row for tasks with no feature_id; it always sorts first.
 const GENERAL_ROW = "general";
+
+// Status columns keep a readable width; the board scrolls sideways when narrow. The
+// column holding the inline edit form widens so the due-date input fits in full.
+const COLUMN_MIN_PX = 180;
+const EDIT_COLUMN_MIN_PX = 264;
+
+function gridColumns(editingStatus: TaskStatus | null): string {
+    const cols = STATUSES.map((s) => `minmax(${s.key === editingStatus ? EDIT_COLUMN_MIN_PX : COLUMN_MIN_PX}px, 1fr)`);
+    return `200px ${cols.join(" ")}`;
+}
 
 type DropTarget = { status: TaskStatus; feature_id: string | null };
 
@@ -57,6 +67,16 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
         return STATUSES.some((s) => s.key === t.status) ? t.status : "todo";
     };
 
+    const editingTask = projectTasks.find((t) => t.id === editingTaskId);
+    const editingStatus = editingTask ? statusOf(editingTask) : null;
+
+    // Opening the form widens its column, which can push the form past the board's
+    // visible edge; bring it into view.
+    const editWrapperRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        editWrapperRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }, [editingTaskId]);
+
     const handleDrop = () => {
         setDraggingId(null);
         setDropTarget(null);
@@ -86,7 +106,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                 <span className="kanban-title">Tasks</span>
             </div>
             <div className="kb-board themed-scroll">
-                <div className="kb-grid">
+                <div className="kb-grid" style={{ gridTemplateColumns: gridColumns(editingStatus) }}>
                     <div className="kb-corner" />
                     {STATUSES.map((s) => (
                         <div key={s.key} className={`kb-status-header kb-status-${s.key}`}>
@@ -165,7 +185,11 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                             .filter((t) => statusOf(t) === s.key)
                                             .map((t) =>
                                                 editingTaskId === t.id ? (
-                                                    <div key={t.id} className="kb-task-edit-wrapper">
+                                                    <div
+                                                        key={t.id}
+                                                        ref={editWrapperRef}
+                                                        className="kb-task-edit-wrapper"
+                                                    >
                                                         <TaskForm
                                                             submitLabel="Save"
                                                             initialTitle={t.title}
