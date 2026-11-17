@@ -89,6 +89,24 @@ cd frontend
 npm run typecheck && npm run lint && npm test
 ```
 
+## Agent tools (MCP)
+
+`tools/nexus-mcp` is a stdio MCP server that gives Claude Code tools for projects,
+features and tasks (list/get/create/update, append to feature notes; no deletes). It
+calls the API like any client, using `NEXUS_API_URL` / `NEXUS_API_TOKEN` if set, else
+the URL and token in `frontend/.env`.
+
+```sh
+cd tools/nexus-mcp
+python3 -m venv venv && venv/bin/pip install -r requirements.txt
+venv/bin/python -m unittest discover -s tests   # tool layer, fake API
+venv/bin/python smoke.py                        # live: writes + deletes "ZZ test" rows
+```
+
+`.mcp.json` registers it as `nexus`; approve it once when Claude Code asks (or via
+`/mcp`). It launches from the main checkout, so it also works from subdirectories and
+git worktrees.
+
 ## Database
 
 Schema lives in raw SQL migrations under `backend/supabase/migrations`. Apply with the

@@ -7,6 +7,7 @@ from app.services.project_service import (
     delete_project,
     get_all_projects,
     get_feature,
+    get_project,
     get_project_features,
     get_project_notes,
     update_feature,
@@ -32,6 +33,11 @@ def create():
 @projects_bp.route("/projects/<project_id>/notes", methods=["GET"])
 def get_notes(project_id):
     return get_project_notes(project_id)
+
+
+@projects_bp.route("/projects/<project_id>", methods=["GET"])
+def show(project_id):
+    return get_project(project_id)
 
 
 @projects_bp.route("/projects/<project_id>", methods=["PUT"])

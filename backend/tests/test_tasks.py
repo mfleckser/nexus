@@ -18,6 +18,7 @@ class TasksTest(AppTestCase):
         t = self.create(description="d", due_at="2026-10-02T17:00:00Z")
         self.assertEqual((t["title"], t["status"], t["due_at"]), ("Write tests", "todo", "2026-10-02T17:00:00+00:00"))
         self.assertEqual(self.request("GET", "/api/tasks"), [t])
+        self.assertEqual(self.request("GET", f"/api/tasks/{t['id']}"), t)
         updated = self.put(t["id"], {"title": "Renamed", "status": "active"})
         self.assertEqual((updated["title"], updated["status"]), ("Renamed", "active"))
         self.assertEqual(self.request("DELETE", f"/api/tasks/{t['id']}")["id"], t["id"])
@@ -106,6 +107,7 @@ class TasksTest(AppTestCase):
         self.assertEqual(self.put(t["id"], {}), t)
         self.assertEqual(self.put(t["id"], {"bogus": 1, "completed_at": "2026-01-01T00:00:00Z"}), t)
         self.put("00000000-0000-0000-0000-000000000000", {}, status=404)
+        self.request("GET", "/api/tasks/00000000-0000-0000-0000-000000000000", status=404)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ class ProjectsTest(AppTestCase):
         self.assertNotIn("notes", listed[0])
         self.put(p["id"], {"notes": "hello"})
         self.assertEqual(self.request("GET", f"/api/projects/{p['id']}/notes"), {"notes": "hello"})
+        self.assertEqual(self.request("GET", f"/api/projects/{p['id']}")["notes"], "hello")
         f = self.add_feature(p["id"])
         self.assertEqual(self.request("GET", f"/api/projects/{p['id']}/features")[0]["name"], "Calendar")
         self.assertEqual(self.request("DELETE", f"/api/features/{f['id']}")["id"], f["id"])
@@ -69,6 +70,7 @@ class ProjectsTest(AppTestCase):
         p = self.create()
         self.assertEqual(self.put(p["id"], {"id": "other"})["id"], p["id"])
         self.put("00000000-0000-0000-0000-000000000000", {}, status=404)
+        self.request("GET", "/api/projects/00000000-0000-0000-0000-000000000000", status=404)
 
     def test_feature_get_and_update(self):
         p = self.create()
