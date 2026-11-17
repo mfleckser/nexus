@@ -1,6 +1,6 @@
 ---
 name: conductor
-description: "Work through the Nexus backlog (the app's \"Nexus\" project) unattended: triage todo/active tasks, block the ones that need Mark, run /implement on the rest in subagents, and open one PR (stacked when needed) per group for Mark to review. Invoked with /conductor [<feature name or goal>]."
+description: "Work through the Nexus backlog (the app's \"Nexus\" project) unattended: triage todo/active tasks, block the ones that need Mark, run /implement on the rest in subagents (independent PRs in parallel lanes), and open one PR (stacked when needed) per group for Mark to review. Invoked with /conductor [<feature name or goal>]."
 argument-hint: "[<feature name or goal>]"
 ---
 
@@ -8,7 +8,8 @@ argument-hint: "[<feature name or goal>]"
 
 Work through Nexus backlog tasks without Mark: triage, group, order, implement
 through `/implement`, and open PRs he can review. You orchestrate. Code, tests and
-commits all happen inside `/implement` subagents.
+commits all happen inside `/implement` subagents. Independent PRs are built at the
+same time, each in its own worktree (a lane).
 
 Arguments: `$ARGUMENTS`. This is a feature name (e.g. "Projects Tab") or a goal in
 plain words (e.g. "make the task list usable on mobile"). Leave it empty to work the
@@ -22,9 +23,9 @@ whole backlog.
   `AskUserQuestion`.
 - **Only Mark reviews and merges.** Never merge, approve, or close a PR, and never
   push to `main`.
-- **Keep your context slim.** Keep only the task list, the branch/PR map, and each
-  `/implement` summary block. Don't read code yourself. If a decision needs
-  research, hand it to a subagent and take its conclusion. All state lives in Nexus
+- **Keep your context slim.** Keep only the task list, the lane/branch/PR map, the
+  run's decisions, and each `/implement` summary block. Don't read code yourself.
+  If a decision needs research, hand it to a subagent and take its conclusion. All state lives in Nexus
   and GitHub, so a later `/conductor` run with the same arguments picks up where
   this one stopped.
 - **Models.** You are `opus`. Never use `fable`. Spawn `/implement` agents on `opus`
@@ -48,17 +49,31 @@ is then part of the task text.
 
 ## 1. Set up
 
-1. **Worktree.** Do all git work in `<repo>/.claude/worktrees/conductor`, a
-   persistent worktree that keeps you off Mark's checkout. If it doesn't exist:
-   `git fetch origin`, `git worktree add --detach .claude/worktrees/conductor origin/main`.
-   Then symlink `frontend/node_modules`, `backend/venv`, `tools/nexus-mcp/venv`,
+1. **Lane slots.** There are three persistent worktrees, one per lane slot, which
+   keep all git work off Mark's checkout. Each slot has a fixed backend port for UI
+   checks:
+
+   | Slot | Worktree | Port |
+   |---|---|---|
+   | 1 | `<repo>/.claude/worktrees/conductor-1` | 5055 |
+   | 2 | `<repo>/.claude/worktrees/conductor-2` | 5056 |
+   | 3 | `<repo>/.claude/worktrees/conductor-3` | 5057 |
+
+   For each slot that doesn't exist yet: `git fetch origin`,
+   `git worktree add --detach .claude/worktrees/conductor-<n> origin/main`. Then
+   symlink `frontend/node_modules`, `backend/venv`, `tools/nexus-mcp/venv`,
    `frontend/.env` and `backend/.env` into it from the main checkout.
-   **Keep it clean between tasks.** If the worktree has uncommitted changes from an
+   Leave any other worktree alone, including an old single-lane
+   `.claude/worktrees/conductor`; Mark removes those.
+
+   Run git commands for a slot with `git -C <slot path>`, so slots never mix.
+   **Keep every slot clean between tasks.** If a slot has uncommitted changes from an
    interrupted or blocked `/implement` run, `/implement` would treat them as someone
-   else's work. Before the next checkout or spawn, run
-   `git stash push -u -m "conductor: <branch> <task title> <date>"` and mention the
-   stash in that task's marker. This applies at startup and after every
-   `/implement` run.
+   else's work. Before the next checkout or spawn in that slot, run
+   `git -C <slot> stash push -u -m "conductor: <branch> <task title> <date>"` and
+   mention the stash in that task's marker. This applies at startup and after every
+   `/implement` run. When a lane finishes, detach its slot
+   (`git -C <slot> checkout --detach`) so the branch is free for other worktrees.
 
 ## 2. Triage
 
@@ -96,7 +111,8 @@ is then part of the task text.
          newest comment you handled.
      - **Restack if needed.** If its base PR was merged, rebase onto `origin/main`
        (`git rebase --onto origin/main origin/<old-base> <branch>`), push with
-       `--force-with-lease`, and run `gh pr edit <n> --base main`. If it's
+       `--force-with-lease`, and run `gh pr edit <n> --base main`. Do restacks in
+       slot 1 before any lane starts, and detach it afterwards. If it's
        `CONFLICTING`, rebase onto its base. Only rewrite branches you created, and
        only when every commit on them came from `/implement`. If anything else is on
        the branch, or the rebase conflicts, abort and block the branch's tasks with
@@ -129,30 +145,60 @@ is then part of the task text.
    - **Review fixes:** tasks filed from PR comments form a group on their PR's
      existing branch. These groups go first, so the PRs can be merged sooner.
    - **Waiting:** a task that depends on a blocked task stays `todo`.
+6. **Form lanes.** A lane is a sequence of groups that must run one after another.
+   Different lanes share nothing and run at the same time.
+   - A stack is one lane: a group and every group stacked on it, in stack order.
+   - **Migrations share a lane.** Every group whose tasks add or change Supabase
+     migrations goes in one lane, because they all hit the same live DB. If those
+     groups are in different stacks, merge the stacks into that lane, one stack
+     after another. Judge this from the task text; when unsure, assume it touches
+     the schema.
+   - Every other independent group is its own lane.
+   - Order lanes by their first group, using the group order above (review fixes
+     first).
 
-## 3. Run each group
+## 3. Run the lanes
 
-Groups run one at a time; they share the worktree. For each group:
+Run up to three lanes at once, one per slot. Start the first three lanes, each in a
+free slot. When a lane finishes (every group in it has reached step 4 or has
+nothing done), detach its slot and start the next waiting lane there.
 
-1. **Branch.** Inside the worktree, do one of:
+Every `/implement` agent runs in the background (`run_in_background`), and you are
+notified when it finishes. Handle each result as it arrives: check it, update Nexus,
+then start that lane's next task or step. Never wait on one lane while another
+lane's result is ready to handle. Since you handle one result at a time, Nexus
+writes, `add-task` calls, evidence uploads and PR creation never race.
+
+**Decisions are shared across lanes.** Keep one list of product answers for the
+run, and pass all of it in `decisions:` to every spawn, so lanes don't contradict
+each other. If a result shows two lanes went different ways on the same question,
+pick one and file a task to make the other match.
+
+Within a lane, groups run in order in the lane's slot. For each group:
+
+1. **Branch.** Inside the lane's slot, do one of:
    - Resume an existing branch from a marker: `git checkout <branch> && git pull --ff-only`.
    - Create a branch from `origin/main`, or from the parent branch if stacked.
 
-   For a new branch, run `git push -u origin <branch>` right away, so `/implement`
-   finds it instead of creating it from `main`. If the checkout fails because
-   another worktree uses the branch, block the group's tasks with the reason.
+   A stacked group's parent is earlier in the same lane, so its branch is already
+   pushed. For a new branch, run `git push -u origin <branch>` right away, so
+   `/implement` finds it instead of creating it from `main`. If the checkout fails
+   because another worktree uses the branch, block the group's tasks with the
+   reason.
 2. **Each task, in order.** Set it to `active` and write its branch marker. Then
    spawn a `general-purpose` agent (`opus`, `high`) with:
 
    ```
-   Work only in <worktree absolute path>: cd there first. Every file and git
-   operation happens there; never touch <main checkout path>, and don't remove the
-   worktree. Invoke the `implement` skill with these arguments:
+   Work only in <slot absolute path>: cd there first. Every file and git
+   operation happens there; never touch <main checkout path> or any other
+   worktree, and don't remove this one. Other agents are working in parallel in
+   other worktrees: for a local backend use only port <slot port>, and never stop
+   a process you didn't start. Invoke the `implement` skill with these arguments:
 
    <task title>
    <task description, verbatim, minus the Conductor: line>
    (Nexus feature: <feature name>)  ← only if it has one
-   branch=<branch> unattended decisions: <your answers so far, or omit>
+   branch=<branch> port=<slot port> unattended decisions: <the run's answers so far, or omit>
 
    When it finishes, reply with only its final summary block.
    ```
@@ -186,6 +232,7 @@ Groups run one at a time; they share the worktree. For each group:
    - Upload each PNG to `<branch>/<name>.png` there:
      `base64 -i <png> > <png>.b64`, then
      `gh api -X PUT repos/mfleckser/nexus/contents/<branch>/<name>.png -f message="Evidence for <branch>" -f branch=pr-evidence -F content=@<png>.b64`.
+     If GitHub answers 409 (the branch moved under you), retry once.
    - Embed it with
      `![<what it shows>](https://raw.githubusercontent.com/mfleckser/nexus/pr-evidence/<branch>/<name>.png)`.
    - Never commit screenshots to the PR branch.
@@ -257,9 +304,9 @@ End it with the PR attribution line from your current instructions.
 
 ## 4. Finish
 
-Stop when nothing workable is left in the work set: every task is waiting in a PR,
-blocked, or waiting on a blocked dependency. Check the worktree is clean, then
-report:
+Stop when every lane has finished and nothing workable is left in the work set:
+every task is waiting in a PR, blocked, or waiting on a blocked dependency. Check
+every slot is clean and detached, then report:
 
 ```
 ## Conductor run — <arguments or "whole backlog">
@@ -273,4 +320,4 @@ Manual steps: <Pi deploy, migrations to know about — or "none">
 ```
 
 If the run stopped early (usage limit, an error you couldn't route around), say
-where it stopped. The markers already let the next run resume.
+where each lane stopped. The markers already let the next run resume.
