@@ -2,7 +2,8 @@
 // tasks.status) are nullable in the schema but always filled by their
 // defaults/triggers, so they're typed non-null here.
 
-export type TaskStatus = "todo" | "active" | "complete" | "cancelled";
+// "blocked": needs Mark's attention before work can continue.
+export type TaskStatus = "todo" | "active" | "blocked" | "complete" | "cancelled";
 
 export type Task = {
     id: string;

@@ -25,6 +25,7 @@ class ProjectsTest(AppTestCase):
         self.assertNotIn("notes", listed[0])
         self.put(p["id"], {"notes": "hello"})
         self.assertEqual(self.request("GET", f"/api/projects/{p['id']}/notes"), {"notes": "hello"})
+        self.assertEqual(self.request("GET", f"/api/projects/{p['id']}")["notes"], "hello")
         f = self.add_feature(p["id"])
         self.assertEqual(self.request("GET", f"/api/projects/{p['id']}/features")[0]["name"], "Calendar")
         self.assertEqual(self.request("DELETE", f"/api/features/{f['id']}")["id"], f["id"])
@@ -69,6 +70,27 @@ class ProjectsTest(AppTestCase):
         p = self.create()
         self.assertEqual(self.put(p["id"], {"id": "other"})["id"], p["id"])
         self.put("00000000-0000-0000-0000-000000000000", {}, status=404)
+        self.request("GET", "/api/projects/00000000-0000-0000-0000-000000000000", status=404)
+
+    def test_feature_get_and_update(self):
+        p = self.create()
+        f = self.add_feature(p["id"])
+        path = f"/api/features/{f['id']}"
+        self.assertEqual((self.request("GET", path)["name"], self.request("GET", path)["notes"]), ("Calendar", None))
+        updated = self.request("PUT", path, {"name": "Agenda", "notes": "## Decisions\n- x", "project_id": "other"})
+        self.assertEqual(
+            (updated["name"], updated["notes"], updated["project_id"]), ("Agenda", "## Decisions\n- x", p["id"])
+        )
+        self.assertEqual(self.request("GET", path), updated)
+        self.assertEqual(self.request("GET", f"/api/projects/{p['id']}/features")[0]["name"], "Agenda")
+        self.assertEqual(self.request("PUT", path, {})["name"], "Agenda")
+        self.assertIsNone(self.request("PUT", path, {"notes": None})["notes"])
+        for body in [{"name": None}, {"name": " "}, {"notes": 5}]:
+            with self.subTest(body=body):
+                self.request("PUT", path, body, status=400)
+        missing = "/api/features/00000000-0000-0000-0000-000000000000"
+        self.request("GET", missing, status=404)
+        self.request("PUT", missing, {"name": "x"}, status=404)
 
     def test_feature_validation(self):
         p = self.create()

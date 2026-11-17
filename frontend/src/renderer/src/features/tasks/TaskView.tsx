@@ -20,9 +20,10 @@ type TaskRowProps = {
 function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }: TaskRowProps): React.JSX.Element {
     // Derived, not cached: the calendar can toggle the same task.
     const complete = task.status === "complete";
+    const blocked = task.status === "blocked";
 
     return (
-        <div className={`task-row${complete ? " done" : ""}${expanded ? " expanded" : ""}`}>
+        <div className={`task-row${complete ? " done" : ""}${blocked ? " blocked" : ""}${expanded ? " expanded" : ""}`}>
             <div
                 className="task-row-header"
                 role="button"
@@ -46,14 +47,22 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
                     }}
                 />
                 <span className="task-label">{task.title}</span>
+                {blocked && <span className="task-blocked-badge">Blocked</span>}
             </div>
             {/* Mounted only while expanded, so edit/confirm state resets on collapse. */}
-            {expanded && <TaskRowContents task={task} onSave={onSave} onDelete={onDelete} />}
+            {expanded && (
+                <TaskRowContents task={task} onStatusChange={onStatusChange} onSave={onSave} onDelete={onDelete} />
+            )}
         </div>
     );
 }
 
-function TaskRowContents({ task, onSave, onDelete }: Pick<TaskRowProps, "task" | "onSave" | "onDelete">) {
+function TaskRowContents({
+    task,
+    onStatusChange,
+    onSave,
+    onDelete,
+}: Pick<TaskRowProps, "task" | "onStatusChange" | "onSave" | "onDelete">) {
     const [editing, setEditing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -107,6 +116,15 @@ function TaskRowContents({ task, onSave, onDelete }: Pick<TaskRowProps, "task" |
                         >
                             {confirmDelete ? "Confirm delete?" : "Delete"}
                         </button>
+                        {task.status !== "complete" && task.status !== "cancelled" && (
+                            <button
+                                type="button"
+                                className="task-form-btn task-form-btn-secondary"
+                                onClick={() => onStatusChange(task.status === "blocked" ? "todo" : "blocked")}
+                            >
+                                {task.status === "blocked" ? "Unblock" : "Mark blocked"}
+                            </button>
+                        )}
                         <button
                             type="button"
                             className="task-form-btn task-form-btn-secondary"

@@ -66,6 +66,16 @@
     color: var(--text-secondary);
 }
 
+/* Blocked: needs Mark's attention. */
+.task-pin.blocked,
+.task-pin.blocked:hover {
+    border-color: var(--status-warning);
+}
+
+.task-pin.blocked .task-pin-check {
+    border-color: var(--status-warning);
+}
+
 /* Completed: filled check, muted + struck title. Kept visible as a record. */
 .task-pin.done,
 .task-pin.cancelled {

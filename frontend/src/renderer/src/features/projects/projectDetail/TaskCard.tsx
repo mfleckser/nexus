@@ -28,7 +28,7 @@ function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: Ta
 
     return (
         <div
-            className={`task-card${dragging ? " dragging" : ""}`}
+            className={`task-card${task.status === "blocked" ? " blocked" : ""}${dragging ? " dragging" : ""}`}
             draggable
             onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = "move";

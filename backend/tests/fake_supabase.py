@@ -32,7 +32,7 @@ TABLES = {
             "project_id": None, "feature_id": None, "event_id": None,
         },
         "not_null": {"title"},
-        "checks": {"status": {None, "todo", "active", "complete", "cancelled"}},
+        "checks": {"status": {None, "todo", "active", "blocked", "complete", "cancelled"}},
     },
     "projects": {
         "defaults": {

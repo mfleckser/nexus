@@ -98,6 +98,26 @@ def create_feature(project_id: str, data: dict):
     return res.data[0]
 
 
+def get_feature(feature_id: str):
+    """One feature with its notes. Uncached, like the other single-row reads."""
+    res = supabase.table("features").select("*").eq("id", feature_id).execute()
+    return first_row(res.data, f"feature {feature_id}")
+
+
+def update_feature(feature_id: str, data: dict):
+    updates = v.pick(data, ("name", "notes"))
+    v.check_title(updates, "name")
+    v.check_text(updates, "notes")
+    if not updates:
+        return get_feature(feature_id)
+
+    res = supabase.table("features").update(updates).eq("id", feature_id).execute()
+    feature = first_row(res.data, f"feature {feature_id}")
+    # The list carries name and notes_updated_at.
+    c.invalidate(c.project_features(feature["project_id"]))
+    return feature
+
+
 def delete_feature(feature_id: str):
     res = supabase.table("features").delete().eq("id", feature_id).execute()
     feature = first_row(res.data, f"feature {feature_id}")
