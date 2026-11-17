@@ -32,6 +32,13 @@ type TasksContextValue = {
 
 const TasksContext = createContext<TasksContextValue | null>(null);
 
+// Mirrors the backend's completed_at stamping so an optimistic status change sorts
+// right away (the Complete column orders by it); the saved row replaces it.
+function completionStamp(task: Task, data: tasksApi.TaskUpdate): Partial<Task> {
+    if (data.status === undefined || data.status === task.status) return {};
+    return { completed_at: data.status === "complete" ? new Date() : null };
+}
+
 export function TasksProvider({ children }: { children: ReactNode }) {
     const [tasks, setTasks] = useState<Task[]>([]);
     const now = useNow(15000);
@@ -93,7 +100,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
                     : { ...rest, due_at: typeof due_at === "string" ? new Date(due_at) : due_at };
             const before = tasksRef.current.find((t) => t.id === id);
             fetchSeqRef.current++;
-            setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...data } : t)));
+            setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...data, ...completionStamp(t, data) } : t)));
             try {
                 const saved = await tasksApi.updateTask(id, data);
                 fetchSeqRef.current++;

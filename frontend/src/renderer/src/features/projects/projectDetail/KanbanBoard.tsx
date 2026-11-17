@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import "./kanbanBoard.css";
 import TaskForm from "@renderer/components/TaskForm";
 import { useTasks } from "../../tasks/useTasks";
@@ -9,6 +9,7 @@ import FeatureLabel from "./FeatureLabel";
 import { useProjects } from "../useProjects";
 import useReportError from "@renderer/hooks/useReportError";
 import { toDatetimeLocal } from "@renderer/lib/time";
+import { compareCompleted, fitCount } from "@renderer/lib/kanban";
 
 const STATUSES: { key: TaskStatus; label: string }[] = [
     { key: "todo", label: "To Do" },
@@ -30,7 +31,52 @@ function gridColumns(editingStatus: TaskStatus | null): string {
     return `200px ${cols.join(" ")}`;
 }
 
+// Completed cards shown in a collapsed row when no other column there has cards to
+// size against.
+const DEFAULT_COMPLETE_COUNT = 3;
+
 type DropTarget = { status: TaskStatus; feature_id: string | null };
+
+// For each row with a measurement layer (see .kb-complete-measure), how many completed
+// cards fit within the row's height as set by its other status columns, so a collapsed
+// Complete column never makes the row taller.
+function measureFitCounts(grid: HTMLElement): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const layer of grid.querySelectorAll<HTMLElement>(".kb-complete-measure")) {
+        const cell = layer.parentElement;
+        const rowKey = cell?.dataset.row;
+        if (!cell || !rowKey) continue;
+        const cs = getComputedStyle(cell);
+        const px = (v: string) => parseFloat(v) || 0;
+        // Cells are border-box: the content area their min-height leaves.
+        let available =
+            px(cs.minHeight) -
+            px(cs.paddingTop) -
+            px(cs.paddingBottom) -
+            px(cs.borderTopWidth) -
+            px(cs.borderBottomWidth);
+        const others = grid.querySelectorAll<HTMLElement>(
+            `.kb-cell[data-row="${CSS.escape(rowKey)}"]:not(.kb-cell-complete)`,
+        );
+        for (const other of others) {
+            const first = other.firstElementChild;
+            const last = other.lastElementChild;
+            if (!first || !last) continue;
+            available = Math.max(available, last.getBoundingClientRect().bottom - first.getBoundingClientRect().top);
+        }
+        const heights = [...layer.querySelectorAll(":scope > .task-card")].map(
+            (el) => el.getBoundingClientRect().height,
+        );
+        const buttonHeight = layer.querySelector(".kb-show-more")?.getBoundingClientRect().height ?? 0;
+        counts[rowKey] = fitCount(heights, px(cs.rowGap), buttonHeight, available);
+    }
+    return counts;
+}
+
+function sameCounts(a: Record<string, number>, b: Record<string, number>): boolean {
+    const keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
+}
 
 function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
     const [formRow, setFormRow] = useState<string | null>(null);
@@ -80,6 +126,34 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
         editWrapperRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
     }, [editingTaskId]);
 
+    // Rows whose Complete column shows every completed task. In memory only.
+    const [expandedRows, setExpandedRows] = useState<Set<string>>(() => new Set());
+    const setRowExpanded = (rowKey: string, expanded: boolean) => {
+        setExpandedRows((prev) => {
+            const next = new Set(prev);
+            if (expanded) next.add(rowKey);
+            else next.delete(rowKey);
+            return next;
+        });
+    };
+
+    // Collapsed completed-card counts, measured before paint whenever the cards or the
+    // column widths can change, and whenever the board resizes.
+    const gridRef = useRef<HTMLDivElement>(null);
+    const [fitCounts, setFitCounts] = useState<Record<string, number>>({});
+    const remeasure = useCallback(() => {
+        if (!gridRef.current) return;
+        const next = measureFitCounts(gridRef.current);
+        setFitCounts((prev) => (sameCounts(prev, next) ? prev : next));
+    }, []);
+    useLayoutEffect(remeasure, [remeasure, tasks, features, editingTaskId]);
+    useEffect(() => {
+        if (!gridRef.current) return;
+        const observer = new ResizeObserver(remeasure);
+        observer.observe(gridRef.current);
+        return () => observer.disconnect();
+    }, [remeasure]);
+
     const handleDrop = () => {
         setDraggingId(null);
         setDropTarget(null);
@@ -109,7 +183,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                 <span className="kanban-title">Tasks</span>
             </div>
             <div className="kb-board themed-scroll">
-                <div className="kb-grid" style={{ gridTemplateColumns: gridColumns(editingStatus) }}>
+                <div ref={gridRef} className="kb-grid" style={{ gridTemplateColumns: gridColumns(editingStatus) }}>
                     <div className="kb-corner" />
                     {STATUSES.map((s) => (
                         <div key={s.key} className={`kb-status-header kb-status-${s.key}`}>
@@ -169,24 +243,71 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                         </button>
                                     )}
                                 </div>
-                                {STATUSES.map((s) => (
-                                    <div
-                                        key={s.key}
-                                        className={`kb-cell${dropTarget?.feature_id === row.featureId && dropTarget.status === s.key ? " kb-cell-dragover" : ""}`}
-                                        onDragOver={(e) => {
-                                            e.preventDefault();
-                                            hoverCell(s.key, row.featureId);
-                                        }}
-                                        onDragLeave={(e) => {
-                                            // Ignore moves onto the cell's own children.
-                                            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-                                            setDropTarget(null);
-                                        }}
-                                        onDrop={() => handleDrop()}
-                                    >
-                                        {rowTasks
-                                            .filter((t) => statusOf(t) === s.key)
-                                            .map((t) =>
+                                {STATUSES.map((s) => {
+                                    const isComplete = s.key === "complete";
+                                    const cellTasks = rowTasks.filter((t) => statusOf(t) === s.key);
+                                    let shown = cellTasks;
+                                    let toggle: React.JSX.Element | null = null;
+                                    let measureLayer: React.JSX.Element | null = null;
+                                    if (isComplete) {
+                                        const completed = cellTasks.toSorted(compareCompleted);
+                                        const sized = rowTasks.length > completed.length;
+                                        const collapsedCount = sized
+                                            ? (fitCounts[row.key] ?? 1)
+                                            : DEFAULT_COMPLETE_COUNT;
+                                        const expanded = expandedRows.has(row.key);
+                                        shown = expanded ? completed : completed.slice(0, collapsedCount);
+                                        // Keep a task being edited on screen even if it'd be cut.
+                                        const editing = completed.find((t) => t.id === editingTaskId);
+                                        if (editing && !shown.includes(editing)) shown = [...shown, editing];
+                                        const hiddenCount = completed.length - shown.length;
+                                        if (hiddenCount > 0 || (expanded && completed.length > collapsedCount)) {
+                                            toggle = (
+                                                <button
+                                                    type="button"
+                                                    className="kb-add-task-btn kb-show-more"
+                                                    onClick={() => setRowExpanded(row.key, hiddenCount > 0)}
+                                                >
+                                                    {hiddenCount > 0 ? `Show ${hiddenCount} more` : "Show less"}
+                                                </button>
+                                            );
+                                        }
+                                        // Invisible copies of every completed card at the cell's
+                                        // width, measured to pick collapsedCount (measureFitCounts).
+                                        if (sized && completed.length > 0) {
+                                            measureLayer = (
+                                                <div className="kb-complete-measure" aria-hidden>
+                                                    {completed.map((t) => (
+                                                        <TaskCard key={t.id} task={t} compact />
+                                                    ))}
+                                                    <button
+                                                        type="button"
+                                                        className="kb-add-task-btn kb-show-more"
+                                                        tabIndex={-1}
+                                                    >
+                                                        Show {completed.length} more
+                                                    </button>
+                                                </div>
+                                            );
+                                        }
+                                    }
+                                    return (
+                                        <div
+                                            key={s.key}
+                                            data-row={row.key}
+                                            className={`kb-cell${isComplete ? " kb-cell-complete" : ""}${dropTarget?.feature_id === row.featureId && dropTarget.status === s.key ? " kb-cell-dragover" : ""}`}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                hoverCell(s.key, row.featureId);
+                                            }}
+                                            onDragLeave={(e) => {
+                                                // Ignore moves onto the cell's own children.
+                                                if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                                                setDropTarget(null);
+                                            }}
+                                            onDrop={() => handleDrop()}
+                                        >
+                                            {shown.map((t) =>
                                                 editingTaskId === t.id ? (
                                                     <div
                                                         key={t.id}
@@ -215,6 +336,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                                     <TaskCard
                                                         key={t.id}
                                                         task={t}
+                                                        compact={isComplete}
                                                         dragging={draggingId === t.id}
                                                         onDragStart={() => setDraggingId(t.id)}
                                                         onDragEnd={() => {
@@ -226,8 +348,11 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                                     />
                                                 ),
                                             )}
-                                    </div>
-                                ))}
+                                            {toggle}
+                                            {measureLayer}
+                                        </div>
+                                    );
+                                })}
                             </Fragment>
                         );
                     })}

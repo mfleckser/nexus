@@ -15,6 +15,8 @@ type TaskCardProps = {
     onEdit?: () => void;
     // A plain click on the card (not a drag or the ⋯ menu).
     onOpen?: () => void;
+    // Title only, no description preview (completed cards on the board).
+    compact?: boolean;
 };
 
 function TaskCard({
@@ -24,6 +26,7 @@ function TaskCard({
     onDragEnd,
     onEdit,
     onOpen,
+    compact = false,
 }: TaskCardProps): React.JSX.Element {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -98,7 +101,7 @@ function TaskCard({
                     )}
                 </div>
             </div>
-            {task.description && <p className="task-card-desc">{task.description}</p>}
+            {!compact && task.description && <p className="task-card-desc">{task.description}</p>}
             {showConfirmDelete && (
                 <ConfirmDelete
                     onClose={() => {

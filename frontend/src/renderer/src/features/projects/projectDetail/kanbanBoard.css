@@ -268,6 +268,33 @@
     background: var(--accent-muted);
 }
 
+/* Complete column: compact cards, capped per row (KanbanBoard.tsx) so it never
+   makes the row taller unless expanded. */
+.kb-cell-complete {
+    position: relative;
+}
+
+/* Invisible copies of the row's completed cards at the cell's content width, measured
+   to decide how many fit. Zero height + clipped, so it adds no layout or scroll. */
+.kb-complete-measure {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 0;
+    padding-inline: inherit;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* "Show N more" / "Show less": the add-task ghost button, sized for a card stack. */
+.kb-show-more {
+    align-self: flex-start;
+    padding: 2px 6px;
+    white-space: nowrap;
+}
+
 /* Strip right border off the last status column */
 .kb-grid > *:nth-child(5n) {
     border-right: none;
