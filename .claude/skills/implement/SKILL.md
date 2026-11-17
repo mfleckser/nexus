@@ -12,9 +12,8 @@ pieces to subagents.
 
 Arguments: `$ARGUMENTS`
 - **Task**: the spec. Treat the text you were given as the whole task. It may come
-  from any source; don't go looking for it in a backlog file, and don't edit backlog
-  or planning files (`BACKLOG.md`, `FABLE-WEEK.md`, etc.). Whoever invoked you tracks
-  the task.
+  from any source; don't go looking for it in a backlog file, and don't edit planning
+  files. Whoever invoked you tracks the task.
 - **`branch=<name>`** (optional): the branch to commit to. If omitted, see step 6.
 - **`decisions:`** (optional, always last): product answers already made. They are
   settled.

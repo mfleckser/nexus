@@ -17,7 +17,6 @@ whole backlog.
 ## Principles
 
 - **The backlog is the Nexus app's "Nexus" project.** Use the `mcp__nexus__*` tools.
-  Never read or edit `BACKLOG.md` or `FABLE-WEEK.md`.
 - **Mark is not in the loop.** Answer product questions yourself. Block a task only
   when it truly needs him (see Triage). Never wait on him, and never call
   `AskUserQuestion`.
