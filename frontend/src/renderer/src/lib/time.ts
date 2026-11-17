@@ -78,6 +78,10 @@ export function parseDateTimeInputs(dateStr: string, timeStr: string): Date | nu
     return result;
 }
 
+// "Nov 3, 2026"
+export const formatDateDisplay = (d: Date): string =>
+    d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
 export function formatDueDisplay(value: Date | string | null): string {
     if (!value) return "No due date";
     const d = new Date(value);

@@ -13,11 +13,23 @@ type TaskCardProps = {
     onDragStart?: () => void;
     onDragEnd?: () => void;
     onEdit?: () => void;
+    // A plain click on the card (not a drag or the ⋯ menu).
+    onOpen?: () => void;
 };
 
-function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: TaskCardProps): React.JSX.Element {
+function TaskCard({
+    task,
+    dragging = false,
+    onDragStart,
+    onDragEnd,
+    onEdit,
+    onOpen,
+}: TaskCardProps): React.JSX.Element {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    // Whether a card's ⋯ menu (this one or another) was open when the current click
+    // began: that click only dismisses it (useDismiss closes it on mousedown).
+    const menuOpenAtPressRef = useRef(false);
 
     const { deleteTask } = useTasks();
     const reportError = useReportError();
@@ -36,6 +48,17 @@ function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: Ta
                 onDragStart?.();
             }}
             onDragEnd={() => onDragEnd?.()}
+            onMouseDown={() => {
+                menuOpenAtPressRef.current = document.querySelector(".task-card-menu") !== null;
+            }}
+            onClick={(e) => {
+                const target = e.target as Element;
+                // Clicks inside portaled children (the delete confirm) bubble here
+                // through the React tree; only clicks on the card itself count.
+                if (!e.currentTarget.contains(target)) return;
+                if (menuOpenAtPressRef.current || target.closest(".task-card-menu-container")) return;
+                onOpen?.();
+            }}
         >
             <div className="task-card-header">
                 <span className="task-card-title">{task.title}</span>

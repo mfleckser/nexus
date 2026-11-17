@@ -4,6 +4,7 @@ import TaskForm from "@renderer/components/TaskForm";
 import { useTasks } from "../../tasks/useTasks";
 import { Project, Task, TaskStatus } from "@renderer/types";
 import TaskCard from "./TaskCard";
+import TaskDetailModal from "./TaskDetailModal";
 import FeatureLabel from "./FeatureLabel";
 import { useProjects } from "../useProjects";
 import useReportError from "@renderer/hooks/useReportError";
@@ -34,6 +35,7 @@ type DropTarget = { status: TaskStatus; feature_id: string | null };
 function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
     const [formRow, setFormRow] = useState<string | null>(null);
     const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+    const [viewingTaskId, setViewingTaskId] = useState<string | null>(null);
 
     const [featureInput, setFeatureInput] = useState<string>("");
     const [showFeatureInput, setShowFeatureInput] = useState<boolean>(false);
@@ -68,6 +70,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
     };
 
     const editingTask = projectTasks.find((t) => t.id === editingTaskId);
+    const viewingTask = projectTasks.find((t) => t.id === viewingTaskId);
     const editingStatus = editingTask ? statusOf(editingTask) : null;
 
     // Opening the form widens its column, which can push the form past the board's
@@ -219,6 +222,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                                             setDropTarget(null);
                                                         }}
                                                         onEdit={() => setEditingTaskId(t.id)}
+                                                        onOpen={() => setViewingTaskId(t.id)}
                                                     />
                                                 ),
                                             )}
@@ -268,6 +272,21 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                     </button>
                 )}
             </div>
+            {viewingTask && (
+                <TaskDetailModal
+                    task={viewingTask}
+                    featureName={
+                        viewingTask.feature_id
+                            ? (features.find((f) => f.id === viewingTask.feature_id)?.name ?? null)
+                            : "General"
+                    }
+                    onEdit={() => {
+                        setViewingTaskId(null);
+                        setEditingTaskId(viewingTask.id);
+                    }}
+                    onClose={() => setViewingTaskId(null)}
+                />
+            )}
         </div>
     );
 }

@@ -1,8 +1,7 @@
 import { Project } from "@renderer/types";
 import "./projectCard.css";
 import { Link } from "react-router-dom";
-
-const formatDate = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+import { formatDateDisplay } from "@renderer/lib/time";
 
 type ProjectCardProps = {
     project: Project;
@@ -26,7 +25,7 @@ function ProjectCard({ project }: ProjectCardProps): React.JSX.Element {
             </p>
 
             <div className="project-card-footer">
-                <span className="project-card-meta">Updated {formatDate(project.updated_at)}</span>
+                <span className="project-card-meta">Updated {formatDateDisplay(project.updated_at)}</span>
             </div>
         </Link>
     );

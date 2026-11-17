@@ -7,9 +7,11 @@ type ModalProps = {
     onClose: () => void;
     title: string;
     children: ReactNode;
+    // Extra class on the panel, for per-dialog sizing.
+    className?: string;
 };
 
-export default function Modal({ onClose, title, children }: ModalProps) {
+export default function Modal({ onClose, title, children, className }: ModalProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const titleId = useId();
 
@@ -50,7 +52,7 @@ export default function Modal({ onClose, title, children }: ModalProps) {
     return createPortal(
         <div className="modal-backdrop" onMouseDown={onBackdropMouseDown}>
             <div
-                className="modal-panel"
+                className={`modal-panel${className ? ` ${className}` : ""}`}
                 ref={containerRef}
                 role="dialog"
                 aria-modal="true"
