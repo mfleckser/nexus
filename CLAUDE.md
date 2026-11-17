@@ -62,7 +62,7 @@
 
   - Request path: renderer → preload IPC (`window.api`) → main-process axios
     (`frontend/src/main/client.ts`) → Flask at `MAIN_VITE_NEXUS_API_URL` + `/api`
-    (`frontend/.env`, default `127.0.0.1:5000`). Renderer is sandboxed with no direct
+    (`frontend/.env`, default `127.0.0.1:5001`). Renderer is sandboxed with no direct
     network or Node access.
   - Hosting: always-on backend on a Raspberry Pi — gunicorn (`backend/serve`, 1 worker
     × 8 threads, binds 127.0.0.1) behind `tailscale serve` HTTPS; systemd user unit in

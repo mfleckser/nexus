@@ -19,7 +19,7 @@ repeated here.
 - [x] **Cache design** — kept; one gunicorn worker keeps it coherent, TTL 3600s → 60s
   bounds staleness from external writers (Studio).
 - [x] **Backend URL config** — `MAIN_VITE_NEXUS_API_URL` / `MAIN_VITE_NEXUS_API_TOKEN`
-  in `frontend/.env`; backend port via `NEXUS_PORT` (default still 5000).
+  in `frontend/.env`; backend port via `NEXUS_PORT` (default 5001).
 
 ## 2. API contract — lock before a second client depends on it
 

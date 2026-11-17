@@ -25,16 +25,15 @@ cp .env.example .env   # MAIN_VITE_NEXUS_API_TOKEN = backend's NEXUS_API_TOKEN
 ## Run
 
 ```sh
-backend/start            # API on http://127.0.0.1:5000 (NEXUS_DEBUG=1 for reloader)
+backend/start            # API on http://127.0.0.1:5001 (NEXUS_DEBUG=1 for reloader)
 cd frontend && npm run dev
 ```
 
 The frontend's main process calls the backend at `MAIN_VITE_NEXUS_API_URL` from
-`frontend/.env` (default `http://127.0.0.1:5000`) with the bearer token
+`frontend/.env` (default `http://127.0.0.1:5001`) with the bearer token
 `MAIN_VITE_NEXUS_API_TOKEN`; both are baked in at build time, so rebuild after changing
-them. Every route except `/api/health` needs the token. On macOS, port 5000 can clash
-with AirPlay Receiver (System Settings → General → AirDrop & Handoff); set `NEXUS_PORT`
-to move it.
+them. Every route except `/api/health` needs the token. The default port is 5001 because macOS
+AirPlay Receiver holds 5000; set `NEXUS_PORT` (and the frontend URL) to move it.
 
 ## Deploy (Raspberry Pi + Tailscale)
 
@@ -58,8 +57,8 @@ systemctl --user daemon-reload
 systemctl --user enable --now nexus-backend
 sudo loginctl enable-linger "$USER"
 
-# HTTPS on the tailnet -> 127.0.0.1:5000 (persists across reboots)
-sudo tailscale serve --bg 5000
+# HTTPS on the tailnet -> 127.0.0.1:5001 (persists across reboots)
+sudo tailscale serve --bg 5001
 curl https://<pi-name>.<tailnet>.ts.net/api/health
 ```
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the backend under gunicorn on 127.0.0.1:$NEXUS_PORT (default 5000), for
+# Run the backend under gunicorn on 127.0.0.1:$NEXUS_PORT (default 5001), for
 # always-on hosting. Use ./start for local development.
 set -euo pipefail
 cd "$(dirname "$0")"

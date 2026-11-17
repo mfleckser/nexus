@@ -1,0 +1,212 @@
+---
+name: implement
+description: Take one Nexus task and implement it end to end without needing Mark. Plans, builds, tests, reviews, commits and pushes to a branch, with effort scaled to the task's size, then returns a summary. Use when asked to implement, build, or complete a specific feature, fix, or chore in Nexus. Invoked with /implement <task> [branch=<name>].
+when_to_use: "Use when a described Nexus feature, fix, or chore should be fully implemented, tested, committed and pushed. Invoked with /implement <task> [branch=<name>] [decisions: ...] [unattended]."
+argument-hint: "<task description> [branch=<name>] [decisions: ...] [unattended]"
+---
+
+# Implement
+
+Take **one** task to committed, pushed, verified code, then return a summary. You are
+the conductor: you own the result, decide how much process it needs, and may hand
+pieces to subagents.
+
+Arguments: `$ARGUMENTS`
+- **Task**: the spec. Treat the text you were given as the whole task. It may come
+  from any source; don't go looking for it in a backlog file, and don't edit backlog
+  or planning files (`BACKLOG.md`, `FABLE-WEEK.md`, etc.). Whoever invoked you tracks
+  the task.
+- **`branch=<name>`** (optional): the branch to commit to. If omitted, see step 6.
+- **`decisions:`** (optional): product answers already made. They are settled.
+- **`unattended`** (optional): nobody is watching. Never wait on Mark. Also treat
+  the run as unattended if `AskUserQuestion` isn't available to you.
+
+## Principles
+
+- **Mark is not in the loop.** Product questions were meant to be answered before
+  the task reached you. Decide technical details yourself. Product gaps are handled
+  once, up front, in step 2.
+- **Match effort to the task.** A one-line fix gets no plan, subagents, or formal
+  review. A cross-stack feature gets all of them. Don't pad small tasks or rush big
+  ones.
+- **Follow the docs.** `CLAUDE.md` (architecture, caching, errors, recurring-events
+  rules), `frontend/CLAUDE.md` (visual design, tokens, file naming). New code should
+  look like the code next to it.
+- **Models.** You (the main agent) are `opus`, the strongest model available. Never
+  use `fable`. For subagents, pick the model and `effort` per unit (step 4).
+
+## 1. Understand and size the task
+
+1. Read `CLAUDE.md`, plus `frontend/CLAUDE.md` if the task touches UI. Read the
+   relevant part of `~/Documents/Personal/LifeCoach/pursuits/nexus.md` when the
+   product intent is unclear.
+2. Read the code the task touches. For a broad sweep across many files, use an
+   `Explore` subagent (`haiku` or `sonnet`) and only take its conclusions.
+3. Pick a tier. It drives every later step:
+
+| Tier | Looks like | Planning | Agents | Review |
+|---|---|---|---|---|
+| **S** | One layer, ≤ ~3 files, obvious approach (clamp text, add a CHECK constraint, fix a label) | None | Just you | Re-read your own diff |
+| **M** | One feature across a layer or two, an approach is needed but it's clear (filter params on `GET /tasks`, the header month label) | A short plan in your head or the scratchpad | Usually just you; maybe one helper for an independent piece | `code-review` at `medium`, one fix round |
+| **L** | Cross-stack, schema + API + UI, or a risky change to shared behavior (all-day events, transactional recurring edits, time-blocking) | Written plan in the scratchpad: API/data contract, files, steps, test plan | You conduct; subagents build separable units | `code-review` at `high` per unit plus a final full pass, with a fix loop |
+
+If the task is too big for one pass, build the first slice that works on its own,
+and report the rest under **Remaining** with status `partial`.
+
+## 2. Resolve open product questions (once, before any code)
+
+List every product decision the spec and `decisions:` leave open: behavior, UX, what
+the user sees in edge cases, what happens to existing data. Technical choices don't
+count. Make those yourself, even large ones, and note them in the report.
+
+- **Interactive** (Mark invoked you directly and `unattended` isn't set): ask all
+  open questions in **one** `AskUserQuestion` call. Put the recommended option first,
+  tagged "(Recommended)", and make each question make sense on its own.
+- **Unattended**: sort each open question.
+  - **Default it** when it's easy to change later, or when the codebase, docs or
+    spec point clearly one way. Take the option a careful product owner would most
+    likely pick, and list it under **Product defaults** in the report.
+  - **Escalate it** when a wrong guess would be expensive to undo: it would make
+    the task's main behavior ambiguous, destroy existing data, or fix a shape that
+    other clients will depend on. Escalated questions are the only ones that stop
+    you. Stop before writing code and return status `needs-decision` with each
+    question, its options, and your recommendation, so the caller can answer and run
+    you again with `decisions:`.
+
+Most tasks have nothing to escalate. Don't escalate to dodge a judgment call.
+
+After this step, keep going. If a new product question comes up mid-build, take the
+reasonable default and record it.
+
+## 3. Plan (tier M/L)
+
+- **M**: name the files you'll change, the API shape if there is one, and how you'll
+  verify it. Keep it short.
+- **L**: write `plan.md` in the scratchpad with:
+  - the contract (endpoints, request/response JSON, DB columns, TS types)
+  - work units with file ownership, so no two agents edit the same file
+  - order and dependencies (usually migration → backend service/API + tests →
+    frontend provider/types → UI)
+  - the test plan
+  - risks
+
+  For a design that is truly hard (recurrence math, transactional writes, a new data
+  model), have a `Plan` subagent on `opus` at `xhigh` effort stress-test the plan.
+  Then decide yourself.
+
+## 4. Build, with an iteration loop
+
+**Delegation (L, sometimes M).** Give each subagent a self-contained brief: the
+contract, the files it owns, the conventions that apply (point it at the CLAUDE.md
+sections), what "done" means (including which tests must pass), and "don't commit".
+Run units in parallel only when their files don't overlap. Set `model` and `effort`
+on every spawn:
+
+| Work | model / effort |
+|---|---|
+| Lookups, reading many files, mechanical edits | `haiku` / `low` |
+| Well-specified unit with a clear contract (endpoint + tests, a component to a spec) | `sonnet` / `medium` |
+| Unit that needs judgment, or touches shared/tricky code | `opus` / `high` |
+| The hardest design or debugging (recurrence, concurrency, a failure that keeps coming back) | `opus` / `xhigh` |
+
+Read every unit's diff yourself before moving on. You are responsible for the seams
+between units.
+
+**Loop for each unit (or for the whole task at S):** implement → verify → fix →
+repeat until green.
+- If the same failure survives 3 honest attempts, stop patching. Re-read the code and
+  try a different approach, or hand it to an `opus`/`xhigh` subagent with everything
+  you've learned.
+- If it still won't go after that, stop and return status `blocked` with exactly
+  what's blocking. Don't ship around it.
+
+**Verification by layer** (commands in `README.md` → "Test and lint"):
+- **Backend**: `cd backend && venv/bin/python -m unittest discover -s tests`, then
+  `venv/bin/ruff check . && venv/bin/ruff format --check .`. New or changed
+  service/API behavior gets unittest coverage against `tests/fake_supabase.py`. If
+  the fake doesn't support a query you need, extend it.
+- **Migrations**: create with `supabase migration new <name>` from `backend/`, then
+  apply with `supabase db push`. You don't need to ask first. Write migrations so
+  existing rows pass any new constraint (backfill in the same migration if needed).
+  If a migration drops or rewrites existing data, make sure the task really requires
+  it, and call it out in the report.
+- **Frontend**: `cd frontend && npm run typecheck && npm run lint && npm test`. Pure
+  helpers in `src/renderer/src/lib` get vitest tests.
+- **UI behavior (M/L tasks with visible changes)**: drive the real app with
+  Playwright `_electron`. Always set `NEXUS_HIDDEN=1` so the window never steals focus.
+  - If backend code changed, run it locally on a free port
+    (`NEXUS_PORT=5055 backend/start`, in the background) and stop it when you're
+    done.
+  - Build against that backend:
+    `MAIN_VITE_NEXUS_API_URL=http://127.0.0.1:5055 npx electron-vite build`.
+    Otherwise a plain build talks to whatever `frontend/.env` points at.
+  - Test data goes in the live DB: name it `ZZ test …` and delete it afterwards.
+  - Keep scripts and screenshots in the scratchpad. Look at the screenshots.
+
+## 5. Review (scaled to tier)
+
+- **S**: read `git diff` start to finish for leftovers, debug output, and convention
+  breaks.
+- **M**: invoke the `code-review` skill at `medium` on the diff. Fix the findings that
+  hold up after you check them, rerun verification, done.
+- **L**: `code-review` at `high` after each major unit lands, then once more over the
+  full diff. If the change added a lot of code, run `simplify` too. Loop
+  fix → verify → re-review until a pass turns up nothing significant (at most 3
+  rounds; anything left over goes under **Follow-ups**).
+- Never use the `max` or `ultra` review levels.
+
+Then fix anything in `CLAUDE.md` / `frontend/CLAUDE.md` that is no longer true (e.g.
+MVP Scope "open: …" lines, architecture bullets). Add something only for a genuinely
+new concept that future work needs. Keep it small. This is the only planning-style
+doc you edit.
+
+## 6. Commit and push
+
+**Choose the branch:**
+- `branch=` given: use it. If it exists locally or on `origin`, check it out and
+  `git pull --ff-only`. If it doesn't exist, create it from an up-to-date `main`.
+- No branch given: commit to `main`.
+
+**Protect work that isn't yours.** Check `git status` before you start building, not
+just at commit time.
+- If there are uncommitted changes you didn't make, never stash, reset, discard, or
+  commit them.
+- If you'd have to switch branches under them, build in a worktree at
+  `.claude/worktrees/<branch>` (gitignored). Symlink `frontend/node_modules`,
+  `backend/venv`, `frontend/.env` and `backend/.env` into it from the main checkout.
+  Remove the worktree after pushing.
+- If you can stay on the current branch, stage only your own files.
+
+**Commit:**
+- Stage specific paths only. Never `git add -A`, never a `.env`.
+- Use one commit for S/M. Use a few logical commits for L when it reads better (e.g.
+  schema+backend, then frontend).
+- Message: imperative, under 72 characters, describes the change. Add `; update
+  CLAUDE.md` if you updated it. End with the attribution line from your current
+  instructions.
+
+**Push** with `git push -u origin <branch>`. Never force-push. If the push is
+rejected, `git pull --rebase` and push again. If the rebase conflicts in code you
+didn't write, stop and return `blocked`; don't guess at resolutions.
+
+## 7. Return the summary
+
+End with exactly this block, short and factual. It is the whole hand-off to your
+caller, so write it to stand on its own:
+
+```
+## Result: <done | partial | blocked | needs-decision> — <task title>
+Branch / commits: <branch> @ <hash> — <message> (pushed | not pushed: why) — or "none"
+Changed: <2–5 bullets, what changed for the user, not a file list>
+Product defaults: <product questions you answered yourself, with the choice made — or "none">
+Technical decisions: <notable calls a reviewer might want to revisit — or "none">
+Verified: <tests/lint/typecheck/UI checks run and their results; anything skipped and why>
+Migrations: <applied migrations, noting any that changed existing data — or "none">
+Manual steps: <Pi deploy (`git pull && systemctl --user restart nexus-backend`) if backend changed, env changes — or "none">
+Remaining: <for partial: what's left to finish the task — or "none">
+Follow-ups: <leftover review findings, bugs noticed outside scope, suggested new tasks — or "none">
+Questions: <for needs-decision: each question, options, recommendation — or "none">
+```
+
+If tests were skipped or failed, say so plainly in **Verified**. Don't report `done`
+with red checks.

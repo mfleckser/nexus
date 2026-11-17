@@ -53,12 +53,12 @@ class ApiTokenTest(AppTestCase):
 
 class TrustedHostsTest(AppTestCase):
     def test_local_hosts_allowed(self):
-        for host in ("127.0.0.1:5000", "localhost:5000", "127.0.0.1"):
+        for host in ("127.0.0.1:5001", "localhost:5001", "127.0.0.1"):
             with self.subTest(host=host):
                 self.assertEqual(self.client.get("/api/tasks", headers={"Host": host}).status_code, 200)
 
     def test_other_hosts_rejected(self):
-        res = self.client.get("/api/tasks", headers={"Host": "evil.example:5000"})
+        res = self.client.get("/api/tasks", headers={"Host": "evil.example:5001"})
         self.assertEqual(res.status_code, 400)
         self.assertIn("error", res.get_json())
 
@@ -84,7 +84,7 @@ class ConfigTest(unittest.TestCase):
 
     def test_port(self):
         with mock.patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(config.port(), 5000)
+            self.assertEqual(config.port(), 5001)
         with mock.patch.dict(os.environ, {"NEXUS_PORT": "8040"}):
             self.assertEqual(config.port(), 8040)
         with mock.patch.dict(os.environ, {"NEXUS_PORT": "abc"}):

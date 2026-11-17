@@ -25,7 +25,7 @@ DEBUG = env_flag("NEXUS_DEBUG")
 
 
 def port() -> int:
-    value = os.getenv("NEXUS_PORT", "5000")
+    value = os.getenv("NEXUS_PORT", "5001")
     try:
         return int(value)
     except ValueError:

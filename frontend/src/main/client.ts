@@ -3,7 +3,7 @@ import type { ApiResult } from "../shared/ipc";
 
 // Backend location + token come from frontend/.env (see .env.example) and are
 // baked into the main-process build; the renderer never sees them.
-const ORIGIN = (import.meta.env.MAIN_VITE_NEXUS_API_URL || "http://127.0.0.1:5000").replace(/\/+$/, "");
+const ORIGIN = (import.meta.env.MAIN_VITE_NEXUS_API_URL || "http://127.0.0.1:5001").replace(/\/+$/, "");
 const BASE_URL = `${ORIGIN}/api`;
 
 const client = axios.create({
