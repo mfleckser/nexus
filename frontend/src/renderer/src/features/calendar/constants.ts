@@ -13,6 +13,13 @@ export const POPOVER_GAP = 8;
 // Mouse travel (px) below which a press is a click, not a drag/resize.
 export const DRAG_THRESHOLD = 3;
 
+// Height (px) of an event chip's title + time header: shorter chips show both
+// on one line, and task pins never cover it. Must cover .event-chip padding +
+// .event-chip-title + .event-chip-time line heights in calendar.css (~28px).
+export const EVENT_HEADER_PX = 30;
+
 export const TASK_PIN_HEIGHT = 18;
+// Inset (px) of a task pin from each side of its column.
+export const TASK_PIN_INSET = 3;
 // Snap increment for dragging task pins.
 export const TASK_SNAP_MINUTES = 15;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { layoutDays, overlapsRange, Timed } from "./eventLayout";
+import { layoutDays, layoutDaysWithMarkers, overlapsRange, Timed } from "./eventLayout";
 
 type Item = Timed & { id: string };
 
@@ -135,6 +135,127 @@ describe("layoutDays segments", () => {
         const morning: Item = { id: "m", start_at: local(2026, 3, 8, 9), end_at: local(2026, 3, 8, 10) };
         const [seg] = layoutDays([morning], local(2026, 3, 8), 1);
         expect([seg.startMin, seg.endMin]).toEqual([540, 600]);
+    });
+});
+
+describe("layoutDaysWithMarkers", () => {
+    // Markers ~22 minutes tall; event headers ~37 minutes.
+    const opts = { markerMinutes: 22.5, headerMinutes: 37.5 };
+    const marker = (id: string, hhmm: string) => ({ item: id, at: at(hhmm) });
+    // Events by column; markers by fractions of the day column.
+    const layout = (items: Item[], markers: { item: string; at: Date }[]) => {
+        const result = layoutDaysWithMarkers(items, markers, local(2026, 9, 30), 1, opts);
+        return Object.fromEntries([
+            ...result.segments.map((s) => [s.item.id, { column: s.column, columns: s.columns }]),
+            ...result.markers.map((m) => [m.item, { left: m.left, width: m.width }]),
+        ]);
+    };
+
+    it("puts markers at the same time side by side, not stacked", () => {
+        const { markers } = layoutDaysWithMarkers(
+            [],
+            [marker("a", "09:00"), marker("b", "09:00"), marker("c", "09:00")],
+            local(2026, 9, 30),
+            1,
+            opts,
+        );
+        expect(markers.map((m) => [m.item, m.startMin, m.left, m.width])).toEqual([
+            ["a", 540, 0, 1 / 3],
+            ["b", 540, 1 / 3, 1 / 3],
+            ["c", 540, 2 / 3, 1 / 3],
+        ]);
+    });
+
+    it("puts markers close enough to overlap side by side", () => {
+        expect(layout([], [marker("a", "09:00"), marker("b", "09:15")])).toEqual({
+            a: { left: 0, width: 0.5 },
+            b: { left: 0.5, width: 0.5 },
+        });
+    });
+
+    it("keeps markers that don't overlap full width", () => {
+        expect(layout([], [marker("a", "09:00"), marker("b", "09:30")])).toEqual({
+            a: { left: 0, width: 1 },
+            b: { left: 0, width: 1 },
+        });
+    });
+
+    it("moves a marker beside an event header it would cover", () => {
+        expect(layout([item("e", "09:00", "10:00")], [marker("t", "09:15")])).toEqual({
+            e: { column: 0, columns: 2 },
+            t: { left: 0.5, width: 0.5 },
+        });
+    });
+
+    it("moves a marker beside an event starting under it", () => {
+        expect(layout([item("e", "09:00", "10:00")], [marker("t", "08:50")])).toEqual({
+            t: { left: 0, width: 0.5 },
+            e: { column: 1, columns: 2 },
+        });
+    });
+
+    it("lets a marker sit over an event's body without narrowing it", () => {
+        expect(layout([item("e", "09:00", "17:00")], [marker("t", "12:00")])).toEqual({
+            e: { column: 0, columns: 1 },
+            t: { left: 0, width: 1 },
+        });
+    });
+
+    it("splits an event body between markers without narrowing the event", () => {
+        expect(layout([item("e", "09:00", "17:00")], [marker("a", "12:00"), marker("b", "12:00")])).toEqual({
+            e: { column: 0, columns: 1 },
+            a: { left: 0, width: 0.5 },
+            b: { left: 0.5, width: 0.5 },
+        });
+    });
+
+    it("prefers an empty column over an event body", () => {
+        expect(layout([item("a", "09:00", "17:00"), item("b", "09:00", "10:00")], [marker("t", "12:00")])).toEqual({
+            a: { column: 0, columns: 2 },
+            b: { column: 1, columns: 2 },
+            t: { left: 0.5, width: 0.5 },
+        });
+    });
+
+    it("moves an event starting under a marker on a body to the next column", () => {
+        expect(
+            layout([item("long", "09:00", "17:00"), item("short", "12:10", "13:00")], [marker("t", "12:00")]),
+        ).toEqual({
+            long: { column: 0, columns: 2 },
+            t: { left: 0, width: 0.5 },
+            short: { column: 1, columns: 2 },
+        });
+    });
+
+    it("keeps clear of the header a clipped event still draws", () => {
+        const overnight: Item = { id: "o", start_at: local(2026, 9, 29, 23), end_at: at("02:00") };
+        expect(layout([overnight], [marker("t", "00:00")])).toEqual({
+            o: { column: 0, columns: 2 },
+            t: { left: 0.5, width: 0.5 },
+        });
+    });
+
+    it("pulls a late marker up to fit before midnight", () => {
+        const { markers } = layoutDaysWithMarkers([], [marker("t", "23:50")], local(2026, 9, 30), 1, opts);
+        expect(markers[0].startMin).toBe(24 * 60 - 22.5);
+    });
+
+    it("places markers in their own day and drops ones outside the range", () => {
+        const { markers } = layoutDaysWithMarkers(
+            [],
+            [
+                { item: "wed", at: at("09:00") },
+                { item: "thu", at: local(2026, 10, 1, 9) },
+                { item: "out", at: local(2026, 10, 2, 9) },
+            ],
+            local(2026, 9, 30),
+            2,
+            opts,
+        );
+        expect(markers.map((m) => [m.item, m.dayIndex, m.width])).toEqual([
+            ["wed", 0, 1],
+            ["thu", 1, 1],
+        ]);
     });
 });
 

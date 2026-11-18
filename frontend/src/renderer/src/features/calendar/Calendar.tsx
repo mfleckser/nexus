@@ -20,11 +20,12 @@ import {
     startOfDay,
     startOfWeek,
 } from "@renderer/lib/time";
-import { layoutDays, overlapsRange } from "@renderer/lib/eventLayout";
+import { layoutDaysWithMarkers, overlapsRange } from "@renderer/lib/eventLayout";
 import { roundUpToQuarterHour, tasksByEventId, tasksForEvent } from "@renderer/lib/timeBlocks";
 import {
     DEFAULT_EVENT_MINUTES,
     DRAG_THRESHOLD,
+    EVENT_HEADER_PX,
     POPOVER_GAP,
     PX_PER_HOUR,
     PX_PER_MIN,
@@ -143,27 +144,12 @@ function Calendar(): React.JSX.Element {
         setRange(fetchWindow);
     }, [fetchWindow, setRange]);
 
-    // Per-day slices of every visible event, laid out in columns.
-    const segments = useMemo(
-        () =>
-            viewType === "MONTH"
-                ? []
-                : layoutDays(
-                      events.filter((e) => overlapsRange(e, visible.start, visible.end)),
-                      visible.start,
-                      dayCount,
-                  ),
-        [events, visible, viewType, dayCount],
-    );
-
     const linkedTasks = useMemo(() => tasksByEventId(tasks), [tasks]);
 
-    // Due tasks in the visible days, with each pin's top pushed below any
-    // earlier pin on the same day it would overlap. Completed/cancelled stay
-    // visible; tasks of projects hidden from the main view don't.
-    const taskPins = useMemo(() => {
+    // Due tasks in the visible days. Completed/cancelled stay visible; tasks
+    // of projects hidden from the main view don't.
+    const dueTasks = useMemo(() => {
         const hiddenProjectIds = new Set(projects.filter((p) => !p.show_tasks_in_main_view).map((p) => p.id));
-        const lastBottom = Array(dayCount).fill(-Infinity);
         return tasks
             .filter(
                 (t): t is Task & { due_at: Date } =>
@@ -172,18 +158,23 @@ function Calendar(): React.JSX.Element {
                     t.due_at.getTime() < visible.end.getTime() &&
                     (t.project_id === null || !hiddenProjectIds.has(t.project_id)),
             )
-            .toSorted((a, b) => a.due_at.getTime() - b.due_at.getTime() || a.title.localeCompare(b.title))
-            .map((task) => {
-                const day = calendarDaysBetween(visible.start, task.due_at);
-                const dueTop = Math.min(
-                    minutesIntoDay(task.due_at) * PX_PER_MIN,
-                    MINUTES_PER_DAY * PX_PER_MIN - TASK_PIN_HEIGHT,
-                );
-                const top = Math.max(dueTop, lastBottom[day] + 1);
-                lastBottom[day] = top + TASK_PIN_HEIGHT;
-                return { task, top, day };
-            });
-    }, [tasks, projects, visible, dayCount]);
+            .toSorted((a, b) => a.due_at.getTime() - b.due_at.getTime() || a.title.localeCompare(b.title));
+    }, [tasks, projects, visible]);
+
+    // Per-day slices of every visible event, and a pin per due task, laid out
+    // in columns: pins at their due time, beside each other and beside any
+    // event title they'd cover.
+    const { segments, markers: taskPins } = useMemo(
+        () =>
+            layoutDaysWithMarkers(
+                viewType === "MONTH" ? [] : events.filter((e) => overlapsRange(e, visible.start, visible.end)),
+                viewType === "MONTH" ? [] : dueTasks.map((task) => ({ item: task, at: task.due_at })),
+                visible.start,
+                dayCount,
+                { markerMinutes: TASK_PIN_HEIGHT / PX_PER_MIN, headerMinutes: EVENT_HEADER_PX / PX_PER_MIN },
+            ),
+        [events, dueTasks, visible, viewType, dayCount],
+    );
 
     const goPrev = () => {
         setFocusedDay((prev) =>
@@ -422,8 +413,8 @@ function Calendar(): React.JSX.Element {
                                         linkedTasks={tasksForEvent(linkedTasks, segment.item)}
                                     />
                                 ))}
-                                {taskPins.map(({ task, top, day }) => (
-                                    <TaskPin key={task.id} task={task} top={top} dayIdx={day} dayCount={dayCount} />
+                                {taskPins.map((pin) => (
+                                    <TaskPin key={pin.item.id} pin={pin} dayCount={dayCount} />
                                 ))}
                                 {previewDraft && (
                                     <EventDraftPreview
