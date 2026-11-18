@@ -82,8 +82,9 @@
     (2nd Tue → 2nd Wed), the same position in the same month/year. Ones the new
     series no longer has are dropped. A "following" split makes two independent
     series; "all" edits only touch one. All-day overrides move by whole days.
-  - Switching a series' kind (all-day ↔ timed) drops its overrides and doesn't shift
-    exdates (only ones still on an occurrence stay). All-day checks run before the RPC.
+  - Switching a series' kind (all-day ↔ timed) drops its overrides; each exdate keeps
+    its local day (moved like a series move, `_slot_map`: 9 AM → that day's midnight),
+    dropped if the new series has no occurrence there. All-day checks run before the RPC.
   - Event writes are serialized by a per-process lock (`_write_lock`), one more
     reason to keep gunicorn at one worker.
 

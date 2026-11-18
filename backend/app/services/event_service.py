@@ -652,12 +652,14 @@ def _update_all(master, original_start, override, data):
     if body and "all_day" in details:
         updates.update(_series_fields(body, series_start, series_end, tz))
         updates["exdates"], ops = _switch_kind(
-            updates,
-            _exdates(master),
-            old_tz,
+            master,
             master["id"],
-            _overrides(master["id"]),
-            _delete_overrides_op(master["id"]),
+            updates,
+            anchor=(old_start, series_start),
+            explicit=explicit,
+            exdates=_exdates(master),
+            overrides=_overrides(master["id"]),
+            drop_overrides=_delete_overrides_op(master["id"]),
         )
     elif body:
         updates.update(_series_fields(body, series_start, series_end, tz))
@@ -683,16 +685,16 @@ def _update_all(master, original_start, override, data):
     return _apply([*ops, _update_op(master["id"], updates)], master["id"])
 
 
-def _switch_kind(new: dict, exdates: list, old_tz: str, new_id: str, overrides: list, drop_overrides: dict):
+def _switch_kind(old: dict, new_id: str, new: dict, *, anchor, explicit: bool, exdates, overrides, drop_overrides):
     """A series switching kind (all-day vs timed): its overrides' times fit the
     old kind only, so they are dropped rather than carried (their tasks move to
-    the series `new_id` where it still occurs on their day); exdates aren't
-    shifted either, only those still on an occurrence of the new series stay
-    (all of them when its instants didn't change).
+    the series `new_id` where it still occurs on their day). Cancelled days stay
+    cancelled: exdates move as for any series move (see _slot_map; the slot's
+    wall-clock shift takes 9 AM to midnight of the same or moved-to day and
+    back), dropped where the new series has no occurrence.
     Returns (exdates for the new series, ops)."""
-    occurring = rr.occurrences_between(new["rrule"], parse_instant(new["start_at"]), new["timezone"], exdates)
-    kept = [_iso(x) for x in sorted({rr.to_utc(x) for x in exdates} & occurring)]
-    relinks = _keep_links(overrides, old_tz, new_id, {**new, "exdates": kept})
+    kept = [_iso(x) for x in sorted(set(_slot_map(old, new, anchor, explicit, exdates).values()))]
+    relinks = _keep_links(overrides, old["timezone"], new_id, {**new, "exdates": kept})
     return kept, [*relinks, drop_overrides]
 
 
@@ -729,12 +731,14 @@ def _update_following(master, split_at, override, data):
     if body and "all_day" in details:
         new_row.update(_series_fields(body, new_start, new_end, tz))
         new_row["exdates"], moved = _switch_kind(
-            new_row,
-            exdates_after,
-            old_tz,
+            master,
             new_row["id"],
-            _overrides(master["id"], split_at),
-            _delete_overrides_op(master["id"], split_at),
+            new_row,
+            anchor=(split_at, new_start),
+            explicit=explicit,
+            exdates=exdates_after,
+            overrides=_overrides(master["id"], split_at),
+            drop_overrides=_delete_overrides_op(master["id"], split_at),
         )
     elif body:
         new_row.update(_series_fields(body, new_start, new_end, tz))
