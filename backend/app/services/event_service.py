@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from functools import wraps
 
 from app import validation as v
@@ -117,6 +117,18 @@ def _check_order(start: datetime, end: datetime):
         raise ValidationError("end_at must be after start_at")
 
 
+# Fields whose change can break an all-day row's midnight alignment.
+ALL_DAY_INPUTS = ("start_at", "end_at", "timezone", "all_day")
+
+
+def _check_all_day(all_day, start: datetime, end: datetime, tz: str):
+    """An all-day event spans whole local days of its timezone: it starts at
+    midnight of its first day and ends (exclusive) at midnight after its last."""
+    zone = rr.get_zone(tz)
+    if all_day and not (start.astimezone(zone).time() == time(0) == end.astimezone(zone).time()):
+        raise ValidationError("an all-day event must start and end at midnight in its timezone")
+
+
 def _series_fields(body: str, start: datetime, end: datetime, tz: str) -> dict:
     """Master columns for a series. start/end snap to the rule's first
     occurrence so the master always sits on its first occurrence."""
@@ -156,7 +168,9 @@ def invalidates_events(fn):
 def create_event(data: dict):
     v.require(data, "title", "start_at", "end_at")
     _validate(data)
-    _check_order(parse_instant(data["start_at"]), parse_instant(data["end_at"]))
+    start, end = parse_instant(data["start_at"]), parse_instant(data["end_at"])
+    _check_order(start, end)
+    _check_all_day(data.get("all_day"), start, end, data.get("timezone") or "UTC")
 
     # timezone is omitted (-> column default UTC) when the client didn't send one.
     row = v.pick(data, EVENT_FIELDS)
@@ -185,11 +199,12 @@ def update_event(event_id: str, data: dict):
 
     # rrule / time changes need the current row to validate and to (re)compute
     # series columns.
-    if any(f in data for f in ("rrule", "start_at", "end_at", "timezone")):
+    if any(f in data for f in ("rrule", *ALL_DAY_INPUTS)):
         row = _get_event(event_id)
         start = parse_instant(updates.get("start_at") or row["start_at"])
         end = parse_instant(updates.get("end_at") or row["end_at"])
         _check_order(start, end)
+        _check_all_day(updates.get("all_day", row["all_day"]), start, end, updates.get("timezone") or row["timezone"])
 
         body = (data.get("rrule") or None) if "rrule" in data else row["rrule"]
         if body and row["recurring_event_id"]:
@@ -343,6 +358,15 @@ def update_occurrence(master_id: str, original_start: datetime, data: dict):
     if original_start in _exdates(master):
         raise NotFound("occurrence was cancelled")
     override = _get_override(master_id, original_start)
+    if any(f in data for f in ALL_DAY_INPUTS):
+        cur = override or master
+        cur_start, cur_end = _current_times(master, original_start, override)
+        _check_all_day(
+            data.get("all_day", cur["all_day"]),
+            parse_instant(data["start_at"]) if data.get("start_at") else cur_start,
+            parse_instant(data["end_at"]) if data.get("end_at") else cur_end,
+            data.get("timezone") or cur["timezone"],
+        )
 
     if scope == "this":
         return _update_this(master, original_start, override, data)
@@ -383,6 +407,7 @@ def _update_all(master, original_start, override, data):
     old_start = parse_instant(master["start_at"])
     series_start = rr.shift_wall(old_start, shift, master["timezone"])
     series_end = rr.shift_wall(series_start, duration, master["timezone"])
+    _check_all_day(data.get("all_day", master["all_day"]), series_start, series_end, tz)
 
     body, explicit = _requested_rule(master, data)
     if body and not explicit:
@@ -413,6 +438,7 @@ def _update_following(master, split_at, override, data):
     old_start = parse_instant(master["start_at"])
     new_start = rr.shift_wall(split_at, shift, master["timezone"])
     new_end = rr.shift_wall(new_start, duration, master["timezone"])
+    _check_all_day(data.get("all_day", master["all_day"]), new_start, new_end, tz)
 
     truncated, remaining = rr.truncate(master["rrule"], old_start, master["timezone"], split_at)
 
