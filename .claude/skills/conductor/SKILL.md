@@ -23,8 +23,9 @@ whole backlog.
   `AskUserQuestion`.
 - **Only Mark reviews and merges.** Never merge, approve, or close a PR, and never
   push to `main`.
-- **Keep your context slim.** Keep only the task list, the lane/branch/PR map, the
-  run's decisions, and each `/implement` summary block. Don't read code yourself.
+- **Keep your context slim.** Keep only the task list, the file map (Triage step
+  6), the lane/branch/PR map, the run's decisions, and each `/implement` summary
+  block. Don't read code yourself.
   If a decision needs research, hand it to a subagent and take its conclusion. All state lives in Nexus
   and GitHub, so a later `/conductor` run with the same arguments picks up where
   this one stopped.
@@ -156,7 +157,11 @@ is then part of the task text.
    - **Review fixes:** tasks filed from PR comments form a group on their PR's
      existing branch. These groups go first, so the PRs can be merged sooner.
    - **Waiting:** a task that depends on a blocked task stays `todo`.
-6. **Form lanes.** A lane is a sequence of groups that must run one after another.
+6. **Map the files.** Spawn one `general-purpose` agent (`sonnet`, `medium`) for the
+   whole workable set. Give it each task's title and description and have it read
+   the task text, do a quick code lookup, and reply with only a map: task → files
+   and the functions or areas in them it likely edits. Keep the map, nothing else.
+7. **Form lanes.** A lane is a sequence of groups that must run one after another.
    Different lanes share nothing and run at the same time.
    - A stack is one lane: a group and every group stacked on it, in stack order.
    - **Migrations share a lane.** Every group whose tasks add or change Supabase
@@ -164,6 +169,15 @@ is then part of the task text.
      groups are in different stacks, merge the stacks into that lane, one stack
      after another. Judge this from the task text; when unsure, assume it touches
      the schema.
+   - **Overlapping code shares a lane.** Groups whose file map entries likely edit
+     the same function or the same small area of a file are stacked, or put in one
+     lane in group order, the same way as migration groups. Sharing a large module
+     isn't enough on its own. This covers backend service code (e.g. the
+     occurrence/series logic in `app/services/events.py`), heavily shared frontend
+     components, and the skill files (`.claude/skills/*`; the same section counts as
+     overlap). When unsure, treat it as overlapping.
+   - Record in the lane/branch map why groups share a lane (migrations, or the
+     overlapping area), for the final report.
    - Every other independent group is its own lane.
    - Order lanes by their first group, using the group order above (review fixes
      first).
@@ -322,6 +336,7 @@ every slot is clean and detached, then report:
 ```
 ## Conductor run — <arguments or "whole backlog">
 PRs: <#N title (stacked on #M) — tasks: …> per line, or "none"
+Shared lanes: <groups in one lane and why (migrations / overlap on <area>)> per line, or "none"
 Completed (merged since last run): <tasks — or "none">
 Cancelled (PR closed unmerged): <tasks; migrations left live — or "none">
 Blocked: <task — reason> per line, or "none"
