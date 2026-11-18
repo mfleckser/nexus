@@ -4,9 +4,11 @@ import { Link } from "react-router-dom";
 import { Task, TaskStatus } from "@renderer/types";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import { useProjects } from "@renderer/features/projects/useProjects";
+import { useEvents } from "@renderer/features/calendar/useEvents";
 import TaskForm from "@renderer/components/TaskForm";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import { formatDueDisplay, toDatetimeLocal } from "@renderer/lib/time";
+import { timeBlockSummary } from "@renderer/lib/timeBlocks";
 import useDismiss from "@renderer/hooks/useDismiss";
 import usePopoverPosition, { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 import useReportError from "@renderer/hooks/useReportError";
@@ -28,6 +30,8 @@ type TaskPopoverProps = {
     // toggles the popover itself).
     ignoreRef?: RefObject<HTMLElement | null>;
     onToggleComplete: () => void;
+    // Opens the block-time popover in this one's place.
+    onBlockTime: () => void;
     onClose: () => void;
 };
 
@@ -37,10 +41,12 @@ function TaskPopover({
     anchor,
     ignoreRef,
     onToggleComplete,
+    onBlockTime,
     onClose,
 }: TaskPopoverProps): React.JSX.Element {
     const { updateTask, deleteTask } = useTasks();
     const { projects } = useProjects();
+    const { events } = useEvents();
     const rootRef = useRef<HTMLDivElement>(null);
     const [editing, setEditing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
@@ -49,6 +55,8 @@ function TaskPopover({
 
     const done = task.status === "complete";
     const project = task.project_id ? projects.find((p) => p.id === task.project_id) : undefined;
+    const timeBlock = timeBlockSummary(task, events);
+    const canBlockTime = !timeBlock && task.status !== "complete" && task.status !== "cancelled";
 
     useDismiss(rootRef, onClose, { ignoreRef });
 
@@ -97,6 +105,18 @@ function TaskPopover({
                                 {project.title}
                             </Link>
                             {featureName && <span className="tp-feature">{featureName}</span>}
+                        </div>
+                    )}
+                    {(timeBlock || canBlockTime) && (
+                        <div className="tp-time-block">
+                            <span className="tp-time-block-label">Time block</span>
+                            {timeBlock ? (
+                                <span>{timeBlock}</span>
+                            ) : (
+                                <button type="button" className="tp-block-time" onClick={onBlockTime}>
+                                    + Block time
+                                </button>
+                            )}
                         </div>
                     )}
                     <p className={`tp-description${task.description ? "" : " muted"}`}>

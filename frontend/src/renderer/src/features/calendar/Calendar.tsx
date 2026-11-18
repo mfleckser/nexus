@@ -20,6 +20,7 @@ import {
     startOfWeek,
 } from "@renderer/lib/time";
 import { layoutDays, overlapsRange } from "@renderer/lib/eventLayout";
+import { roundUpToQuarterHour, tasksByEventId, tasksForEvent } from "@renderer/lib/timeBlocks";
 import {
     DEFAULT_EVENT_MINUTES,
     DRAG_THRESHOLD,
@@ -142,6 +143,8 @@ function Calendar(): React.JSX.Element {
                   ),
         [events, visible, viewType, dayCount],
     );
+
+    const linkedTasks = useMemo(() => tasksByEventId(tasks), [tasks]);
 
     // Due tasks in the visible days, with each pin's top pushed below any
     // earlier pin on the same day it would overlap. Completed/cancelled stay
@@ -271,8 +274,7 @@ function Calendar(): React.JSX.Element {
 
     const handleNewEventButton = (e: React.MouseEvent<HTMLButtonElement>) => {
         const rect = e.currentTarget.getBoundingClientRect();
-        const start = new Date();
-        start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0);
+        const start = roundUpToQuarterHour(new Date());
         openNewEventAt(start, { x: rect.left, y: rect.bottom + POPOVER_GAP });
     };
 
@@ -399,6 +401,7 @@ function Calendar(): React.JSX.Element {
                                         key={`${segment.item.id}:${segment.dayIndex}`}
                                         segment={segment}
                                         dayCount={dayCount}
+                                        linkedTasks={tasksForEvent(linkedTasks, segment.item)}
                                     />
                                 ))}
                                 {taskPins.map(({ task, top, day }) => (

@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Task } from "@renderer/types";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import TaskPopover from "@renderer/features/calendar/TaskPopover";
+import BlockTimePopover from "@renderer/features/calendar/BlockTimePopover";
 import { useTaskFeatureName } from "@renderer/features/projects/useTaskFeatures";
 import { formatTime, MINUTES_PER_DAY, shiftDays } from "@renderer/lib/time";
 import useReportError from "@renderer/hooks/useReportError";
@@ -41,6 +42,8 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
     const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
     // Popover anchor, captured from the pin's rect when it opens; null = closed.
     const [popoverAnchor, setPopoverAnchor] = useState<PopoverAnchor | null>(null);
+    // Block-time popover, opened from the task popover in its place; null = closed.
+    const [blockAnchor, setBlockAnchor] = useState<PopoverAnchor | null>(null);
 
     const due = task.due_at;
     const done = task.status === "complete";
@@ -178,9 +181,14 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
                     anchor={popoverAnchor}
                     ignoreRef={pinRef}
                     onToggleComplete={toggleComplete}
+                    onBlockTime={() => {
+                        setBlockAnchor(popoverAnchor);
+                        setPopoverAnchor(null);
+                    }}
                     onClose={() => setPopoverAnchor(null)}
                 />
             )}
+            {blockAnchor && <BlockTimePopover task={task} anchor={blockAnchor} onClose={() => setBlockAnchor(null)} />}
         </>
     );
 }

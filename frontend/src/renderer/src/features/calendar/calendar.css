@@ -366,10 +366,33 @@
     text-overflow: ellipsis;
 }
 
+/* Time block for a task: mint check by the title, task names (when they
+   differ from the event title) on their own line. */
+.event-chip-task-icon {
+    flex-shrink: 0;
+    color: var(--pillar-task);
+}
+
+.event-chip-task {
+    font-size: 10px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.event-chip-task.done {
+    text-decoration: line-through;
+}
+
 .event-chip:hover .event-chip-time,
 .event-chip-adjusting .event-chip-time,
 .event-chip:hover .event-chip-repeat,
-.event-chip-adjusting .event-chip-repeat {
+.event-chip-adjusting .event-chip-repeat,
+.event-chip:hover .event-chip-task,
+.event-chip-adjusting .event-chip-task,
+.event-chip:hover .event-chip-task-icon,
+.event-chip-adjusting .event-chip-task-icon {
     color: var(--text-on-accent);
     opacity: 0.85;
 }

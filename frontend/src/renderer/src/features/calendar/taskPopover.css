@@ -131,6 +131,39 @@
     word-break: break-word;
 }
 
+.tp-time-block {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+.tp-time-block-label {
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.tp-block-time {
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--accent);
+    cursor: pointer;
+}
+
+.tp-block-time:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
 .tp-description {
     margin: 0;
     font-size: 13px;
