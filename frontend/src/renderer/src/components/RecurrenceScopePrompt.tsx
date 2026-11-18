@@ -7,7 +7,7 @@ import { RecurrenceScope } from "@renderer/types";
 const SCOPE_LABELS: Record<RecurrenceScope, string> = {
     this: "This event",
     following: "This and following events",
-    all: "All events",
+    all: "All events in this series",
 };
 
 type RecurrenceScopePromptProps = {
