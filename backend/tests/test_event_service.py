@@ -631,6 +631,55 @@ class EventServiceTest(AppTestCase):
             [(o[0], o[3]) for o in self.overrides(m["id"])], [("2027-05-30T09:00:00+00:00", "May special")]
         )
 
+    def test_paired_exceptions_never_take_a_shifted_ones_slot(self):
+        m = self.create(
+            start_at="2027-01-30T09:00:00Z", end_at="2027-01-30T10:00:00Z", rrule="FREQ=MONTHLY;BYMONTHDAY=30"
+        )
+        self.delete_occ(m["id"], "2027-06-30T09:00:00Z", "this")
+        self.put_occ(m["id"], "2027-04-30T09:00:00Z", {"scope": "this", "title": "April"})
+        self.put_occ(m["id"], "2027-05-30T09:00:00Z", {"scope": "this", "title": "May"})
+        # The 30th -> the 31st: April has no 31st, so April's override has no
+        # slot left and must not take May's (which May reaches by the shift).
+        self.put_occ(
+            m["id"],
+            "2027-01-30T09:00:00Z",
+            {"scope": "all", "start_at": "2027-01-31T09:00:00Z", "end_at": "2027-01-31T10:00:00Z"},
+        )
+        self.assertEqual(self.row(m["id"])["exdates"], [])  # June has no 31st either
+        self.assertEqual([(o[0], o[3]) for o in self.overrides(m["id"])], [("2027-05-31T09:00:00+00:00", "May")])
+
+    def test_new_rule_only_valid_from_the_edited_start(self):
+        m = self.weekly_wed()
+        res = self.put_occ(
+            m["id"],
+            "2026-09-30T16:00:00Z",
+            {
+                "scope": "all",
+                "start_at": "2026-09-29T16:00:00Z",
+                "end_at": "2026-09-29T17:00:00Z",
+                "rrule": "FREQ=DAILY;UNTIL=20260929T235959Z",
+            },
+        )
+        self.assertEqual(res["start_at"], "2026-09-29T16:00:00+00:00")
+
+    def test_reordered_byday_is_not_a_new_rule(self):
+        m = self.create(start_at="2026-09-28T16:00:00Z", end_at="2026-09-28T17:00:00Z", rrule="FREQ=WEEKLY;BYDAY=MO,WE")
+        self.delete_occ(m["id"], "2026-10-07T16:00:00Z", "this")
+        self.put_occ(
+            m["id"],
+            "2026-09-28T16:00:00Z",
+            {
+                "scope": "all",
+                "rrule": "FREQ=WEEKLY;WKST=MO;BYDAY=WE,MO",
+                "start_at": "2026-09-29T16:00:00Z",
+                "end_at": "2026-09-29T17:00:00Z",
+            },
+        )
+        master = self.row(m["id"])
+        self.assertEqual(
+            (master["rrule"], master["exdates"]), ("FREQ=WEEKLY;BYDAY=TU,TH", ["2026-10-08T16:00:00+00:00"])
+        )
+
     def test_equivalent_rule_spelling_is_not_a_new_rule(self):
         m = self._series_with_exceptions()
         self.put_occ(

@@ -174,6 +174,16 @@ def is_occurrence(body: str, start: datetime, tz_name: str, instant: datetime) -
     return any(to_utc(o) == to_utc(instant) for o in rule.between(instant, instant, inc=True))
 
 
+def occurrences_between(body: str, start: datetime, tz_name: str, instants) -> set:
+    """The series' occurrences (UTC) between the earliest and latest of
+    `instants`: one scan to test many instants for membership."""
+    instants = [to_utc(x) for x in instants]
+    if not instants:
+        return set()
+    rule = build_rule(body, start, tz_name)
+    return {to_utc(o) for o in rule.between(min(instants), max(instants), inc=True)}
+
+
 def occurrence_end(occ_start: datetime, start: datetime, end: datetime, tz_name: str) -> datetime:
     """End of the occurrence starting at `occ_start` of a series whose first
     occurrence is [start, end): the same wall-clock duration in `tz_name`, so
@@ -332,25 +342,37 @@ def shift_until(body: str, delta: timedelta, tz_name: str, new_tz: str = None) -
     return format_rule(parts)
 
 
-def pair_occurrences(old: tuple, new: tuple, instants, skip_before: datetime = None) -> dict:
-    """Map occurrences of a series to the occurrences at the same position in
-    its moved / re-aimed version. `old` and `new` are (rrule body, start, tz);
-    old occurrences before `skip_before` don't count (the part a split left
-    behind). Returns {old instant: new instant} for each of `instants`; those
-    past the new series' end are left out."""
-    wanted = {to_utc(x) for x in instants}
-    if not wanted:
+def pair_in_period(old: tuple, new: tuple, instants) -> dict:
+    """Map occurrences of a monthly / yearly series to the occurrence at the
+    same position within the same local month / year of its re-aimed version
+    (2nd Tuesday of April -> 2nd Wednesday of April). `old` and `new` are
+    (rrule body, start, tz). Returns {old instant: new instant}; instants whose
+    period has no such new occurrence are left out, as are other FREQs."""
+    freq = parse_rule(new[0]).get("FREQ")
+    if freq not in ("MONTHLY", "YEARLY"):
         return {}
-    last = max(wanted)
-    olds = (to_utc(o) for o in build_rule(*old))
-    if skip_before:
-        olds = (o for o in olds if o >= skip_before)
+    old_rule, new_rule = build_rule(*old), build_rule(*new)
+
+    def bounds(local: datetime, tz_name: str):
+        first = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if freq == "YEARLY":
+            first = first.replace(month=1)
+            after = first.replace(year=first.year + 1)
+        else:
+            after = (first + timedelta(days=32)).replace(day=1)
+        zone = get_zone(tz_name)
+        return first.replace(tzinfo=zone), after.replace(tzinfo=zone)
+
     result = {}
-    for i, (o, n) in enumerate(zip(olds, build_rule(*new), strict=False)):
-        if o > last or i > MAX_SCAN:
-            break
-        if o in wanted:
-            result[o] = to_utc(n)
+    for x in instants:
+        x = to_utc(x)
+        local = _local_naive(x, old[2])
+        o_lo, o_hi = bounds(local, old[2])
+        olds = [to_utc(o) for o in old_rule.between(o_lo, o_hi, inc=True) if o < o_hi]
+        n_lo, n_hi = bounds(local, new[2])
+        news = [to_utc(n) for n in new_rule.between(n_lo, n_hi, inc=True) if n < n_hi]
+        if x in olds and olds.index(x) < len(news):
+            result[x] = news[olds.index(x)]
     return result
 
 

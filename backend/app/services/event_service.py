@@ -294,39 +294,48 @@ def _delete_overrides_op(master_id: str, from_start: datetime = None, at: dateti
     return {"op": "delete_overrides", "master": master_id, "from": _iso(from_start), "at": _iso(at)}
 
 
-def _carry_exceptions(old: dict, new_id: str, new: dict, move: dict):
+def _carry_exceptions(
+    old: dict,
+    new_id: str,
+    new: dict,
+    *,
+    anchor,
+    explicit: bool,
+    exdates: list,
+    overrides: list,
+    details: dict,
+    clicked,
+):
     """Move a series' exceptions along when the series itself moves, so cancelled
     occurrences stay cancelled and edited ones stay edited.
 
-    old     the master as it was
-    new_id  the series receiving the exceptions (the master, or a split-off series)
-    new     its new columns (rrule/start_at/end_at/timezone)
-    move    anchor     (old instant, new instant) of the edited slot
-            explicit   whether the edit set a new rule (else it's re-aimed)
-            exdates    old exdates to carry
-            overrides  old override rows to carry
-            details    changed detail fields, set on every carried override
-            clicked    (override id, fields) for the override edited, or None
-            skip_before  old occurrences before this belong to the other half
+    old          the master as it was
+    new_id       the series receiving the exceptions (the master, or a split-off series)
+    new          its new columns (rrule/start_at/end_at/timezone)
+    anchor       (old instant, new instant) of the edited slot
+    explicit     whether the edit set a new rule (else the old one is re-aimed)
+    exdates      old exdates to carry; overrides: old override rows to carry
+    details      changed detail fields, set on every carried override
+    clicked      (override id, fields) for the override edited, or None
 
     Returns (exdates for the new series, ops for the overrides)."""
     old_tz, tz = old["timezone"], new["timezone"]
-    overrides = move["overrides"]
-    slot_map = _slot_map(
+    slots = _slot_map(
         old,
         new,
-        move,
-        [*move["exdates"], *(parse_instant(o["original_start_at"]) for o in overrides)],
+        anchor,
+        explicit,
+        [*exdates, *(parse_instant(o["original_start_at"]) for o in overrides)],
     )
     old_duration = _wall_duration(old)
     new_duration = rr.wall_delta(parse_instant(new["start_at"]), parse_instant(new["end_at"]), tz)
 
-    exdates = sorted({x for x in map(slot_map, move["exdates"]) if x})
+    new_exdates = sorted({slots[x] for x in exdates if x in slots})
 
     ops, taken = [], set()
     for ov in overrides:
         slot = parse_instant(ov["original_start_at"])
-        new_slot = slot_map(slot)
+        new_slot = slots.get(slot)
         if not new_slot or new_slot in taken:
             ops.append({"op": "delete", "id": ov["id"]})
             continue
@@ -343,45 +352,47 @@ def _carry_exceptions(old: dict, new_id: str, new: dict, move: dict):
             "original_start_at": _iso(new_slot),
             "start_at": _iso(moved_start),
             "end_at": _iso(moved_end),
-            **move["details"],
+            **details,
         }
         if ov["timezone"] == old_tz:
             fields["timezone"] = tz
-        if move["clicked"] and ov["id"] == move["clicked"][0]:
-            fields.update(move["clicked"][1])
+        if clicked and ov["id"] == clicked[0]:
+            fields.update(clicked[1])
         changed = {k: val for k, val in fields.items() if not _same(k, val, ov[k])}
         if changed:
             ops.append(_update_op(ov["id"], changed))
-    return [_iso(x) for x in exdates], ops
+    return [_iso(x) for x in new_exdates], ops
 
 
-def _slot_map(old: dict, new: dict, move: dict, instants):
-    """old occurrence start -> its start in the new series, or None if the new
-    series doesn't have it.
+def _slot_map(old: dict, new: dict, anchor, explicit: bool, instants) -> dict:
+    """{old occurrence start: its start in the new series} for `instants`;
+    those the new series doesn't have are left out.
 
     Each instant moves by the edited slot's wall-clock shift if that lands on
-    an occurrence of the new rule. When the rule was only re-aimed and the
-    shift misses (2nd Tuesday -> 2nd Wednesday in a month starting on a
-    Wednesday, month ends, a COUNT continuation), occurrences pair up by
-    position instead."""
+    an occurrence of the new rule. When the rule was only re-aimed, a miss
+    (2nd Tuesday -> 2nd Wednesday in a month starting on a Wednesday) takes the
+    new occurrence at the same position in the same month / year, if no shift
+    claimed it; else it is dropped (e.g. Apr 30 when the 30th becomes the 31st)."""
     old_tz, tz = old["timezone"], new["timezone"]
     new_start = parse_instant(new["start_at"])
-    anchor = move["anchor"]
     delta = rr.wall_delta(anchor[0], anchor[1], old_tz, tz)
 
-    def shifted(x):
-        moved = rr.shift_wall(x, delta, old_tz, tz)
-        return moved if rr.is_occurrence(new["rrule"], new_start, tz, moved) else None
+    instants = {rr.to_utc(x) for x in instants}
+    moved = {x: rr.shift_wall(x, delta, old_tz, tz) for x in instants}
+    occurring = rr.occurrences_between(new["rrule"], new_start, tz, moved.values())
+    result = {x: m for x, m in moved.items() if m in occurring}
 
-    if move["explicit"]:
-        return shifted
-    pairs = rr.pair_occurrences(
-        (old["rrule"], parse_instant(old["start_at"]), old_tz),
-        (new["rrule"], new_start, tz),
-        instants,
-        move.get("skip_before"),
-    )
-    return lambda x: shifted(x) or pairs.get(x)
+    misses = instants - result.keys()
+    if misses and not explicit:
+        claimed = set(result.values())
+        pairs = rr.pair_in_period(
+            (old["rrule"], parse_instant(old["start_at"]), old_tz), (new["rrule"], new_start, tz), misses
+        )
+        for x in sorted(misses):
+            if x in pairs and pairs[x] not in claimed:
+                result[x] = pairs[x]
+                claimed.add(pairs[x])
+    return result
 
 
 def _same(col: str, a, b) -> bool:
@@ -452,18 +463,26 @@ def _requested_rule(master: dict, data: dict):
     if "rrule" not in data:
         return master["rrule"], False
     requested = data["rrule"] or None
-    if requested:
-        # Compare canonical forms, so an equivalent spelling isn't a new rule.
-        start, tz = parse_instant(master["start_at"]), master["timezone"]
-        if _rule_key(rr.normalize_rrule(requested, start, tz)) == _rule_key(master["rrule"]):
-            return master["rrule"], False
+    if requested and _rule_key(requested, master) == _rule_key(master["rrule"], master):
+        return master["rrule"], False
     return requested, True
 
 
-def _rule_key(body: str) -> dict:
-    parts = rr.parse_rule(body)
-    if parts.get("INTERVAL") == "1":
-        del parts["INTERVAL"]  # the default
+def _rule_key(body: str, master: dict) -> dict:
+    """A rule's parts in canonical form, so an equivalent spelling of the
+    series' own rule isn't taken for a new one."""
+    try:
+        parts = rr.parse_rule(rr.normalize_rrule(body, parse_instant(master["start_at"]), master["timezone"]))
+    except ValidationError:
+        # e.g. no occurrence from the old start: can't be the series' own rule;
+        # the new series' start validates it properly.
+        return rr.parse_rule(body)
+    for key, default in (("INTERVAL", "1"), ("WKST", "MO")):
+        if parts.get(key) == default:
+            del parts[key]
+    for key in ("BYDAY", "BYMONTHDAY", "BYMONTH"):
+        if key in parts:
+            parts[key] = ",".join(sorted(parts[key].split(",")))
     return parts
 
 
@@ -527,14 +546,12 @@ def _update_all(master, original_start, override, data):
             master,
             master["id"],
             updates,
-            {
-                "anchor": (old_start, series_start),
-                "explicit": explicit,
-                "exdates": _exdates(master),
-                "overrides": _overrides(master["id"]),
-                "details": details,
-                "clicked": _clicked(override, data, times),
-            },
+            anchor=(old_start, series_start),
+            explicit=explicit,
+            exdates=_exdates(master),
+            overrides=_overrides(master["id"]),
+            details=details,
+            clicked=_clicked(override, data, times),
         )
     else:
         # rrule cleared: the series collapses into a plain event.
@@ -581,15 +598,12 @@ def _update_following(master, split_at, override, data):
             master,
             new_row["id"],
             new_row,
-            {
-                "anchor": (split_at, new_start),
-                "explicit": explicit,
-                "exdates": exdates_after,
-                "overrides": _overrides(master["id"], split_at),
-                "details": details,
-                "clicked": _clicked(override, data, times),
-                "skip_before": split_at,
-            },
+            anchor=(split_at, new_start),
+            explicit=explicit,
+            exdates=exdates_after,
+            overrides=_overrides(master["id"], split_at),
+            details=details,
+            clicked=_clicked(override, data, times),
         )
     else:
         new_row.update(start_at=_iso(new_start), end_at=_iso(new_end))

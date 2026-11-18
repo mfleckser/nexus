@@ -60,9 +60,10 @@
   - Multi-row edits are atomic: the service computes every row change and sends them
     as ops to the `apply_event_writes` RPC (one transaction; mirrored in the fake).
   - Moving a series (time, duration, timezone, rule) carries its exdates and overrides
-    along: paired by position when the rule is only re-aimed, shifted by the same
-    wall-clock delta for a new rule (dropped if it no longer produces them). A
-    "following" split makes two independent series; "all" edits only touch one.
+    along by the same wall-clock shift; when a re-aimed monthly/yearly rule misses
+    (2nd Tue → 2nd Wed), the same position in the same month/year. Ones the new
+    series no longer has are dropped. A "following" split makes two independent
+    series; "all" edits only touch one.
   - Event writes are serialized by a per-process lock (`_write_lock`), one more
     reason to keep gunicorn at one worker.
 
