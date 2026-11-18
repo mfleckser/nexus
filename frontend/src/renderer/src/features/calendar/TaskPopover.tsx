@@ -1,5 +1,6 @@
 import "./taskPopover.css";
 import { RefObject, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Task, TaskStatus } from "@renderer/types";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import { useProjects } from "@renderer/features/projects/useProjects";
@@ -20,6 +21,8 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 
 type TaskPopoverProps = {
     task: Task;
+    // null when the task has no feature or it isn't loaded.
+    featureName: string | null;
     anchor: PopoverAnchor;
     // Presses inside this element don't count as outside clicks (the pin
     // toggles the popover itself).
@@ -28,7 +31,14 @@ type TaskPopoverProps = {
     onClose: () => void;
 };
 
-function TaskPopover({ task, anchor, ignoreRef, onToggleComplete, onClose }: TaskPopoverProps): React.JSX.Element {
+function TaskPopover({
+    task,
+    featureName,
+    anchor,
+    ignoreRef,
+    onToggleComplete,
+    onClose,
+}: TaskPopoverProps): React.JSX.Element {
     const { updateTask, deleteTask } = useTasks();
     const { projects } = useProjects();
     const rootRef = useRef<HTMLDivElement>(null);
@@ -81,7 +91,14 @@ function TaskPopover({ task, anchor, ignoreRef, onToggleComplete, onClose }: Tas
                             {STATUS_LABELS[task.status] ?? task.status}
                         </span>
                     </div>
-                    {project && <div className="tp-project">{project.title}</div>}
+                    {project && (
+                        <div className="tp-context">
+                            <Link className="tp-project" to={`/projects/${project.id}`} title="Open project board">
+                                {project.title}
+                            </Link>
+                            {featureName && <span className="tp-feature">{featureName}</span>}
+                        </div>
+                    )}
                     <p className={`tp-description${task.description ? "" : " muted"}`}>
                         {task.description || "No description"}
                     </p>

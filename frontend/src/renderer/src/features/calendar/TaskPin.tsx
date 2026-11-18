@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Task } from "@renderer/types";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import TaskPopover from "@renderer/features/calendar/TaskPopover";
+import { useTaskFeatureName } from "@renderer/features/projects/useTaskFeatures";
 import { formatTime, MINUTES_PER_DAY, shiftDays } from "@renderer/lib/time";
 import useReportError from "@renderer/hooks/useReportError";
 import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
@@ -29,6 +30,7 @@ type TaskPinProps = {
 function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Element {
     const { updateTask } = useTasks();
     const reportError = useReportError();
+    const featureName = useTaskFeatureName(task);
     const pinRef = useRef<HTMLDivElement>(null);
     const parentRectRef = useRef<DOMRect | null>(null);
     const grabOffsetRef = useRef({ x: 0, y: 0 });
@@ -134,7 +136,7 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
                 ref={pinRef}
                 className={`task-pin${done ? " done" : ""}${cancelled ? " cancelled" : ""}${blocked ? " blocked" : ""}${dragging ? " dragging" : ""}`}
                 style={style}
-                title={task.title}
+                title={featureName ? `${task.title} · ${featureName}` : task.title}
                 role="button"
                 tabIndex={0}
                 aria-expanded={popoverAnchor !== null}
@@ -163,12 +165,16 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
                         toggleComplete();
                     }}
                 />
-                <span className="task-pin-title">{task.title}</span>
+                <span className="task-pin-title">
+                    {task.title}
+                    {featureName && <span className="task-pin-feature">{featureName}</span>}
+                </span>
                 <span className="task-pin-time">{formatTime(due)}</span>
             </div>
             {popoverAnchor && (
                 <TaskPopover
                     task={task}
+                    featureName={featureName}
                     anchor={popoverAnchor}
                     ignoreRef={pinRef}
                     onToggleComplete={toggleComplete}

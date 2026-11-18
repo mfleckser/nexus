@@ -60,6 +60,12 @@
     text-overflow: ellipsis;
 }
 
+.task-pin-feature {
+    margin-left: 5px;
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
 .task-pin-time {
     flex-shrink: 0;
     font-size: 10px;
@@ -95,7 +101,9 @@
 }
 
 .task-pin.done .task-pin-time,
-.task-pin.cancelled .task-pin-time {
+.task-pin.cancelled .task-pin-time,
+.task-pin.done .task-pin-feature,
+.task-pin.cancelled .task-pin-feature {
     color: var(--text-muted);
 }
 
