@@ -417,6 +417,8 @@ def _slot_map(old: dict, new: dict, anchor, explicit: bool, instants) -> dict:
     if misses and not explicit:
         old_rule = (old["rrule"], parse_instant(old["start_at"]), old_tz)
         pairs = rr.pair_in_period(old_rule, (new["rrule"], new_start, tz), {x: moved[x] for x in misses})
+        if not pairs:
+            return result
         # A pair may not take a slot some other occurrence (exception or not)
         # shifts onto: that one is the slot's rightful owner.
         margin = timedelta(days=400)  # > one period (a year)
