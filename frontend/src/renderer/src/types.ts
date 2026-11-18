@@ -64,7 +64,8 @@ export type Feature = {
     notes_updated_at: Date | null;
 };
 
-export type ProjectStatus = "planning" | "active" | "paused" | "complete" | "archived";
+export const PROJECT_STATUSES = ["planning", "active", "paused", "complete", "archived"] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
 export type Project = {
     id: string;

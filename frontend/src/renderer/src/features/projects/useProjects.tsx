@@ -9,7 +9,8 @@ type ProjectsContextValue = {
     projects: Project[];
     // False until the first project fetch has settled.
     projectsLoaded: boolean;
-    addProject: (title: string, description: string, type: string | null) => Promise<void>;
+    // Resolves to the created project.
+    addProject: (title: string, description: string, type: string | null) => Promise<Project>;
     updateProject: (id: string, data: projectsApi.ProjectUpdate) => Promise<void>;
     // Optimistic; rolls back and rethrows on failure.
     deleteProject: (id: string) => Promise<void>;
@@ -57,8 +58,9 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const addProject = useCallback(async (title: string, description: string, type: string | null) => {
-        await projectsApi.addProject(title, description, type);
+        const created = await projectsApi.addProject(title, description, type);
         setProjects(await projectsApi.getProjects());
+        return created;
     }, []);
 
     const updateProject = useCallback(

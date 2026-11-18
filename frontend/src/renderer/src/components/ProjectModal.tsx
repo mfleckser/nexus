@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import "./projectModal.css";
 import Modal from "@renderer/components/Modal";
-import { ProjectStatus } from "@renderer/types";
+import { PROJECT_STATUSES, ProjectStatus } from "@renderer/types";
 
 const PROJECT_TYPES = ["coding", "learning", "fitness", "other"];
-const PROJECT_STATUSES: ProjectStatus[] = ["planning", "active", "paused", "complete", "archived"];
 
 // "" = no type / no status (stored as null).
 export type ProjectFormValues = {
