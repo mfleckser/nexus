@@ -257,6 +257,44 @@ class MoveTest(unittest.TestCase):
         # A one-day move measured across the DST change is one wall-clock day, not 25h.
         self.assertEqual(rr.wall_delta(utc(2026, 10, 31, 16), utc(2026, 11, 1, 17), LA), timedelta(days=1))
 
+    def test_day_delta_ignores_time_of_day(self):
+        # 9:00 -> 14:00 the same day is no day; 23:00 -> 01:00 the next one is.
+        self.assertEqual(rr.day_delta(utc(2026, 10, 30, 16), utc(2026, 10, 30, 21), LA), timedelta(0))
+        self.assertEqual(rr.day_delta(utc(2026, 10, 31, 6), utc(2026, 10, 31, 8), LA), timedelta(days=1))
+        # Read in each instant's own zone: 16:00Z is Sep 30 in LA, Oct 1 in Tokyo.
+        self.assertEqual(rr.day_delta(utc(2026, 9, 30, 16), utc(2026, 9, 30, 16), LA, "Asia/Tokyo"), timedelta(days=1))
+
+    def test_shift_into_another_timezone(self):
+        # A series at 9:00 Los Angeles re-homed to New York at the same instant
+        # (12:00 New York): every instant keeps its local slot, +3h wall clock.
+        ny = "America/New_York"
+        delta = rr.wall_delta(utc(2026, 9, 30, 16), utc(2026, 9, 30, 16), LA, ny)
+        self.assertEqual(delta, timedelta(hours=3))
+        self.assertEqual(rr.shift_wall(utc(2026, 11, 4, 17), delta, LA, ny), utc(2026, 11, 4, 17))  # 12:00 EST
+        # Phoenix has no DST: 9:00 PST (17:00Z) maps to 9:00 MST (16:00Z).
+        delta = rr.wall_delta(utc(2026, 9, 30, 16), utc(2026, 9, 30, 16), LA, "America/Phoenix")
+        self.assertEqual(rr.shift_wall(utc(2026, 11, 4, 17), delta, LA, "America/Phoenix"), utc(2026, 11, 4, 16))
+
+    def test_pair_in_period(self):
+        # 2nd Tuesday -> 2nd Wednesday: Apr 2026 starts on a Wednesday, so the
+        # +1 day shift (Apr 15, 3rd Wed) misses; the 2nd Wed is Apr 8.
+        old = ("FREQ=MONTHLY;BYDAY=2TU", utc(2026, 1, 13, 9), "UTC")
+        new = ("FREQ=MONTHLY;BYDAY=2WE", utc(2026, 1, 14, 9), "UTC")
+        apr14 = utc(2026, 4, 14, 9)
+        self.assertEqual(rr.pair_in_period(old, new, {apr14: utc(2026, 4, 15, 9)}), {apr14: utc(2026, 4, 8, 9)})
+        # The period is the one the shift moved into: May 1 -> Apr 30 has no 31st.
+        old = ("FREQ=MONTHLY", utc(2027, 1, 1, 9), "UTC")
+        new = ("FREQ=MONTHLY", utc(2026, 12, 31, 9), "UTC")
+        self.assertEqual(rr.pair_in_period(old, new, {utc(2027, 5, 1, 9): utc(2027, 4, 30, 9)}), {})
+        # Only monthly / yearly rules are paired.
+        weekly = ("FREQ=WEEKLY", utc(2026, 1, 13, 9), "UTC")
+        self.assertEqual(rr.pair_in_period(weekly, weekly, {apr14: apr14}), {})
+
+    def test_occurrences_between(self):
+        got = rr.occurrences_between("FREQ=DAILY", utc(2026, 1, 1, 9), "UTC", [utc(2026, 1, 3, 9), utc(2026, 1, 5, 9)])
+        self.assertEqual(got, {utc(2026, 1, d, 9) for d in (3, 4, 5)})
+        self.assertEqual(rr.occurrences_between("FREQ=DAILY", utc(2026, 1, 1, 9), "UTC", []), set())
+
     def test_shift_byday(self):
         wed, thu = utc(2026, 10, 7, 16), utc(2026, 10, 8, 16)
         self.assertEqual(rr.shift_rule_days("FREQ=WEEKLY;BYDAY=WE", wed, thu, LA), "FREQ=WEEKLY;BYDAY=TH")

@@ -2,8 +2,10 @@
 what the services use. Timestamps are stored the way PostgREST returns them
 (UTC ISO with +00:00) and compared as instants. A few Postgres behaviors are
 mimicked because the API maps them to status codes: NOT NULL (23502), CHECK
-(23514), invalid uuid / timestamp text (22P02 / 22007), and FK on-delete
-cascade / set null."""
+(23514), UNIQUE (23505), FK to a missing master (23503), invalid uuid /
+timestamp text (22P02 / 22007), and FK on-delete cascade / set null.
+`rpc("apply_event_writes")` mirrors the SQL function of that name,
+all-or-nothing like a Postgres transaction."""
 
 import copy
 import re
@@ -25,6 +27,7 @@ TABLES = {
             "original_start_at": None,
         },
         "not_null": {"title", "start_at", "end_at", "timezone", "exdates"},
+        "unique": ("recurring_event_id", "original_start_at"),  # deferrable in SQL
     },
     "tasks": {
         "defaults": {
@@ -55,6 +58,7 @@ FOREIGN_KEYS = [
     ("tasks", "feature_id", "features", "set null"),
     ("features", "project_id", "projects", "cascade"),
 ]
+CHECKED_FOREIGN_KEYS = {("events", "recurring_event_id"), ("tasks", "event_id")}
 
 
 def _pg_error(code, message):
@@ -196,7 +200,13 @@ class _Query:
             row.update(copy.deepcopy(TABLES[self.table]["defaults"]))
             row.update({k: _store(k, v) for k, v in self.payload.items()})
             self._check_values(row, row.keys())
+            self.db.check_foreign_keys(self.table, [row])
             rows.append(row)
+            try:
+                self.db.check_unique(self.table)
+            except PostgrestAPIError:
+                rows.remove(row)  # the statement fails as a whole
+                raise
             return _Result([copy.deepcopy(row)])
         if self.op == "update":
             if not self.payload:
@@ -204,18 +214,85 @@ class _Query:
             values = {k: _store(k, v) for k, v in self.payload.items()}
             self._check_values(values, values.keys())
             now = self.db.tick()
+            self.db.check_foreign_keys(self.table, [{**r, **values} for r in match])
+            before = copy.deepcopy(match)
             for r in match:
                 r.update(values, updated_at=now)
+            try:
+                self.db.check_unique(self.table)
+            except PostgrestAPIError:
+                for r, old in zip(match, before, strict=True):
+                    r.clear()
+                    r.update(old)
+                raise
             return _Result([copy.deepcopy(r) for r in match])
         self.db.delete_rows(self.table, {r["id"] for r in match})
         return _Result([copy.deepcopy(r) for r in match])
+
+
+class _Rpc:
+    """apply_event_writes: run the ops in order; on any error restore every
+    table, as the SQL function's transaction would roll back."""
+
+    def __init__(self, db, ops, result_id):
+        self.db = db
+        self.ops = copy.deepcopy(ops)
+        self.result_id = result_id
+
+    def execute(self):
+        db = self.db
+        if db.fail_on == "rpc":
+            raise RuntimeError("simulated DB failure")
+        snapshot = copy.deepcopy(db.tables)
+        db.in_rpc = True
+        try:
+            for i, op in enumerate(self.ops):
+                if db.fail_after_ops is not None and i >= db.fail_after_ops:
+                    raise RuntimeError("simulated DB failure mid-transaction")
+                self._apply(op)
+            db.in_rpc = False
+            db.check_unique("events")
+        except Exception:
+            for name, rows in snapshot.items():
+                db.tables[name][:] = rows
+            raise
+        finally:
+            db.in_rpc = False
+        rows = [r for r in db.tables["events"] if r["id"] == self.result_id]
+        return _Result(copy.deepcopy(rows))
+
+    def _apply(self, op):
+        q = _Query(self.db, "events")
+        kind = op["op"]
+        if kind == "insert":
+            q.insert(op["row"]).execute()
+        elif kind == "update":
+            if not q.update(op["set"]).eq("id", op["id"]).execute().data:
+                raise _pg_error("P0002", f"event {op['id']} not found")
+        elif kind == "delete":
+            q.delete().eq("id", op["id"]).execute()
+        elif kind == "delete_overrides":
+            q = q.delete().eq("recurring_event_id", op["master"])
+            if op.get("from"):
+                q = q.gte("original_start_at", op["from"])
+            if op.get("at"):
+                q = q.eq("original_start_at", op["at"])
+            q.execute()
+        elif kind == "relink_tasks":
+            if not op.get("from") or not op.get("to"):
+                raise _pg_error("22023", "relink_tasks needs from and to")
+            _Query(self.db, "tasks").update({"event_id": op["to"]}).eq("event_id", op["from"]).execute()
+        else:
+            raise _pg_error("22023", f"unknown op {kind!r}")
 
 
 class FakeSupabase:
     def __init__(self):
         self.tables = {name: [] for name in TABLES}
         self.rows = self.tables["events"]  # back-compat for the event tests
-        self.fail_on = None  # set to "update"/"insert"/... to simulate a failure
+        self.fail_on = None  # set to "update"/"insert"/"rpc"/... to simulate a failure
+        self.fail_after_ops = None  # an rpc fails after applying this many of its ops
+        self.in_rpc = False  # unique checks are deferred to the end of an rpc
         self.queries = []  # table names, in call order
         self._clock = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -228,6 +305,35 @@ class FakeSupabase:
         assert name in TABLES, name
         self.queries.append(name)
         return _Query(self, name)
+
+    def check_unique(self, table):
+        cols = TABLES[table].get("unique")
+        if not cols or self.in_rpc:
+            return
+        seen = set()
+        for r in self.tables[table]:
+            key = tuple(_cmp(c, r[c]) if r[c] is not None else None for c in cols)
+            if None in key:
+                continue  # NULLs are distinct in a unique constraint
+            if key in seen:
+                raise _pg_error("23505", f'duplicate key value violates unique constraint on "{table}"')
+            seen.add(key)
+
+    def rpc(self, name, params):
+        assert name == "apply_event_writes", name
+        self.queries.append(f"rpc:{name}")
+        return _Rpc(self, params["ops"], params.get("result_id"))
+
+    def check_foreign_keys(self, table, rows):
+        """Only events.recurring_event_id and tasks.event_id are checked (other
+        tests use made-up ids)."""
+        for child, col, parent, _ in FOREIGN_KEYS:
+            if (child, col) not in CHECKED_FOREIGN_KEYS or child != table:
+                continue
+            ids = {r["id"] for r in self.tables[parent]}
+            for r in rows:
+                if r.get(col) is not None and r[col] not in ids:
+                    raise _pg_error("23503", f'insert or update on table "{table}" violates foreign key on "{col}"')
 
     def delete_rows(self, table, ids):
         """Delete rows by id, applying FK on-delete actions."""
