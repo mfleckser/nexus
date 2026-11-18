@@ -89,7 +89,9 @@
   - Agent tools: stdio MCP server `tools/nexus-mcp/server.py` (registered in `.mcp.json`)
     exposes projects / features / tasks to Claude Code as a normal API client (same
     backend + token as `frontend/.env`). No delete tools; feature notes are the agents'
-    decision/result log (`append_feature_notes`). New endpoints agents need get a tool there.
+    decision/result log (`append_feature_notes`). `append_feature_notes` and `update_task`
+    return short acks (read back with `get_feature` / `get_task`) to save agent tokens.
+    New endpoints agents need get a tool there.
   - Agent workflow (`.claude/skills/`): the backlog is the app's "Nexus" project.
     `/add-task` writes a task spec (settles product questions with Mark), `/conductor`
     triages tasks and runs `/implement` per task unattended, then opens one PR per

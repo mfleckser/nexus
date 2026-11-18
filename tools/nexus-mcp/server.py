@@ -42,6 +42,10 @@ cancelled. There are no delete tools: cancel a task instead.
 Feature notes are the shared log for a feature: design decisions, results, branch
 names, open questions. Use append_feature_notes to add to them; it keeps what's there.
 Use update_feature(notes=...) only to deliberately rewrite the whole text.
+
+append_feature_notes and update_task return short acks only (ids and timestamps, plus
+the task's status), not the notes or task body. Call get_feature / get_task when you
+need the full text after a write.
 """
 
 
@@ -182,12 +186,14 @@ def build_server(api: NexusApi) -> MCPServer:
     def append_feature_notes(feature_id: str, text: str) -> dict[str, Any]:
         """Append text (markdown) to a feature's notes, separated from what's there by a blank
         line. Existing notes are kept (it re-reads them first, so don't append to the same
-        feature from two agents at once). Returns the updated feature with notes."""
+        feature from two agents at once). Returns only {id, notes_updated_at}, not the
+        notes; call get_feature for the full text."""
         if not text.strip():
             raise ToolError("text is empty")
         existing = call(api.get, f"/features/{feature_id}").get("notes") or ""
         notes = f"{existing.rstrip()}\n\n{text.strip()}" if existing.strip() else text.strip()
-        return call(api.put, f"/features/{feature_id}", {"notes": notes})
+        feature = call(api.put, f"/features/{feature_id}", {"notes": notes})
+        return {"id": feature["id"], "notes_updated_at": feature.get("notes_updated_at")}
 
     @server.tool(annotations=READ)
     def list_tasks(
@@ -235,7 +241,7 @@ def build_server(api: NexusApi) -> MCPServer:
     ) -> dict[str, Any]:
         """Change a task; only the fields you pass change. `clear` empties fields (e.g.
         ["due_at"]). Moving to a feature also moves the task to that feature's project.
-        Returns the updated task."""
+        Returns only {id, status, updated_at}; call get_task for the full task."""
         fields = {"title": title, "description": description, "status": status,
                   "feature_id": feature_id, "due_at": due_at}  # fmt: skip
         body: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
@@ -247,7 +253,8 @@ def build_server(api: NexusApi) -> MCPServer:
             body["project_id"] = project_of_feature(feature_id)
         if not body:
             raise ToolError("nothing to change")
-        return call(api.put, f"/tasks/{task_id}", body)
+        task = call(api.put, f"/tasks/{task_id}", body)
+        return {"id": task["id"], "status": task["status"], "updated_at": task.get("updated_at")}
 
     return server
 
