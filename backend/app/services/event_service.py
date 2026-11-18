@@ -384,10 +384,14 @@ def _slot_map(old: dict, new: dict, anchor, explicit: bool, instants) -> dict:
 
     misses = instants - result.keys()
     if misses and not explicit:
-        claimed = set(result.values())
-        pairs = rr.pair_in_period(
-            (old["rrule"], parse_instant(old["start_at"]), old_tz), (new["rrule"], new_start, tz), misses
-        )
+        old_rule = (old["rrule"], parse_instant(old["start_at"]), old_tz)
+        pairs = rr.pair_in_period(old_rule, (new["rrule"], new_start, tz), {x: moved[x] for x in misses})
+        # A pair may not take a slot some other occurrence (exception or not)
+        # shifts onto: that one is the slot's rightful owner.
+        margin = timedelta(days=400)  # > one period (a year)
+        neighbours = rr.occurrences_between(*old_rule, [min(misses) - margin, max(misses) + margin])
+        shifted = {rr.shift_wall(x, delta, old_tz, tz) for x in neighbours}
+        claimed = shifted & rr.occurrences_between(new["rrule"], new_start, tz, shifted)
         for x in sorted(misses):
             if x in pairs and pairs[x] not in claimed:
                 result[x] = pairs[x]
@@ -480,6 +484,16 @@ def _rule_key(body: str, master: dict) -> dict:
     for key, default in (("INTERVAL", "1"), ("WKST", "MO")):
         if parts.get(key) == default:
             del parts[key]
+    # Spell out what the start implies (FREQ=WEEKLY -> BYDAY=<its weekday>, ...).
+    local = parse_instant(master["start_at"]).astimezone(rr.get_zone(master["timezone"]))
+    if parts["FREQ"] == "WEEKLY":
+        parts.setdefault("BYDAY", rr.WEEKDAYS[local.weekday()])
+    elif parts["FREQ"] in ("MONTHLY", "YEARLY") and "BYDAY" not in parts:
+        parts.setdefault("BYMONTHDAY", str(local.day))
+        if parts["FREQ"] == "YEARLY":
+            parts.setdefault("BYMONTH", str(local.month))
+    if "BYDAY" in parts:
+        parts["BYDAY"] = parts["BYDAY"].replace("+", "")
     for key in ("BYDAY", "BYMONTHDAY", "BYMONTH"):
         if key in parts:
             parts[key] = ",".join(sorted(parts[key].split(",")))

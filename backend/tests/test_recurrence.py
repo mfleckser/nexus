@@ -268,6 +268,26 @@ class MoveTest(unittest.TestCase):
         delta = rr.wall_delta(utc(2026, 9, 30, 16), utc(2026, 9, 30, 16), LA, "America/Phoenix")
         self.assertEqual(rr.shift_wall(utc(2026, 11, 4, 17), delta, LA, "America/Phoenix"), utc(2026, 11, 4, 16))
 
+    def test_pair_in_period(self):
+        # 2nd Tuesday -> 2nd Wednesday: Apr 2026 starts on a Wednesday, so the
+        # +1 day shift (Apr 15, 3rd Wed) misses; the 2nd Wed is Apr 8.
+        old = ("FREQ=MONTHLY;BYDAY=2TU", utc(2026, 1, 13, 9), "UTC")
+        new = ("FREQ=MONTHLY;BYDAY=2WE", utc(2026, 1, 14, 9), "UTC")
+        apr14 = utc(2026, 4, 14, 9)
+        self.assertEqual(rr.pair_in_period(old, new, {apr14: utc(2026, 4, 15, 9)}), {apr14: utc(2026, 4, 8, 9)})
+        # The period is the one the shift moved into: May 1 -> Apr 30 has no 31st.
+        old = ("FREQ=MONTHLY", utc(2027, 1, 1, 9), "UTC")
+        new = ("FREQ=MONTHLY", utc(2026, 12, 31, 9), "UTC")
+        self.assertEqual(rr.pair_in_period(old, new, {utc(2027, 5, 1, 9): utc(2027, 4, 30, 9)}), {})
+        # Only monthly / yearly rules are paired.
+        weekly = ("FREQ=WEEKLY", utc(2026, 1, 13, 9), "UTC")
+        self.assertEqual(rr.pair_in_period(weekly, weekly, {apr14: apr14}), {})
+
+    def test_occurrences_between(self):
+        got = rr.occurrences_between("FREQ=DAILY", utc(2026, 1, 1, 9), "UTC", [utc(2026, 1, 3, 9), utc(2026, 1, 5, 9)])
+        self.assertEqual(got, {utc(2026, 1, d, 9) for d in (3, 4, 5)})
+        self.assertEqual(rr.occurrences_between("FREQ=DAILY", utc(2026, 1, 1, 9), "UTC", []), set())
+
     def test_shift_byday(self):
         wed, thu = utc(2026, 10, 7, 16), utc(2026, 10, 8, 16)
         self.assertEqual(rr.shift_rule_days("FREQ=WEEKLY;BYDAY=WE", wed, thu, LA), "FREQ=WEEKLY;BYDAY=TH")

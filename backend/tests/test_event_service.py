@@ -648,6 +648,37 @@ class EventServiceTest(AppTestCase):
         self.assertEqual(self.row(m["id"])["exdates"], [])  # June has no 31st either
         self.assertEqual([(o[0], o[3]) for o in self.overrides(m["id"])], [("2027-05-31T09:00:00+00:00", "May")])
 
+    def test_move_across_a_month_boundary_drops_exceptions_with_no_slot(self):
+        for rule in ("FREQ=MONTHLY", "FREQ=MONTHLY;BYMONTHDAY=1,15"):
+            with self.subTest(rule=rule):
+                m = self.create(start_at="2027-01-01T09:00:00Z", end_at="2027-01-01T10:00:00Z", rrule=rule)
+                self.delete_occ(m["id"], "2027-05-01T09:00:00Z", "this")
+                # The 1st -> the day before: May 1 becomes Apr 30, which the new
+                # rule (31st [and 14th]) lacks. It must not cancel May 31 / Apr 14.
+                self.put_occ(
+                    m["id"],
+                    "2027-01-01T09:00:00Z",
+                    {"scope": "all", "start_at": "2026-12-31T09:00:00Z", "end_at": "2026-12-31T10:00:00Z"},
+                )
+                self.assertEqual(self.row(m["id"])["exdates"], [])
+
+    def test_implied_rule_parts_are_not_a_new_rule(self):
+        m = self.create(
+            start_at="2026-09-30T16:00:00Z", end_at="2026-09-30T17:00:00Z", timezone=LA, rrule="FREQ=WEEKLY"
+        )
+        self.delete_occ(m["id"], "2026-10-14T16:00:00Z", "this")
+        self.put_occ(
+            m["id"],
+            "2026-09-30T16:00:00Z",
+            {
+                "scope": "all",
+                "rrule": "FREQ=WEEKLY;BYDAY=WE",
+                "start_at": "2026-10-01T16:00:00Z",
+                "end_at": "2026-10-01T17:00:00Z",
+            },
+        )
+        self.assertEqual(self.row(m["id"])["exdates"], ["2026-10-15T16:00:00+00:00"])
+
     def test_new_rule_only_valid_from_the_edited_start(self):
         m = self.weekly_wed()
         res = self.put_occ(

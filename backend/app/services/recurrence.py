@@ -342,35 +342,39 @@ def shift_until(body: str, delta: timedelta, tz_name: str, new_tz: str = None) -
     return format_rule(parts)
 
 
-def pair_in_period(old: tuple, new: tuple, instants) -> dict:
-    """Map occurrences of a monthly / yearly series to the occurrence at the
-    same position within the same local month / year of its re-aimed version
-    (2nd Tuesday of April -> 2nd Wednesday of April). `old` and `new` are
-    (rrule body, start, tz). Returns {old instant: new instant}; instants whose
-    period has no such new occurrence are left out, as are other FREQs."""
+def _period_bounds(dt: datetime, tz_name: str, freq: str):
+    """The local month (MONTHLY) or year (YEARLY) containing `dt`, as aware bounds."""
+    local = _local_naive(dt, tz_name)
+    first = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if freq == "YEARLY":
+        first = first.replace(month=1)
+        after = first.replace(year=first.year + 1)
+    else:
+        after = (first + timedelta(days=32)).replace(day=1)
+    zone = get_zone(tz_name)
+    return first.replace(tzinfo=zone), after.replace(tzinfo=zone)
+
+
+def _in_period(rule, bounds) -> list:
+    lo, hi = bounds
+    return [to_utc(o) for o in rule.between(lo, hi, inc=True) if o < hi]
+
+
+def pair_in_period(old: tuple, new: tuple, moves: dict) -> dict:
+    """For a monthly / yearly series re-aimed onto other days: map each old
+    occurrence x (keys of `moves`, valued with x's plain wall-clock shift) to
+    the new occurrence at x's position within its month / year, in the month /
+    year the shift took it to (2nd Tuesday of April -> 2nd Wednesday of April).
+    `old` and `new` are (rrule body, start, tz). Instants with no such new
+    occurrence, and other FREQs, are left out."""
     freq = parse_rule(new[0]).get("FREQ")
     if freq not in ("MONTHLY", "YEARLY"):
         return {}
     old_rule, new_rule = build_rule(*old), build_rule(*new)
-
-    def bounds(local: datetime, tz_name: str):
-        first = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        if freq == "YEARLY":
-            first = first.replace(month=1)
-            after = first.replace(year=first.year + 1)
-        else:
-            after = (first + timedelta(days=32)).replace(day=1)
-        zone = get_zone(tz_name)
-        return first.replace(tzinfo=zone), after.replace(tzinfo=zone)
-
     result = {}
-    for x in instants:
-        x = to_utc(x)
-        local = _local_naive(x, old[2])
-        o_lo, o_hi = bounds(local, old[2])
-        olds = [to_utc(o) for o in old_rule.between(o_lo, o_hi, inc=True) if o < o_hi]
-        n_lo, n_hi = bounds(local, new[2])
-        news = [to_utc(n) for n in new_rule.between(n_lo, n_hi, inc=True) if n < n_hi]
+    for x, moved in moves.items():
+        olds = _in_period(old_rule, _period_bounds(x, old[2], freq))
+        news = _in_period(new_rule, _period_bounds(moved, new[2], freq))
         if x in olds and olds.index(x) < len(news):
             result[x] = news[olds.index(x)]
     return result
