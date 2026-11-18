@@ -4,7 +4,7 @@ import { Task } from "@renderer/types";
 import "./taskCard.css";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import { useTasks } from "@renderer/features/tasks/useTasks";
-import useDismiss from "@renderer/hooks/useDismiss";
+import useDismiss, { isDismissableOpen } from "@renderer/hooks/useDismiss";
 import useReportError from "@renderer/hooks/useReportError";
 
 type TaskCardProps = {
@@ -13,11 +13,26 @@ type TaskCardProps = {
     onDragStart?: () => void;
     onDragEnd?: () => void;
     onEdit?: () => void;
+    // A plain click on the card (not a drag or the ⋯ menu).
+    onOpen?: () => void;
+    // Title only, no description preview (completed cards on the board).
+    compact?: boolean;
 };
 
-function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: TaskCardProps): React.JSX.Element {
+function TaskCard({
+    task,
+    dragging = false,
+    onDragStart,
+    onDragEnd,
+    onEdit,
+    onOpen,
+    compact = false,
+}: TaskCardProps): React.JSX.Element {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    // Whether a popover or menu (this card's ⋯ menu or any other) was open when the
+    // current click began: that click only dismisses it.
+    const dismissingRef = useRef(false);
 
     const { deleteTask } = useTasks();
     const reportError = useReportError();
@@ -36,6 +51,17 @@ function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: Ta
                 onDragStart?.();
             }}
             onDragEnd={() => onDragEnd?.()}
+            onMouseDown={() => {
+                dismissingRef.current = isDismissableOpen();
+            }}
+            onClick={(e) => {
+                const target = e.target as Element;
+                // Clicks inside portaled children (the delete confirm) bubble here
+                // through the React tree; only clicks on the card itself count.
+                if (!e.currentTarget.contains(target)) return;
+                if (dismissingRef.current || target.closest(".task-card-menu-container")) return;
+                onOpen?.();
+            }}
         >
             <div className="task-card-header">
                 <span className="task-card-title">{task.title}</span>
@@ -75,7 +101,7 @@ function TaskCard({ task, dragging = false, onDragStart, onDragEnd, onEdit }: Ta
                     )}
                 </div>
             </div>
-            {task.description && <p className="task-card-desc">{task.description}</p>}
+            {!compact && task.description && <p className="task-card-desc">{task.description}</p>}
             {showConfirmDelete && (
                 <ConfirmDelete
                     onClose={() => {

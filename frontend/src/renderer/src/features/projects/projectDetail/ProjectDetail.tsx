@@ -160,7 +160,7 @@ function ProjectDetail(): React.JSX.Element {
                 {project.description && <p className="pd-description">{project.description}</p>}
             </div>
             <div className="pd-body">
-                <KanbanBoard project={project} />
+                <KanbanBoard key={project.id} project={project} />
                 {showNotes && (
                     <NotesPanel
                         key={project.id}

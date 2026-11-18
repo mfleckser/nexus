@@ -53,6 +53,8 @@
 
 .task-form-datetime {
     flex: 1;
+    /* Let it shrink to its host instead of overflowing at its intrinsic width. */
+    min-width: 0;
     color-scheme: dark;
     cursor: pointer;
 }
