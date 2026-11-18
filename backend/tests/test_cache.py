@@ -53,6 +53,17 @@ class CacheTest(AppTestCase):
         self.assertEqual([e["title"] for e in self.get(path)], ["New"])
         self.assertEqual(self.queries_for(path), 0)  # and that one is cached
 
+    def test_invalidating_a_family_deletes_its_windows(self):
+        from app.extensions.cache import EVENTS, cache, family_key, invalidate
+
+        path = "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-02T00:00:00Z"
+        with self.app.app_context():
+            self.get(path)
+            key = family_key(EVENTS, "2026-10-01T00:00:00+00:00", "2026-10-02T00:00:00+00:00")
+            self.assertIsNotNone(cache.get(key))
+            invalidate(EVENTS)
+            self.assertIsNone(cache.get(key))
+
     def test_family_load_racing_an_invalidate_is_not_cached(self):
         from app.extensions.cache import EVENTS, cache, family_key, get_or_load, invalidate
 

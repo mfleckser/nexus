@@ -30,12 +30,15 @@ def project_features(project_id: str) -> str:
 # invalidate must not put its (pre-write) rows back into the cache once the
 # write has cleared it.
 _generations: dict[str, int] = {}
+# Keys stored per family, so invalidate(family) can delete them (dead
+# entries would otherwise count toward SimpleCache's threshold until the TTL).
+_members: dict[str, set[str]] = {}
 
 
 def family_key(family: str, *args) -> str:
     """Key of one member of a family of reads. It embeds the family's current
-    generation, so invalidate(family) leaves every older member unreachable
-    (they expire with the TTL) without having to know their keys."""
+    generation, so after invalidate(family) no read can reach an older member,
+    even one a read that overlapped the write stores late."""
     return f"{family}@{_generations.get(family, 0)}:" + ":".join(map(str, args))
 
 
@@ -48,6 +51,8 @@ def get_or_load(key: str, loader, family: str = None):
         value = loader()
         if _generations.get(family or key, 0) == generation:
             cache.set(key, value)
+            if family:
+                _members.setdefault(family, set()).add(key)
     return value
 
 
@@ -57,3 +62,5 @@ def invalidate(*keys: str):
     for key in keys:
         _generations[key] = _generations.get(key, 0) + 1
         cache.delete(key)
+        for member in _members.pop(key, ()):
+            cache.delete(member)
