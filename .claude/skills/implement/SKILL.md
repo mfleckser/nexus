@@ -58,7 +58,9 @@ Arguments: `$ARGUMENTS`
 | **L** | Cross-stack, schema + API + UI, or a risky change to shared behavior (all-day events, transactional recurring edits, time-blocking) | Written plan in the branch folder: API/data contract, files, steps, test plan | You conduct; subagents build separable units | `code-review` at `high` per unit plus a final full pass, with a fix loop |
 
 If the task is too big for one pass, build the first slice that works on its own,
-and report the rest under **Remaining** with status `partial`.
+and report the rest under **Remaining** with status `partial`. If a wrap-up message
+arrives mid-run, stop at a clean point, commit and push working code, leave the
+worktree clean, and return `partial` with a precise **Remaining** list.
 
 ## 2. Resolve open product questions (once, before any code)
 
