@@ -469,20 +469,26 @@ def _slot_map(old: dict, new: dict, anchor, explicit: bool, instants) -> dict:
     an occurrence of the new rule. When the rule was only re-aimed, a miss
     (2nd Tuesday -> 2nd Wednesday in a month starting on a Wednesday) takes the
     new occurrence at the same position in the same month / year, if no shift
-    claimed it; else it is dropped (e.g. Apr 30 when the 30th becomes the 31st)."""
+    claimed it; else it is dropped (e.g. Apr 30 when the 30th becomes the 31st).
+    A re-aimed monthly rule with several ordinals pairs by token instead
+    (rr.pair_by_token)."""
     old_tz, tz = old["timezone"], new["timezone"]
     new_start = parse_instant(new["start_at"])
     delta = rr.wall_delta(anchor[0], anchor[1], old_tz, tz)
 
     instants = {rr.to_utc(x) for x in instants}
+    old_rule = (old["rrule"], parse_instant(old["start_at"]), old_tz)
+    if not explicit and rr.ordinal_weekdays(old["rrule"]) and rr.ordinal_weekdays(new["rrule"]):
+        # Several ordinals (2TU,4TU -> 2WE,4WE) are kept as written: the shift
+        # can land on another token (2nd Tue + 1 day = 3rd Wed), so pair by token.
+        return rr.pair_by_token(old_rule, (new["rrule"], new_start, tz), instants, anchor[0])
     moved = {x: rr.shift_wall(x, delta, old_tz, tz) for x in instants}
     occurring = rr.occurrences_between(new["rrule"], new_start, tz, moved.values())
     result = {x: m for x, m in moved.items() if m in occurring}
 
     misses = instants - result.keys()
     if misses and not explicit:
-        old_rule = (old["rrule"], parse_instant(old["start_at"]), old_tz)
-        pairs = rr.pair_in_period(old_rule, (new["rrule"], new_start, tz), {x: moved[x] for x in misses})
+        pairs = rr.pair_in_period(old_rule, (new["rrule"], new_start, tz), {x: moved[x] for x in misses}, anchor[0])
         if not pairs:
             return result
         # A pair may not take a slot some other occurrence (exception or not)

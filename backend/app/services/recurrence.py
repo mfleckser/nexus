@@ -385,24 +385,82 @@ def _in_period(rule, bounds) -> list:
     return [to_utc(o) for o in rule.between(lo, hi, inc=True) if o < hi]
 
 
-def pair_in_period(old: tuple, new: tuple, moves: dict) -> dict:
+def pair_in_period(old: tuple, new: tuple, moves: dict, since: datetime = None) -> dict:
     """For a monthly / yearly series re-aimed onto other days: map each old
     occurrence x (keys of `moves`, valued with x's plain wall-clock shift) to
     the new occurrence at x's position within its month / year, in the month /
     year the shift took it to (2nd Tuesday of April -> 2nd Wednesday of April).
-    `old` and `new` are (rrule body, start, tz). Instants with no such new
-    occurrence, and other FREQs, are left out."""
+    `old` and `new` are (rrule body, start, tz); positions count only the old
+    occurrences from `since` on (the part the new series takes over, after a
+    split). Instants with no such new occurrence, and other FREQs, are left out."""
     freq = parse_rule(new[0]).get("FREQ")
     if freq not in ("MONTHLY", "YEARLY"):
         return {}
     old_rule, new_rule = build_rule(*old), build_rule(*new)
     result = {}
     for x, moved in moves.items():
-        olds = _in_period(old_rule, _period_bounds(x, old[2], freq))
+        olds = [o for o in _in_period(old_rule, _period_bounds(x, old[2], freq)) if not since or o >= since]
         news = _in_period(new_rule, _period_bounds(moved, new[2], freq))
         if x in olds and olds.index(x) < len(news):
             result[x] = news[olds.index(x)]
     return result
+
+
+def ordinal_weekdays(body: str):
+    """[(ordinal, weekday index)] of a monthly rule whose BYDAY lists several
+    ordinal weekdays (2TU,4TU), else None. shift_rule_days keeps such ordinals
+    as written, so its exceptions pair by token (pair_by_token)."""
+    parts = parse_rule(body)
+    tokens = [BYDAY_TOKEN.match(t) for t in parts.get("BYDAY", "").split(",")]
+    if parts.get("FREQ") != "MONTHLY" or len(tokens) < 2 or not all(t and t.group(1) for t in tokens):
+        return None
+    return [(int(t.group(1)), WEEKDAYS.index(t.group(2))) for t in tokens]
+
+
+def pair_by_token(old: tuple, new: tuple, instants, since: datetime) -> dict:
+    """Map old occurrences of a monthly rule with several ordinal weekdays to
+    the re-aimed rule's (same tokens, in the same order: 2TU,4TU -> 2WE,4WE):
+    each goes to the new occurrence of its token in its own local month (the
+    2nd Tuesday of April -> the 2nd Wednesday of April). The old occurrences
+    from `since` on claim those slots in date order, so none takes a slot
+    another already has. `old` / `new` are (rrule body, start, tz); instants
+    with no free counterpart (e.g. before a split-off series starts) are left out."""
+    old_tokens, new_tokens = ordinal_weekdays(old[0]), ordinal_weekdays(new[0])
+    old_rule, new_rule = build_rule(*old), build_rule(*new)
+    instants = {to_utc(x) for x in instants}
+    result = {}
+    for year, month in {(d.year, d.month) for d in (_local_naive(x, old[2]) for x in instants)}:
+        news = {_local_naive(o, new[2]).date(): o for o in _in_period(new_rule, _month_bounds(year, month, new[2]))}
+        taken = set()
+        for o in _in_period(old_rule, _month_bounds(year, month, old[2])):
+            if o < since:
+                continue
+            day = _local_naive(o, old[2]).date()
+            for (n, wd), (new_n, new_wd) in zip(old_tokens, new_tokens, strict=True):
+                if day != _nth_weekday(year, month, n, wd):
+                    continue
+                slot = news.get(_nth_weekday(year, month, new_n, new_wd))
+                if slot and slot not in taken:
+                    taken.add(slot)
+                    if o in instants:
+                        result[o] = slot
+                    break
+    return result
+
+
+def _month_bounds(year: int, month: int, tz_name: str):
+    first = datetime(year, month, 1, tzinfo=get_zone(tz_name))
+    return _period_bounds(first, tz_name, "MONTHLY")
+
+
+def _nth_weekday(year: int, month: int, n: int, weekday: int):
+    """The n-th (n < 0: from the end) `weekday` (0 = Monday) of a month, or None."""
+    days = calendar.monthrange(year, month)[1]
+    if n > 0:
+        day = 1 + (weekday - calendar.weekday(year, month, 1)) % 7 + 7 * (n - 1)
+    else:
+        day = days - (calendar.weekday(year, month, days) - weekday) % 7 - 7 * (-n - 1)
+    return datetime(year, month, day).date() if 1 <= day <= days else None
 
 
 def _shift_values(value: str, old_anchor: int, new_anchor: int, delta: int, size: int) -> str:

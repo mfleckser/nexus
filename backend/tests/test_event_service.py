@@ -854,6 +854,70 @@ class EventServiceTest(AppTestCase):
         )
         self.assertEqual(self.starts(start="2026-04-01T00:00:00Z", end="2026-05-01T00:00:00Z"), [])
 
+    def test_single_ordinal_move_keeps_exceptions_on_their_position(self):
+        # 2nd Tuesday -> 2nd Wednesday (ordinal recomputed): the shift still
+        # wins where it lands on the rule, the position in the month elsewhere.
+        m = self.create(start_at="2026-01-13T09:00:00Z", end_at="2026-01-13T10:00:00Z", rrule="FREQ=MONTHLY;BYDAY=2TU")
+        self.put_occ(m["id"], "2026-04-14T09:00:00Z", {"scope": "this", "title": "April"})
+        self.delete_occ(m["id"], "2026-05-12T09:00:00Z", "this")
+        self.put_occ(
+            m["id"],
+            "2026-01-13T09:00:00Z",
+            {"scope": "all", "start_at": "2026-01-14T09:00:00Z", "end_at": "2026-01-14T10:00:00Z"},
+        )
+        master = self.row(m["id"])
+        self.assertEqual(
+            (master["rrule"], master["exdates"]), ("FREQ=MONTHLY;BYDAY=2WE", ["2026-05-13T09:00:00+00:00"])
+        )
+        self.assertEqual([(o[0], o[3]) for o in self.overrides(m["id"])], [("2026-04-08T09:00:00+00:00", "April")])
+
+    def test_several_ordinals_pair_exceptions_by_token(self):
+        # 2nd + 3rd Tuesday -> 2nd + 3rd Wednesday. April 2026 starts on a
+        # Wednesday: Tue 14 + 1 day is the 3rd Wednesday, not the 2nd (Apr 8).
+        m = self.create(
+            start_at="2026-01-13T09:00:00Z", end_at="2026-01-13T10:00:00Z", rrule="FREQ=MONTHLY;BYDAY=2TU,3TU"
+        )
+        self.delete_occ(m["id"], "2026-04-14T09:00:00Z", "this")
+        self.put_occ(m["id"], "2026-04-21T09:00:00Z", {"scope": "this", "title": "3rd of April"})
+        self.delete_occ(m["id"], "2026-05-19T09:00:00Z", "this")
+        self.put_occ(
+            m["id"],
+            "2026-01-13T09:00:00Z",
+            {"scope": "all", "start_at": "2026-01-14T09:00:00Z", "end_at": "2026-01-14T10:00:00Z"},
+        )
+        master = self.row(m["id"])
+        self.assertEqual(
+            (master["rrule"], master["exdates"]),
+            ("FREQ=MONTHLY;BYDAY=2WE,3WE", ["2026-04-08T09:00:00+00:00", "2026-05-20T09:00:00+00:00"]),
+        )
+        self.assertEqual(
+            [o[:2] + o[3:] for o in self.overrides(m["id"])],
+            [("2026-04-15T09:00:00+00:00", "2026-04-15T09:00:00+00:00", "3rd of April")],
+        )
+        self.assertEqual(
+            [e["title"] for e in self.events(start="2026-04-01T00:00:00Z", end="2026-05-01T00:00:00Z")],
+            ["3rd of April"],
+        )
+
+    def test_following_split_mid_month_keeps_cancelled_ordinal(self):
+        # 2nd + 4th Tuesday; Apr 28 (4th) cancelled; Apr 14 (2nd) moved to Wed
+        # Apr 15 for "following": the new 2WE,4WE series starts mid-April, so its
+        # April has only the 4th Wednesday (Apr 22), which stays cancelled.
+        m = self.create(
+            start_at="2026-01-13T09:00:00Z", end_at="2026-01-13T10:00:00Z", rrule="FREQ=MONTHLY;BYDAY=2TU,4TU"
+        )
+        self.delete_occ(m["id"], "2026-04-28T09:00:00Z", "this")
+        new = self.put_occ(
+            m["id"],
+            "2026-04-14T09:00:00Z",
+            {"scope": "following", "start_at": "2026-04-15T09:00:00Z", "end_at": "2026-04-15T10:00:00Z"},
+        )
+        self.assertEqual((new["rrule"], new["exdates"]), ("FREQ=MONTHLY;BYDAY=2WE,4WE", ["2026-04-22T09:00:00+00:00"]))
+        self.assertEqual(
+            self.starts(start="2026-04-01T00:00:00Z", end="2026-06-01T00:00:00Z"),
+            ["2026-05-13T09:00:00+00:00", "2026-05-27T09:00:00+00:00"],
+        )
+
     def test_month_end_move_keeps_exceptions_in_their_month(self):
         m = self.create(
             start_at="2027-01-31T09:00:00Z", end_at="2027-01-31T10:00:00Z", rrule="FREQ=MONTHLY;BYMONTHDAY=31"

@@ -291,6 +291,53 @@ class MoveTest(unittest.TestCase):
         weekly = ("FREQ=WEEKLY", utc(2026, 1, 13, 9), "UTC")
         self.assertEqual(rr.pair_in_period(weekly, weekly, {apr14: apr14}), {})
 
+    def test_pair_in_period_counts_from_since(self):
+        # The 1st + 15th -> the 2nd + 16th, split at Apr 15: the new series'
+        # April is just Apr 16, the old one's from the split just Apr 15.
+        old = ("FREQ=MONTHLY;BYMONTHDAY=1,15", utc(2027, 1, 1, 9), "UTC")
+        new = ("FREQ=MONTHLY;BYMONTHDAY=2,16", utc(2027, 4, 16, 9), "UTC")
+        moves = {utc(2027, 4, 15, 9): utc(2027, 4, 17, 9)}  # a shift that misses
+        self.assertEqual(rr.pair_in_period(old, new, moves), {})
+        self.assertEqual(
+            rr.pair_in_period(old, new, moves, utc(2027, 4, 15)), {utc(2027, 4, 15, 9): utc(2027, 4, 16, 9)}
+        )
+
+    def test_ordinal_weekdays(self):
+        self.assertEqual(rr.ordinal_weekdays("FREQ=MONTHLY;BYDAY=2TU,-1FR"), [(2, 1), (-1, 4)])
+        for body in (
+            "FREQ=MONTHLY;BYDAY=2TU",
+            "FREQ=MONTHLY;BYDAY=2TU,WE",
+            "FREQ=YEARLY;BYDAY=2TU,3TU",
+            "FREQ=MONTHLY",
+        ):
+            with self.subTest(body=body):
+                self.assertIsNone(rr.ordinal_weekdays(body))
+
+    def test_pair_by_token(self):
+        # 2TU,3TU -> 2WE,3WE in April 2026 (starts on a Wednesday).
+        old = ("FREQ=MONTHLY;BYDAY=2TU,3TU", utc(2026, 1, 13, 9), "UTC")
+        new = ("FREQ=MONTHLY;BYDAY=2WE,3WE", utc(2026, 1, 14, 9), "UTC")
+        apr14, apr21 = utc(2026, 4, 14, 9), utc(2026, 4, 21, 9)
+        self.assertEqual(
+            rr.pair_by_token(old, new, [apr14, apr21], old[1]), {apr14: utc(2026, 4, 8, 9), apr21: utc(2026, 4, 15, 9)}
+        )
+        # Not an occurrence of the old rule: no counterpart.
+        self.assertEqual(rr.pair_by_token(old, new, [utc(2026, 4, 7, 9)], old[1]), {})
+        # 4th + last Tuesday -> 4th + last Wednesday: Mar 2026 has five Tuesdays
+        # but four Wednesdays, so both tokens name Mar 25; the earlier one has it.
+        old = ("FREQ=MONTHLY;BYDAY=4TU,-1TU", utc(2026, 1, 27, 9), "UTC")
+        new = ("FREQ=MONTHLY;BYDAY=4WE,-1WE", utc(2026, 1, 28, 9), "UTC")
+        mar24, mar31 = utc(2026, 3, 24, 9), utc(2026, 3, 31, 9)
+        self.assertEqual(rr.pair_by_token(old, new, [mar31], old[1]), {})
+        self.assertEqual(rr.pair_by_token(old, new, [mar24, mar31], old[1]), {mar24: utc(2026, 3, 25, 9)})
+
+    def test_pair_by_token_after_a_split(self):
+        # 2TU,4TU split at Apr 14 -> 2WE,4WE from Apr 15 (first: Apr 22).
+        old = ("FREQ=MONTHLY;BYDAY=2TU,4TU", utc(2026, 1, 13, 9), "UTC")
+        new = ("FREQ=MONTHLY;BYDAY=2WE,4WE", utc(2026, 4, 15, 9), "UTC")
+        apr14, apr28 = utc(2026, 4, 14, 9), utc(2026, 4, 28, 9)
+        self.assertEqual(rr.pair_by_token(old, new, [apr14, apr28], apr14), {apr28: utc(2026, 4, 22, 9)})
+
     def test_occurrences_between(self):
         got = rr.occurrences_between("FREQ=DAILY", utc(2026, 1, 1, 9), "UTC", [utc(2026, 1, 3, 9), utc(2026, 1, 5, 9)])
         self.assertEqual(got, {utc(2026, 1, d, 9) for d in (3, 4, 5)})
