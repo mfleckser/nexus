@@ -309,8 +309,9 @@ def shift_rule_days(body: str, old_anchor: datetime, new_anchor: datetime, tz_na
     BYDAY weekdays shift by the day delta, BYMONTHDAY / BYMONTH values move
     with the new local day / month (see _shift_values). A single ordinal BYDAY
     (e.g. 2TU, -1FR) gets its ordinal recomputed from the new date; with
-    several, ordinals are kept as-is. Days are local: `old_anchor` in
-    `tz_name`, `new_anchor` in `new_tz` (default: the same zone)."""
+    several, ordinals are kept as-is. An every-n-weeks rule's week start moves
+    too (see _shift_week_start). Days are local: `old_anchor` in `tz_name`,
+    `new_anchor` in `new_tz` (default: the same zone)."""
     old_date = _local_naive(old_anchor, tz_name).date()
     new_date = _local_naive(new_anchor, new_tz or tz_name).date()
     days = (new_date - old_date).days
@@ -330,12 +331,29 @@ def shift_rule_days(body: str, old_anchor: datetime, new_anchor: datetime, tz_na
                 ordinal = str(_nth_weekday_ordinal(new_date, negative=int(ordinal) < 0))
             shifted.append(f"{ordinal or ''}{day}")
         parts["BYDAY"] = ",".join(shifted)
+        if parts.get("FREQ") == "WEEKLY" and int(parts.get("INTERVAL", "1")) > 1:
+            _shift_week_start(parts, days)
     if "BYMONTHDAY" in parts:
         parts["BYMONTHDAY"] = _shift_values(parts["BYMONTHDAY"], old_date.day, new_date.day, days, 31)
     if "BYMONTH" in parts:
         months = (new_date.year - old_date.year) * 12 + new_date.month - old_date.month
         parts["BYMONTH"] = _shift_values(parts["BYMONTH"], old_date.month, new_date.month, months, 12)
     return format_rule(parts)
+
+
+def _shift_week_start(parts: dict, days: int):
+    """Every-n-weeks rules count weeks from WKST, so shifted weekdays can
+    straddle the week start (Mon+Wed -1 day = Sun+Tue: under WKST=MO the Sunday
+    joins the week before) and land in other alternate weeks. Shifting WKST by
+    the same days keeps each occurrence exactly `days` from its old one. It is
+    written only when the default (MO) would group the days differently."""
+    week_start = WEEKDAYS[(WEEKDAYS.index(parts.get("WKST", "MO")) + days) % 7]
+    split = WEEKDAYS.index(week_start)  # days before it move to the previous MO-week
+    sides = {WEEKDAYS.index(BYDAY_TOKEN.match(t).group(2)) < split for t in parts["BYDAY"].split(",")}
+    if len(sides) > 1:
+        parts["WKST"] = week_start
+    else:
+        parts.pop("WKST", None)
 
 
 def shift_until(body: str, delta: timedelta, tz_name: str, new_tz: str = None) -> str:

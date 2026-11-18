@@ -70,6 +70,42 @@ class EventServiceTest(AppTestCase):
             self.starts()[:3], ["2026-10-01T16:00:00+00:00", "2026-10-08T16:00:00+00:00", "2026-10-15T16:00:00+00:00"]
         )
 
+    def test_every_other_week_move_keeps_its_weeks(self):
+        # Every other Mon + Wed 9:00 PDT from Mon Oct 5; Wed Oct 21 cancelled.
+        m = self.create(
+            start_at="2026-10-05T16:00:00Z",
+            end_at="2026-10-05T17:00:00Z",
+            timezone=LA,
+            rrule="FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE",
+        )
+        self.delete_occ(m["id"], "2026-10-21T16:00:00Z", "this")
+        # Mon -> the Sunday before: every occurrence a day earlier, same weeks.
+        self.put_occ(
+            m["id"],
+            "2026-10-05T16:00:00Z",
+            {"scope": "all", "start_at": "2026-10-04T16:00:00Z", "end_at": "2026-10-04T17:00:00Z"},
+        )
+        master = self.row(m["id"])
+        self.assertEqual(
+            (master["rrule"], master["exdates"]),
+            ("FREQ=WEEKLY;INTERVAL=2;BYDAY=SU,TU;WKST=SU", ["2026-10-20T16:00:00+00:00"]),
+        )
+        self.assertEqual(
+            [s[5:10] for s in self.starts(start="2026-10-01T00:00:00Z", end="2026-11-08T00:00:00Z")],
+            ["10-04", "10-06", "10-18", "11-01", "11-03"],
+        )
+        # ... and back, from Sun Nov 1 on: Mondays + Wednesdays of the same weeks.
+        new = self.put_occ(
+            m["id"],
+            "2026-11-01T17:00:00Z",
+            {"scope": "following", "start_at": "2026-11-02T17:00:00Z", "end_at": "2026-11-02T18:00:00Z"},
+        )
+        self.assertEqual(new["rrule"], "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE")
+        self.assertEqual(
+            [s[5:10] for s in self.starts(start="2026-10-25T00:00:00Z", end="2026-11-30T00:00:00Z")],
+            ["11-02", "11-04", "11-16", "11-18"],
+        )
+
     def test_following_move_to_other_day_keeps_moved_instance(self):
         m = self.weekly_wed()
         new = self.put_occ(

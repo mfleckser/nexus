@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 from datetime import UTC, datetime, timedelta
+from itertools import islice
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -303,6 +304,35 @@ class MoveTest(unittest.TestCase):
         self.assertEqual(
             rr.shift_rule_days("FREQ=WEEKLY;BYDAY=WE", wed, wed + timedelta(hours=3), LA), "FREQ=WEEKLY;BYDAY=WE"
         )
+
+    def test_shift_every_n_weeks_moves_each_occurrence_by_the_day_delta(self):
+        # Mon 2026-10-05 9:00 PDT is the first occurrence of each rule below.
+        start = utc(2026, 10, 5, 16)
+        rules = (
+            "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE",
+            "FREQ=WEEKLY;INTERVAL=3;BYDAY=MO,TH,SA",
+            "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO",
+            "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,SU;WKST=SU",
+        )
+        for body in rules:
+            old = [rr.to_utc(o) for o in islice(rr.build_rule(body, start, LA), 40)]
+            for days in (-1, 1, -3, 4, 6, 9, -8):
+                with self.subTest(body=body, days=days):
+                    moved = rr.shift_wall(start, timedelta(days=days), LA)
+                    new_body = rr.shift_rule_days(body, start, moved, LA)
+                    new = [rr.to_utc(o) for o in islice(rr.build_rule(new_body, moved, LA), 40)]
+                    self.assertEqual(new, [rr.shift_wall(o, timedelta(days=days), LA) for o in old])
+
+    def test_shift_every_n_weeks_writes_wkst_only_when_needed(self):
+        mon, sun, tue = utc(2026, 10, 5, 16), utc(2026, 10, 4, 16), utc(2026, 10, 6, 16)
+        biweekly = "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE"
+        # Sunday + Tuesday straddle Monday: the week has to start on Sunday.
+        self.assertEqual(rr.shift_rule_days(biweekly, mon, sun, LA), "FREQ=WEEKLY;INTERVAL=2;BYDAY=SU,TU;WKST=SU")
+        # ... and back (Sun -> Mon) needs no WKST any more.
+        self.assertEqual(rr.shift_rule_days("FREQ=WEEKLY;INTERVAL=2;BYDAY=SU,TU;WKST=SU", sun, mon, LA), biweekly)
+        # Tuesday + Thursday group the same under the default.
+        self.assertEqual(rr.shift_rule_days(biweekly, mon, tue, LA), "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH")
+        self.assertEqual(rr.shift_rule_days("FREQ=WEEKLY;BYDAY=MO,WE", mon, sun, LA), "FREQ=WEEKLY;BYDAY=SU,TU")
 
     def test_shift_uses_local_day(self):
         # 16:00Z Wed -> 06:00Z Thu is still Wed 23:00 in LA: no day change.

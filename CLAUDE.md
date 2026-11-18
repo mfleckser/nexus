@@ -79,7 +79,8 @@
     still occurs that day, else they're unlinked, as for a cancelled occurrence.
   - Moving a series (time, duration, timezone, rule) carries its exdates and overrides
     along by the same wall-clock shift; when a re-aimed monthly/yearly rule misses
-    (2nd Tue → 2nd Wed), the same position in the same month/year. Ones the new
+    (2nd Tue → 2nd Wed), the same position in the same month/year. Every-n-weeks
+    rules move WKST with the days (written only when MO would regroup them). Ones the new
     series no longer has are dropped. A "following" split makes two independent
     series; "all" edits only touch one. All-day overrides move by whole days.
   - Switching a series' kind (all-day ↔ timed) drops its overrides; each exdate keeps
