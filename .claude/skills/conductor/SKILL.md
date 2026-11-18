@@ -43,6 +43,11 @@ line, or Mark's answer to it. Leave those so the history stays with the task.
 
 - In progress: `Conductor: branch <branch>`. Once the PR exists, add ` · PR <url>`.
   Once you've handled review comments, add ` · comments through <ISO time>`.
+  If work is left after a `partial` result or a cut-short run, end the line with
+  ` · remaining: <text>`, always last:
+  `Conductor: branch <branch> · PR <url> · remaining: <text>`. `<text>` is the
+  `/implement` summary's **Remaining** list on one line, with any `·` replaced by
+  `;`. Drop the suffix once the remainder is `done`.
 - Blocked: `Blocked (conductor, <YYYY-MM-DD>): <question or reason>. Options: … Recommended: …`
 - Ordering that really matters: `Needs first: <task title>`. Add one only when doing
   the tasks out of order would break something. `add-task` writes this line in the
@@ -132,7 +137,9 @@ is then part of the task text.
        only when every commit on them came from `/implement`. If anything else is on
        the branch, or the rebase conflicts, abort and block the branch's tasks with
        the reason.
-     - The original task stays `active`, waiting on Mark.
+     - The original task stays `active`, waiting on Mark, unless its marker has
+       `remaining:`. Then it's workable: it joins the work set as a review-fix
+       group on its PR's branch.
 
    An `active` work-set task with a branch but no PR was interrupted. It's workable
    again, on that branch.
@@ -154,11 +161,14 @@ is then part of the task text.
      small enough that one PR description explains it all. Each group gets one
      branch, a short kebab-case name for what it does.
    - **Order:** real dependencies first, then whatever moves the request forward
-     most, then oldest first.
+     most. Among groups with no ordering constraint (no stacking or `Needs first:`
+     between them), smaller or cheaper first, so more PRs land before a usage
+     cutoff. Then oldest first.
    - **Stacking:** a group that depends on another group's unmerged branch is
      stacked on it.
-   - **Review fixes:** tasks filed from PR comments form a group on their PR's
-     existing branch. These groups go first, so the PRs can be merged sooner.
+   - **Review fixes:** tasks filed from PR comments, and tasks with a `remaining:`
+     marker, form a group on their PR's existing branch. These groups go first, so
+     the PRs can be merged sooner.
    - **Waiting:** a task that depends on a blocked task stays `todo`.
 6. **Map the files.** Spawn one `general-purpose` agent (`sonnet`, `medium`) for the
    whole workable set. Give it each task's title and description and have it read
@@ -202,6 +212,20 @@ run, and pass all of it in `decisions:` to every spawn, so lanes don't contradic
 each other. If a result shows two lanes went different ways on the same question,
 pick one and file a task to make the other match.
 
+**Rate and usage limits.**
+- **Resume, never respawn.** If an `/implement` or other spawned agent fails on a
+  rate or usage limit, wait for the limit to reset (a long sleep or `Monitor`),
+  then continue that same agent with `SendMessage`; its transcript is saved. A
+  fresh spawn throws away its work. Tell it that any subagents of its own were
+  killed too, so it must re-run whatever was in flight.
+- **Wrap up near the limit**, judging from the limit warnings you see (there's no
+  fixed threshold), or when Mark asks. `SendMessage` each running `/implement`
+  agent: stop at a clean point, commit and push working code, leave the worktree
+  clean, and return `partial` with a precise **Remaining** list. Start no new tasks
+  or groups. Handle those `partial` results as below, but skip the once-more spawn
+  (that's new work): write the `remaining:` suffix right away.
+- If you're cut off yourself, the markers let the next run resume.
+
 Within a lane, groups run in order in the lane's slot. For each group:
 
 1. **Branch.** Inside the lane's slot, do one of:
@@ -224,7 +248,7 @@ Within a lane, groups run in order in the lane's slot. For each group:
    a process you didn't start. Invoke the `implement` skill with these arguments:
 
    <task title>
-   <task description, verbatim, minus the Conductor: line>
+   <task description, verbatim, minus the Conductor: line>  ← or, with a `remaining:` marker, see below
    (Nexus feature: <feature name>)  ← only if it has one
    branch=<branch> base=<parent branch> port=<slot port> unattended decisions: <the run's answers so far, or omit>
 
@@ -232,7 +256,9 @@ Within a lane, groups run in order in the lane's slot. For each group:
    ```
 
    Pass `base=` only when the branch is stacked (for review fixes, the PR's base if
-   it isn't `main`). `/implement` reviews the diff against it.
+   it isn't `main`). `/implement` reviews the diff against it. For a task with a
+   `remaining:` marker, the description is the remaining text, then the original
+   description under `Context (partly built on this branch already):`.
 
    Ignore everything but the summary block. For a `done` or `partial` result,
    confirm the reported commit is on `origin/<branch>` (`git fetch` and
@@ -240,15 +266,18 @@ Within a lane, groups run in order in the lane's slot. For each group:
    Also check its **PR section** file exists (`test -f`), without reading it; if it
    doesn't, note that this task's section gets written from the summary block.
    Handle each result:
-   - **`done`**: keep it for the PR description.
+   - **`done`**: keep it for the PR description. If its marker has `remaining:`,
+     drop the suffix.
    - **`needs-decision`**: answer each question yourself. Use its recommendation
      unless the request, `CLAUDE.md` or the pursuit doc point another way. Spawn
      again with the answers in `decisions:`. If a question falls under the blocking
      rules in Triage, block the task instead.
    - **`partial`**: spawn once more on the same branch, with the same task title
      and the **Remaining** text as the description, so it updates the same PR
-     section file. If it's still partial, file the rest (see Filing tasks) and treat
-     this task as done.
+     section file. If it's still partial, write its **Remaining** as the marker's
+     `remaining:` suffix (see State markers) and file no task for it. After a
+     wrap-up, see Rate and usage limits instead. Either way the task stays `active`
+     and counts as done for the PR step.
    - **`blocked`**: set the task to `blocked` with the reason. Keep going with the
      rest of the group, unless they depend on it.
 
@@ -273,8 +302,11 @@ Within a lane, groups run in order in the lane's slot. For each group:
 4. **PR.** Once the group has at least one `done` task, write the description to
    `<scratchpad>/<branch>/pr-body.md`, assembled from the tasks' PR section files
    (see PR description).
-   - If the branch already has an open PR (review fixes), don't edit its
-     description. Reply to the comments instead (see Replying to review comments).
+   - If the branch already has an open PR (review fixes, a resumed remainder),
+     don't rewrite its description. Reply to the comments instead (see Replying to
+     review comments). Edit it (below) only to keep remainders current: add a new
+     `remaining:` text under Follow-ups, or once a remainder is `done`, drop it
+     there and update that task's section from its PR section file.
    - Otherwise, open the PR:
    `gh pr create --base <main or parent branch> --head <branch> --title "<what the group does>" --body-file <file>`.
    - If it's stacked, link it: `gh stack link <parent PR> <this PR> --open`. If
@@ -283,8 +315,9 @@ Within a lane, groups run in order in the lane's slot. For each group:
      (`gh pr view <n> --json body -q .body > <scratchpad>/<branch>/pr-body.md`),
      edit that, then `gh pr edit <n> --body-file <that file>`. Never reuse a body
      file saved earlier.
-   - Add the PR URL to every done task's marker. The tasks stay `active`; Triage
-     step 3 closes them once Mark merges.
+   - Add the PR URL to every done task's marker, before any `remaining:`. The
+     tasks stay `active`; Triage step 3 closes them once Mark merges, or resumes a
+     `remaining:` one.
    - Never use `gh pr merge` or `gh stack merge`.
 
 ### Filing tasks
@@ -343,7 +376,7 @@ You write only the intro, Check it, Before merging and Follow-ups:
 <migrations (flag any that change existing data), Pi deploy, env changes — or "Nothing">
 
 ## Follow-ups
-<tasks filed, review findings left open — or omit>
+<tasks filed, review findings left open, remaining work from `remaining:` markers — or omit>
 ```
 
 End it with the PR attribution line from your current instructions.
@@ -366,5 +399,7 @@ Filed: <new tasks from review comments and follow-ups — or "none">
 Manual steps: <Pi deploy, migrations to know about — or "none">
 ```
 
-If the run stopped early (usage limit, an error you couldn't route around), say
-where each lane stopped. The markers already let the next run resume.
+If the run stopped early (a usage limit or wrap-up, an error you couldn't route
+around), say where each lane stopped and what each wrapped-up task has left. After
+a wrap-up, stop once every running agent has returned and its PR step is done. The
+markers already let the next run resume.
