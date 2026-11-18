@@ -12,10 +12,13 @@ import useReportError, { errorMessage } from "@renderer/hooks/useReportError";
 import useDismiss from "@renderer/hooks/useDismiss";
 
 // What else a project delete does: features cascade, tasks (any status) get
-// project_id set null and land in the main task list.
-function deleteDetails(featureCount: number, taskCount: number): string {
+// project_id set null and land in the main task list. featureCount is
+// undefined while the project's features haven't loaded (fetch in flight or
+// failed), so the cascade is still mentioned without a number.
+function deleteDetails(featureCount: number | undefined, taskCount: number): string {
     const parts: string[] = [];
-    if (featureCount > 0)
+    if (featureCount === undefined) parts.push("Any features it has will be deleted too.");
+    else if (featureCount > 0)
         parts.push(`Its ${featureCount} ${featureCount === 1 ? "feature" : "features"} will be deleted too.`);
     if (taskCount > 0)
         parts.push(`Its ${taskCount} ${taskCount === 1 ? "task" : "tasks"} will move to your main task list.`);
@@ -174,7 +177,7 @@ function ProjectDetail(): React.JSX.Element {
                                     }}
                                     itemName="project"
                                     details={deleteDetails(
-                                        featuresByProjectId[project.id]?.length ?? 0,
+                                        featuresByProjectId[project.id]?.length,
                                         tasks.filter((t) => t.project_id === project.id).length,
                                     )}
                                 />
