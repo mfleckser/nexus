@@ -1,6 +1,7 @@
 """Service/API tests for recurring events against an in-memory fake Supabase."""
 
 import unittest
+from datetime import UTC, datetime
 from unittest import mock
 
 from app_case import AppTestCase
@@ -275,9 +276,12 @@ class EventServiceTest(AppTestCase):
         self.assertEqual(ops[-2], {"op": "relink_tasks", "from": m["id"], "to": new["id"]})
 
     def test_following_split_that_keeps_the_master_leaves_task_links(self):
+        # Before the series starts, so the earlier half holds the next occurrence
+        # (test_task_links covers the task following the later half).
         m = self.weekly_wed()
         tid = self.client.post("/api/tasks", json={"title": "T", "event_id": m["id"]}).get_json()["id"]
-        _, ops = self.split_ops(m)
+        with mock.patch.object(es, "_now", return_value=datetime(2026, 9, 1, tzinfo=UTC)):
+            _, ops = self.split_ops(m)
         self.assertNotIn("relink_tasks", [op["op"] for op in ops])
         self.assertEqual(self.task_links({"t": tid}), {"t": m["id"]})
 

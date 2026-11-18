@@ -158,10 +158,11 @@ def first_occurrence(body: str, start: datetime, tz_name: str):
     return None
 
 
-def has_visible_occurrence(body: str, start: datetime, tz_name: str, excluded) -> bool:
-    """Whether any occurrence survives `excluded` (exdates)."""
+def has_visible_occurrence(body: str, start: datetime, tz_name: str, excluded, after: datetime = None) -> bool:
+    """Whether any occurrence (at or after `after`, if given) survives `excluded` (exdates)."""
     excluded = {to_utc(x) for x in excluded}
-    for i, occ in enumerate(build_rule(body, start, tz_name)):
+    rule = build_rule(body, start, tz_name)
+    for i, occ in enumerate(rule.xafter(after, inc=True) if after else rule):
         if to_utc(occ) not in excluded:
             return True
         if i >= MAX_SCAN:

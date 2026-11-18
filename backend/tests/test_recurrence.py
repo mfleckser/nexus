@@ -357,6 +357,14 @@ class MoveTest(unittest.TestCase):
         self.assertFalse(rr.has_visible_occurrence("FREQ=DAILY;COUNT=2", start, "UTC", both))
         self.assertTrue(rr.has_visible_occurrence("FREQ=DAILY;COUNT=3", start, "UTC", both))
         self.assertTrue(rr.has_visible_occurrence("FREQ=DAILY", start, "UTC", both))
+        # Only occurrences starting at or after `after` count.
+        third = start + timedelta(days=2)
+        self.assertTrue(rr.has_visible_occurrence("FREQ=DAILY;COUNT=3", start, "UTC", both, after=third))
+        later = start + timedelta(minutes=1)
+        self.assertFalse(
+            rr.has_visible_occurrence("FREQ=DAILY;COUNT=3", start, "UTC", [], after=third + timedelta(minutes=1))
+        )
+        self.assertFalse(rr.has_visible_occurrence("FREQ=DAILY;COUNT=3", start, "UTC", [both[1], third], after=later))
 
     def test_recurrence_end_scan_is_capped(self):
         start = utc(2026, 10, 1, 12)
