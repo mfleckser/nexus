@@ -9,6 +9,8 @@ export type TaskUpdate = Partial<{
     status: TaskStatus;
     project_id: string | null;
     feature_id: string | null;
+    // The task's time block on the calendar.
+    event_id: string | null;
 }>;
 
 function parseTask(t: Wire<Task>): Task {

@@ -34,12 +34,13 @@
 
   ## MVP Scope — Calendar + Tasks
 
-  - Event CRUD: recurring, all-day, multi-day — done: CRUD + recurring; open: all-day
-    and multi-day creation (`all_day` column exists, unused)
-  - Day / week / month views — done: day, week; open: month (no events)
+  - Event CRUD: recurring, all-day, multi-day — done
+  - Day / week / month views — done
   - Task CRUD w/ due dates, optional time-block on calendar — done: CRUD, due dates,
-    due-task pins on the week view; open: time-blocking
-  - Tasks ↔ events linkable — open (`tasks.event_id` column exists, not in API)
+    due-task pins on the week view, time-blocking ("Block time" on a task creates a
+    linked event)
+  - Tasks ↔ events linkable — done: `tasks.event_id` (one block per task; deleting
+    the event clears it), linked tasks shown on event chips and the event popover
   - Search across both — open
   - No GCal sync. No notifications (defer to mobile phase).
 
@@ -48,6 +49,17 @@
   - Initial project-type templates beyond `coding`
   - Habit trigger model flexibility
   - Plugin/integration API shape
+
+  ## All-day Events
+
+  - `all_day=true` rows span whole local days of their `timezone`: `start_at` = midnight
+    of the first day, `end_at` = midnight after the last (exclusive). The backend 400s
+    any write that leaves an all-day row off midnight (`_check_all_day`).
+  - Frontend maps them to the viewer's days by their dates in the event's timezone
+    (`lib/allDay.ts`: `daySpan`, `layoutDayBars`) and anchors edited dates back in that
+    same zone (`zonedMidnight`); new events use the browser zone. Timed multi-day events
+    stay in the time grid of day/week view; month view draws all-day and multi-day events
+    as bars per week row (`lib/monthLayout.ts`, slots + "+N more" overflow).
 
   ## Recurring Events
 
@@ -63,7 +75,9 @@
     along by the same wall-clock shift; when a re-aimed monthly/yearly rule misses
     (2nd Tue → 2nd Wed), the same position in the same month/year. Ones the new
     series no longer has are dropped. A "following" split makes two independent
-    series; "all" edits only touch one.
+    series; "all" edits only touch one. All-day overrides move by whole days.
+  - Switching a series' kind (all-day ↔ timed) drops its overrides and doesn't shift
+    exdates (only ones still on an occurrence stay). All-day checks run before the RPC.
   - Event writes are serialized by a per-process lock (`_write_lock`), one more
     reason to keep gunicorn at one worker.
 
@@ -98,7 +112,9 @@
   - Agent tools: stdio MCP server `tools/nexus-mcp/server.py` (registered in `.mcp.json`)
     exposes projects / features / tasks to Claude Code as a normal API client (same
     backend + token as `frontend/.env`). No delete tools; feature notes are the agents'
-    decision/result log (`append_feature_notes`). New endpoints agents need get a tool there.
+    decision/result log (`append_feature_notes`). `append_feature_notes` and `update_task`
+    return short acks (read back with `get_feature` / `get_task`) to save agent tokens.
+    New endpoints agents need get a tool there.
   - Agent workflow (`.claude/skills/`): the backlog is the app's "Nexus" project.
     `/add-task` writes a task spec (settles product questions with Mark), `/conductor`
     triages tasks and runs `/implement` per task unattended, then opens one PR per

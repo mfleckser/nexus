@@ -23,6 +23,7 @@ class FakeApi:
 
     def __init__(self):
         self.ids = (f"id-{n}" for n in itertools.count(1))
+        self.clock = (f"2026-11-18T12:00:{n:02d}+00:00" for n in itertools.count())
         self.projects = {"p1": {"id": "p1", "title": "Nexus", "status": "active"}}
         self.notes = {"p1": "project notes"}
         self.features: dict[str, dict] = {}
@@ -56,7 +57,10 @@ class FakeApi:
             case ("PUT", ["features", fid]):
                 if fid not in self.features:
                     self._missing(f"feature {fid}")
-                self.features[fid].update(body)
+                now = next(self.clock)
+                self.features[fid].update(body, updated_at=now)
+                if "notes" in body:
+                    self.features[fid]["notes_updated_at"] = now
                 return dict(self.features[fid])
             case ("GET", ["tasks"]):
                 q = {k: v for k, v in (query or {}).items() if v is not None}
@@ -76,7 +80,7 @@ class FakeApi:
                     self._missing(f"task {tid}")
                 if body.get("status") == "done":
                     raise NexusError("Nexus API 400: status must be one of todo, active, blocked, complete, cancelled")
-                self.tasks[tid].update(body)
+                self.tasks[tid].update(body, updated_at=next(self.clock))
                 return dict(self.tasks[tid])
         raise AssertionError(f"unexpected {method} {path}")
 
@@ -113,9 +117,12 @@ class ToolsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([x["name"] for x in await self.call("list_features", project_id="p1")], ["Agent tools"])
 
         first = await self.call("append_feature_notes", feature_id=f["id"], text="\n## Decisions\n- MCP server\n")
-        self.assertEqual(first["notes"], "## Decisions\n- MCP server")
+        self.assertEqual(first, {"id": f["id"], "notes_updated_at": "2026-11-18T12:00:00+00:00"})
+        self.assertEqual((await self.call("get_feature", feature_id=f["id"]))["notes"], "## Decisions\n- MCP server")
         second = await self.call("append_feature_notes", feature_id=f["id"], text="Result: shipped")
-        self.assertEqual(second["notes"], "## Decisions\n- MCP server\n\nResult: shipped")
+        self.assertEqual(second, {"id": f["id"], "notes_updated_at": "2026-11-18T12:00:01+00:00"})
+        got = await self.call("get_feature", feature_id=f["id"])
+        self.assertEqual(got["notes"], "## Decisions\n- MCP server\n\nResult: shipped")
         with self.assertRaisesRegex(ToolError, "text is empty"):
             await self.call("append_feature_notes", feature_id=f["id"], text="  \n")
 
@@ -157,9 +164,13 @@ class ToolsTest(unittest.IsolatedAsyncioTestCase):
         f = await self.call("create_feature", project_id="p1", name="F")
         t = await self.call("create_task", title="T", due_at="2026-12-01T17:00:00Z", description="d")
         moved = await self.call("update_task", task_id=t["id"], feature_id=f["id"], status="active")
-        self.assertEqual((moved["feature_id"], moved["project_id"], moved["status"]), (f["id"], "p1", "active"))
+        self.assertEqual(moved, {"id": t["id"], "status": "active", "updated_at": "2026-11-18T12:00:00+00:00"})
+        got = await self.call("get_task", task_id=t["id"])
+        self.assertEqual((got["feature_id"], got["project_id"], got["title"]), (f["id"], "p1", "T"))
         cleared = await self.call("update_task", task_id=t["id"], clear=["due_at", "description"])
-        self.assertEqual((cleared["due_at"], cleared["description"]), (None, None))
+        self.assertEqual(set(cleared), {"id", "status", "updated_at"})
+        got = await self.call("get_task", task_id=t["id"])
+        self.assertEqual((got["due_at"], got["description"]), (None, None))
         with self.assertRaisesRegex(ToolError, "both set and cleared"):
             await self.call("update_task", task_id=t["id"], due_at="2026-12-02T00:00:00Z", clear=["due_at"])
         with self.assertRaisesRegex(ToolError, "nothing to change"):

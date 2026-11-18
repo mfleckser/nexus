@@ -1,6 +1,6 @@
 import threading
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from functools import wraps
 
 from supabase import PostgrestAPIError
@@ -121,6 +121,20 @@ def _check_order(start: datetime, end: datetime):
         raise ValidationError("end_at must be after start_at")
 
 
+# Fields whose change can break an all-day row's midnight alignment.
+ALL_DAY_INPUTS = ("start_at", "end_at", "timezone", "all_day")
+
+
+def _check_all_day(all_day, start: datetime, end: datetime, tz: str):
+    """An all-day event spans whole local days of its timezone: it starts at
+    midnight of its first day and ends (exclusive) at midnight after its last."""
+    if not all_day:
+        return
+    zone = rr.get_zone(tz)
+    if not (start.astimezone(zone).time() == time(0) == end.astimezone(zone).time()):
+        raise ValidationError("an all-day event must start and end at midnight in its timezone")
+
+
 def _series_fields(body: str, start: datetime, end: datetime, tz: str) -> dict:
     """Master columns for a series. start/end snap to the rule's first
     occurrence so the master always sits on its first occurrence."""
@@ -167,7 +181,9 @@ def invalidates_events(fn):
 def create_event(data: dict):
     v.require(data, "title", "start_at", "end_at")
     _validate(data)
-    _check_order(parse_instant(data["start_at"]), parse_instant(data["end_at"]))
+    start, end = parse_instant(data["start_at"]), parse_instant(data["end_at"])
+    _check_order(start, end)
+    _check_all_day(data.get("all_day"), start, end, data.get("timezone") or "UTC")
 
     # timezone is omitted (-> column default UTC) when the client didn't send one.
     row = v.pick(data, EVENT_FIELDS)
@@ -196,7 +212,7 @@ def update_event(event_id: str, data: dict):
 
     # rrule / time changes need the current row to validate and to (re)compute
     # series columns.
-    if any(f in data for f in ("rrule", "start_at", "end_at", "timezone")):
+    if any(f in data for f in ("rrule", *ALL_DAY_INPUTS)):
         row = _get_event(event_id)
         if row["rrule"]:
             # A master's times are its first occurrence's: same as an "all" edit there.
@@ -204,6 +220,7 @@ def update_event(event_id: str, data: dict):
         start = parse_instant(updates.get("start_at") or row["start_at"])
         end = parse_instant(updates.get("end_at") or row["end_at"])
         _check_order(start, end)
+        _check_all_day(updates.get("all_day", row["all_day"]), start, end, updates.get("timezone") or row["timezone"])
 
         body = (data.get("rrule") or None) if "rrule" in data else row["rrule"]
         if body and row["recurring_event_id"]:
@@ -343,23 +360,37 @@ def _carry_exceptions(
         # A moved override keeps its offset from its slot; one with the series'
         # length takes the new length, a custom length stays.
         ov_start, ov_end = parse_instant(ov["start_at"]), parse_instant(ov["end_at"])
-        moved_start = rr.shift_wall(ov_start, rr.wall_delta(slot, new_slot, old_tz, tz), old_tz, tz)
-        length = rr.wall_delta(ov_start, ov_end, old_tz)
-        moved_end = rr.shift_wall(moved_start, new_duration if length == old_duration else length, tz)
+        ov_tz = tz if ov["timezone"] == old_tz else ov["timezone"]
+        if ov["all_day"]:
+            # Stays on whole days of its own zone: moves by the days its slot
+            # moved (a timed series' shift within a day leaves it in place).
+            moved_start = rr.shift_wall(ov_start, rr.day_delta(slot, new_slot, old_tz, tz), ov["timezone"], ov_tz)
+            length = rr.wall_delta(ov_start, ov_end, ov["timezone"])
+            same_length = old["all_day"] and length == old_duration
+            end_tz = ov_tz
+        else:
+            moved_start = rr.shift_wall(ov_start, rr.wall_delta(slot, new_slot, old_tz, tz), old_tz, tz)
+            length = rr.wall_delta(ov_start, ov_end, old_tz)
+            same_length, end_tz = length == old_duration, tz
+        moved_end = rr.shift_wall(moved_start, new_duration if same_length else length, end_tz)
 
         fields = {
             "recurring_event_id": new_id,
             "original_start_at": _iso(new_slot),
             "start_at": _iso(moved_start),
             "end_at": _iso(moved_end),
+            "timezone": ov_tz,
             **details,
         }
-        if ov["timezone"] == old_tz:
-            fields["timezone"] = tz
         if clicked and ov["id"] == clicked[0]:
             fields.update(clicked[1])
         changed = {k: val for k, val in fields.items() if not _same(k, val, ov[k])}
         if changed:
+            # e.g. the clicked occurrence made all-day without moving it to midnights.
+            row = {**ov, **changed}
+            _check_all_day(
+                row["all_day"], parse_instant(row["start_at"]), parse_instant(row["end_at"]), row["timezone"]
+            )
             ops.append(_update_op(ov["id"], changed))
     return [_iso(x) for x in new_exdates], ops
 
@@ -412,14 +443,19 @@ def _exdates(master: dict) -> list:
 def _clicked(override, data: dict, times):
     """The clicked (overridden) occurrence lands exactly at the edited times and
     gets every detail field sent, even ones equal to the series value that
-    _changed_details leaves out."""
+    _changed_details leaves out. That includes all_day: an override switching
+    kind (all-day vs timed) onto the series' times leaves the series as is."""
     if not override:
         return None
     return override["id"], {**v.pick(data, DETAIL_FIELDS), "start_at": _iso(times[0]), "end_at": _iso(times[1])}
 
 
 def _changed_details(master: dict, data: dict) -> dict:
-    return {f: data[f] for f in DETAIL_FIELDS if f in data and data[f] != master[f]}
+    def differs(f):
+        # all_day NULL (older rows) and false are the same.
+        return bool(data[f]) != bool(master[f]) if f == "all_day" else data[f] != master[f]
+
+    return {f: data[f] for f in DETAIL_FIELDS if f in data and differs(f)}
 
 
 def _current_times(master: dict, original_start: datetime, override):
@@ -440,6 +476,12 @@ def _instance_edit(master: dict, original_start: datetime, override, data: dict)
     whose absolute length differs by a DST offset doesn't skew the series."""
     cur_start, cur_end = _current_times(master, original_start, override)
     new_start, new_end = _edited_times(cur_start, cur_end, data)
+    moved = data.get("start_at") or data.get("end_at")
+    if moved and override and _changes_kind(master, override, data):
+        # An instance that is, or becomes, the other kind (all-day vs timed)
+        # shares nothing with the series' shape: measure from where the series
+        # puts this occurrence, so the series lands on the new times.
+        cur_start, cur_end = _current_times(master, original_start, None)
 
     tz = master["timezone"]
     duration = _wall_duration(master) + rr.wall_delta(new_start, new_end, tz) - rr.wall_delta(cur_start, cur_end, tz)
@@ -455,6 +497,13 @@ def _edited_times(cur_start: datetime, cur_end: datetime, data: dict):
     new_end = parse_instant(data["end_at"]) if data.get("end_at") else cur_end
     _check_order(new_start, new_end)
     return new_start, new_end
+
+
+def _changes_kind(master: dict, override: dict, data: dict) -> bool:
+    """Whether the override is, or the edit makes it, all-day where the series
+    is timed or vice versa (all_day NULL counts as timed)."""
+    series = bool(master["all_day"])
+    return bool(override["all_day"]) != series or bool(data.get("all_day", override["all_day"])) != series
 
 
 def _wall_duration(master: dict) -> timedelta:
@@ -520,7 +569,12 @@ def update_occurrence(master_id: str, original_start: datetime, data: dict):
 def _update_this(master, original_start, override, data):
     updates = v.pick(data, EVENT_FIELDS)  # rrule ignored for "this"
     cur_start, cur_end = _current_times(master, original_start, override)
-    _edited_times(cur_start, cur_end, updates)
+    new_start, new_end = _edited_times(cur_start, cur_end, updates)
+    if any(f in data for f in ALL_DAY_INPUTS):
+        cur = override or master
+        _check_all_day(
+            updates.get("all_day", cur["all_day"]), new_start, new_end, updates.get("timezone") or cur["timezone"]
+        )
 
     if not updates:
         row = override or _instance(master, cur_start, cur_end)
@@ -547,6 +601,7 @@ def _update_all(master, original_start, override, data):
     old_start = parse_instant(master["start_at"])
     series_start = rr.shift_wall(old_start, shift, old_tz)
     series_end = rr.shift_wall(series_start, duration, old_tz)
+    _check_all_day(data.get("all_day", master["all_day"]), series_start, series_end, tz)
 
     body, explicit = _requested_rule(master, data)
     if body and not explicit:
@@ -554,7 +609,10 @@ def _update_all(master, original_start, override, data):
 
     details = _changed_details(master, data)
     updates = {**details, "timezone": tz}
-    if body:
+    if body and "all_day" in details:
+        updates.update(_series_fields(body, series_start, series_end, tz))
+        updates["exdates"], ops = _switch_kind(updates, _exdates(master), _delete_overrides_op(master["id"]))
+    elif body:
         updates.update(_series_fields(body, series_start, series_end, tz))
         updates["exdates"], ops = _carry_exceptions(
             master,
@@ -577,6 +635,17 @@ def _update_all(master, original_start, override, data):
     return _apply([*ops, _update_op(master["id"], updates)], master["id"])
 
 
+def _switch_kind(new: dict, exdates: list, drop_overrides: dict):
+    """A series switching kind (all-day vs timed): its overrides' times fit the
+    old kind only, so they are dropped rather than carried; exdates aren't
+    shifted either, only those still on an occurrence of the new series stay
+    (all of them when its instants didn't change).
+    Returns (exdates for the new series, ops)."""
+    occurring = rr.occurrences_between(new["rrule"], parse_instant(new["start_at"]), new["timezone"], exdates)
+    kept = sorted({rr.to_utc(x) for x in exdates} & occurring)
+    return [_iso(x) for x in kept], [drop_overrides]
+
+
 def _moved_rule(body: str, anchor, old_tz: str, tz: str) -> str:
     """The series' own rule, re-aimed for a move of one slot from anchor[0] to
     anchor[1]: weekdays / month days follow it, and UNTIL moves with it."""
@@ -593,6 +662,7 @@ def _update_following(master, split_at, override, data):
     old_start = parse_instant(master["start_at"])
     new_start = rr.shift_wall(split_at, shift, old_tz)
     new_end = rr.shift_wall(new_start, duration, old_tz)
+    _check_all_day(data.get("all_day", master["all_day"]), new_start, new_end, tz)
 
     truncated, remaining = rr.truncate(master["rrule"], old_start, old_tz, split_at)
 
@@ -606,7 +676,10 @@ def _update_following(master, split_at, override, data):
 
     new_row = {f: master[f] for f in DETAIL_FIELDS}
     new_row.update(details, id=str(uuid.uuid4()), timezone=tz)
-    if body:
+    if body and "all_day" in details:
+        new_row.update(_series_fields(body, new_start, new_end, tz))
+        new_row["exdates"], moved = _switch_kind(new_row, exdates_after, _delete_overrides_op(master["id"], split_at))
+    elif body:
         new_row.update(_series_fields(body, new_start, new_end, tz))
         new_row["exdates"], moved = _carry_exceptions(
             master,
@@ -626,9 +699,15 @@ def _update_following(master, split_at, override, data):
     # re-parent before the old master may be deleted (which cascades).
     ops = [{"op": "insert", "row": new_row}, *moved]
 
+    blocked_tasks = []
     if truncated is None or not rr.has_visible_occurrence(truncated, old_start, old_tz, exdates_before):
         # Everything before the split was cancelled: nothing of the old series is left.
         ops.append({"op": "delete", "id": master["id"]})
+        # Its time-blocked tasks follow the series to the new master instead of
+        # staying unlinked by the FK; relinked after the RPC, once that master exists.
+        blocked_tasks = [
+            t["id"] for t in supabase.table("tasks").select("id").eq("event_id", master["id"]).execute().data
+        ]
     else:
         old_end = rr.recurrence_end(truncated, old_start, parse_instant(master["end_at"]), old_tz)
         ops.append(
@@ -642,7 +721,12 @@ def _update_following(master, split_at, override, data):
             )
         )
 
-    return _apply(ops, new_row["id"])
+    row = _apply(ops, new_row["id"])
+    if blocked_tasks:
+        # Only those the FK unlinked: one relinked meanwhile keeps its new event.
+        tasks = supabase.table("tasks").update({"event_id": row["id"]})
+        tasks.in_("id", blocked_tasks).is_("event_id", "null").execute()
+    return row
 
 
 @invalidates_events

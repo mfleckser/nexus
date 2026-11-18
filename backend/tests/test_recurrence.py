@@ -257,6 +257,13 @@ class MoveTest(unittest.TestCase):
         # A one-day move measured across the DST change is one wall-clock day, not 25h.
         self.assertEqual(rr.wall_delta(utc(2026, 10, 31, 16), utc(2026, 11, 1, 17), LA), timedelta(days=1))
 
+    def test_day_delta_ignores_time_of_day(self):
+        # 9:00 -> 14:00 the same day is no day; 23:00 -> 01:00 the next one is.
+        self.assertEqual(rr.day_delta(utc(2026, 10, 30, 16), utc(2026, 10, 30, 21), LA), timedelta(0))
+        self.assertEqual(rr.day_delta(utc(2026, 10, 31, 6), utc(2026, 10, 31, 8), LA), timedelta(days=1))
+        # Read in each instant's own zone: 16:00Z is Sep 30 in LA, Oct 1 in Tokyo.
+        self.assertEqual(rr.day_delta(utc(2026, 9, 30, 16), utc(2026, 9, 30, 16), LA, "Asia/Tokyo"), timedelta(days=1))
+
     def test_shift_into_another_timezone(self):
         # A series at 9:00 Los Angeles re-homed to New York at the same instant
         # (12:00 New York): every instant keeps its local slot, +3h wall clock.

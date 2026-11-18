@@ -14,6 +14,7 @@ export type TaskChanges = Partial<{
     status: TaskStatus;
     project_id: string | null;
     feature_id: string | null;
+    event_id: string | null;
 }>;
 
 type TasksContextValue = {
@@ -28,6 +29,8 @@ type TasksContextValue = {
     // Optimistic; rolls back and rethrows on failure.
     updateTask: (id: string, changes: TaskChanges) => Promise<void>;
     deleteTask: (id: string) => Promise<void>;
+    // Refetch now, e.g. after an event delete cleared tasks' event_id server-side.
+    refreshTasks: () => Promise<void>;
 };
 
 const TasksContext = createContext<TasksContextValue | null>(null);
@@ -131,7 +134,10 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         [resync],
     );
 
-    const value = useMemo(() => ({ tasks, addTask, updateTask, deleteTask }), [tasks, addTask, updateTask, deleteTask]);
+    const value = useMemo(
+        () => ({ tasks, addTask, updateTask, deleteTask, refreshTasks: refresh }),
+        [tasks, addTask, updateTask, deleteTask, refresh],
+    );
 
     return <TasksContext.Provider value={value}>{children}</TasksContext.Provider>;
 }

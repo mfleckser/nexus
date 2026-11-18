@@ -288,6 +288,12 @@ def wall_delta(before: datetime, after: datetime, tz_name: str, after_tz: str = 
     return _local_naive(after, after_tz or tz_name) - _local_naive(before, tz_name)
 
 
+def day_delta(before: datetime, after: datetime, tz_name: str, after_tz: str = None) -> timedelta:
+    """How many local days an instance moved (see wall_delta), ignoring the
+    time of day: what moves an all-day row along with a timed slot."""
+    return timedelta(days=(_local_naive(after, after_tz or tz_name).date() - _local_naive(before, tz_name).date()).days)
+
+
 def shift_wall(dt: datetime, delta: timedelta, tz_name: str, to_tz: str = None) -> datetime:
     """Move `dt` by a wall-clock delta (DST-safe); returns UTC. With `to_tz`,
     `dt`'s wall clock is read in `tz_name` and the result's is set in `to_tz`,

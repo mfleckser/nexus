@@ -2,31 +2,28 @@ import "./taskPin.css";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Task } from "@renderer/types";
 import { useTasks } from "@renderer/features/tasks/useTasks";
-import TaskPopover from "@renderer/features/calendar/TaskPopover";
+import useTaskItem from "@renderer/features/calendar/useTaskItem";
 import { formatTime, MINUTES_PER_DAY, shiftDays } from "@renderer/lib/time";
 import useReportError from "@renderer/hooks/useReportError";
-import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
+import { DayMarker } from "@renderer/lib/eventLayout";
 import {
     DRAG_THRESHOLD,
-    POPOVER_GAP,
     PX_PER_MIN,
     TASK_PIN_HEIGHT,
+    TASK_PIN_INSET,
     TASK_SNAP_MINUTES,
 } from "@renderer/features/calendar/constants";
 
 type TaskPinProps = {
-    // Due date is non-null for anything rendered on the calendar.
-    task: Task & { due_at: Date };
-    // Pixel top within the day grid. Usually the due time, pushed down when
-    // an earlier pin on the same day would overlap it.
-    top: number;
-    // Column of the due day among the visible days.
-    dayIdx: number;
+    // The task (due date non-null for anything on the calendar), its due day
+    // and its place within that day.
+    pin: DayMarker<Task & { due_at: Date }>;
     // Day columns in the grid: 7 in week view, 1 in day view.
     dayCount: number;
 };
 
-function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Element {
+function TaskPin({ pin, dayCount }: TaskPinProps): React.JSX.Element {
+    const { item: task, dayIndex: dayIdx } = pin;
     const { updateTask } = useTasks();
     const reportError = useReportError();
     const pinRef = useRef<HTMLDivElement>(null);
@@ -36,20 +33,13 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
     // Set when a real drag ends, so the click that follows the mouseup
     // doesn't also open the popover.
     const suppressClickRef = useRef(false);
-    const [dragPos, setDragPos] = useState<{ left: number; top: number } | null>(null);
-    // Popover anchor, captured from the pin's rect when it opens; null = closed.
-    const [popoverAnchor, setPopoverAnchor] = useState<PopoverAnchor | null>(null);
+    // Kept at the width it had when grabbed, so it can't widen past the grid.
+    const [dragPos, setDragPos] = useState<{ left: number; top: number; width: number } | null>(null);
+    const { done, toggleComplete, featureName, popoverOpen, togglePopover, popover } = useTaskItem(task, pinRef);
 
     const due = task.due_at;
-    const done = task.status === "complete";
     const cancelled = task.status === "cancelled";
     const blocked = task.status === "blocked";
-
-    function toggleComplete(): void {
-        updateTask(task.id, { status: done ? "todo" : "complete" }).catch((err) =>
-            reportError("Couldn't update task", err),
-        );
-    }
 
     function onMouseDown(e: React.MouseEvent): void {
         if (e.button !== 0) return;
@@ -68,6 +58,7 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
         setDragPos({
             left: pinRect.left - (parentRect?.left ?? 0),
             top: pinRect.top - (parentRect?.top ?? 0),
+            width: pinRect.width,
         });
     }
 
@@ -76,10 +67,14 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
     const onDragMove = useEffectEvent((e: MouseEvent) => {
         const parentRect = parentRectRef.current;
         if (!parentRect) return;
-        setDragPos({
-            left: e.clientX - parentRect.left - grabOffsetRef.current.x,
-            top: e.clientY - parentRect.top - grabOffsetRef.current.y,
-        });
+        setDragPos(
+            (prev) =>
+                prev && {
+                    ...prev,
+                    left: e.clientX - parentRect.left - grabOffsetRef.current.x,
+                    top: e.clientY - parentRect.top - grabOffsetRef.current.y,
+                },
+        );
     });
 
     const onDragEnd = useEffectEvent((e: MouseEvent) => {
@@ -114,19 +109,15 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
         };
     }, [dragging]);
 
+    // Inset within its slot of the day column.
     const style: React.CSSProperties = dragPos
-        ? { left: dragPos.left, top: dragPos.top, height: TASK_PIN_HEIGHT }
-        : { left: `calc(${(dayIdx * 100) / dayCount}% + 3px)`, top, height: TASK_PIN_HEIGHT };
-
-    function togglePopover(): void {
-        if (popoverAnchor) {
-            setPopoverAnchor(null);
-            return;
-        }
-        const rect = pinRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        setPopoverAnchor({ x: rect.right + POPOVER_GAP, y: rect.top, flipX: rect.left - POPOVER_GAP });
-    }
+        ? { ...dragPos, height: TASK_PIN_HEIGHT }
+        : {
+              left: `calc(${((dayIdx + pin.left) * 100) / dayCount}% + ${TASK_PIN_INSET}px)`,
+              top: pin.startMin * PX_PER_MIN,
+              width: `calc(${(pin.width * 100) / dayCount}% - ${2 * TASK_PIN_INSET}px)`,
+              height: TASK_PIN_HEIGHT,
+          };
 
     return (
         <>
@@ -134,10 +125,10 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
                 ref={pinRef}
                 className={`task-pin${done ? " done" : ""}${cancelled ? " cancelled" : ""}${blocked ? " blocked" : ""}${dragging ? " dragging" : ""}`}
                 style={style}
-                title={task.title}
+                title={featureName ? `${task.title} · ${featureName}` : task.title}
                 role="button"
                 tabIndex={0}
-                aria-expanded={popoverAnchor !== null}
+                aria-expanded={popoverOpen}
                 onMouseDown={onMouseDown}
                 onClick={() => {
                     if (suppressClickRef.current) {
@@ -152,29 +143,26 @@ function TaskPin({ task, top, dayIdx, dayCount }: TaskPinProps): React.JSX.Eleme
                     togglePopover();
                 }}
             >
-                <button
-                    type="button"
-                    className="task-pin-check"
-                    aria-label={done ? "Mark incomplete" : "Mark complete"}
-                    aria-pressed={done}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        toggleComplete();
-                    }}
-                />
-                <span className="task-pin-title">{task.title}</span>
-                <span className="task-pin-time">{formatTime(due)}</span>
+                <div className="task-pin-body">
+                    <button
+                        type="button"
+                        className="task-pin-check"
+                        aria-label={done ? "Mark incomplete" : "Mark complete"}
+                        aria-pressed={done}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleComplete();
+                        }}
+                    />
+                    <span className="task-pin-title">
+                        {task.title}
+                        {featureName && <span className="task-pin-feature">{featureName}</span>}
+                    </span>
+                    <span className="task-pin-time">{formatTime(due)}</span>
+                </div>
             </div>
-            {popoverAnchor && (
-                <TaskPopover
-                    task={task}
-                    anchor={popoverAnchor}
-                    ignoreRef={pinRef}
-                    onToggleComplete={toggleComplete}
-                    onClose={() => setPopoverAnchor(null)}
-                />
-            )}
+            {popover}
         </>
     );
 }

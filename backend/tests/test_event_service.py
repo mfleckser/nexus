@@ -232,6 +232,18 @@ class EventServiceTest(AppTestCase):
         self.delete_occ(m["id"], "2026-10-07T16:00:00Z", "this")
         self.assertEqual(self.db.rows, [])
 
+    def test_following_split_that_drops_the_master_keeps_task_links(self):
+        m = self.weekly_wed()
+        self.delete_occ(m["id"], "2026-09-30T16:00:00Z", "this")
+        task = self.client.post("/api/tasks", json={"title": "T", "event_id": m["id"]}).get_json()
+        new = self.put_occ(
+            m["id"],
+            "2026-10-07T16:00:00Z",
+            {"scope": "following", "start_at": "2026-10-07T17:00:00Z", "end_at": "2026-10-07T18:00:00Z"},
+        )
+        self.assertIsNone(self.row(m["id"]))
+        self.assertEqual(self.client.get(f"/api/tasks/{task['id']}").get_json()["event_id"], new["id"])
+
     def test_delete_following_leaving_only_exdates_deletes_master(self):
         m = self.create(start_at="2026-09-30T16:00:00Z", end_at="2026-09-30T17:00:00Z", rrule="FREQ=WEEKLY;COUNT=3")
         self.delete_occ(m["id"], "2026-09-30T16:00:00Z", "this")

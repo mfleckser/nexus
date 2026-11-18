@@ -1,0 +1,230 @@
+#month-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-sans);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+}
+
+.month-header {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    border-bottom: 1px solid var(--border-default);
+    padding: 8px 0;
+}
+
+/* Scrolls once the window is too short for every week's min-height. */
+.month-grid {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.month-grid::-webkit-scrollbar {
+    display: none;
+}
+
+/* One week: the day cells, with the week's items on a layer over them.
+   --all-day-row, --month-date and --month-bottom-pad (constants in
+   MonthView.tsx) are set inline on .month-grid. */
+.month-week {
+    flex: 1 1 0;
+    min-height: 80px;
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.month-week:last-child {
+    border-bottom: none;
+}
+
+/* Top padding + date number + gap fit in --month-date. */
+.month-day-cell {
+    min-width: 0;
+    border-right: 1px solid var(--border-subtle);
+    padding: 3px 4px 0;
+    transition: background-color 0.1s;
+}
+
+.month-day-cell:last-child {
+    border-right: none;
+}
+
+.month-day-cell:hover {
+    background: var(--bg-hover);
+}
+
+.month-day-cell .date-num {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.month-day-cell .date-num:hover {
+    background: var(--bg-active);
+}
+
+.month-day-cell.out-of-month .date-num {
+    color: var(--text-muted);
+}
+
+.month-day-cell.today-cell .date-num {
+    background-color: var(--accent);
+    color: var(--text-on-accent);
+    font-weight: 600;
+}
+
+/* Bars, items and "+N more" in slots of --all-day-row, placed inline by
+   MonthView. Presses between them fall through to the cells. */
+.month-week-items {
+    position: absolute;
+    top: var(--month-date);
+    left: 0;
+    right: 0;
+    bottom: var(--month-bottom-pad);
+    pointer-events: none;
+}
+
+/* A single-day event or due task: one line in its day's column. */
+.month-item {
+    position: absolute;
+    box-sizing: border-box;
+    height: calc(var(--all-day-row) - 2px);
+    margin: 2px 2px 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px;
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    pointer-events: auto;
+    user-select: none;
+    /* Narrow-width rule below queries the item's own width. */
+    container-type: inline-size;
+    transition: background-color 0.1s;
+}
+
+.month-item:hover,
+.month-item[aria-expanded="true"] {
+    background: var(--bg-active);
+}
+
+.month-event-dot {
+    width: 7px;
+    height: 7px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--chip-background);
+}
+
+.month-item-time {
+    flex-shrink: 0;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.month-item-title {
+    min-width: 0;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.month-item-repeat {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+}
+
+/* Narrow cells: the time gives way to the title (it's in the tooltip). */
+@container (max-width: 90px) {
+    .month-item-time {
+        display: none;
+    }
+}
+
+.month-task-check {
+    width: 10px;
+    height: 10px;
+    flex-shrink: 0;
+    padding: 0;
+    border-radius: 50%;
+    border: 1.5px solid var(--pillar-task);
+    background: transparent;
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.month-task-check:hover {
+    background: color-mix(in srgb, var(--pillar-task) 35%, transparent);
+}
+
+.month-task-blocked .month-task-check {
+    border-color: var(--status-warning);
+}
+
+.month-task-complete .month-task-check {
+    background: var(--pillar-task);
+}
+
+.month-task-cancelled .month-task-check {
+    border-style: dashed;
+    border-color: var(--text-muted);
+}
+
+.month-task-complete .month-item-title,
+.month-task-cancelled .month-item-title {
+    color: var(--text-muted);
+    text-decoration: line-through;
+}
+
+.month-task-complete .month-item-time,
+.month-task-cancelled .month-item-time {
+    color: var(--text-muted);
+}
+
+.month-more {
+    position: absolute;
+    box-sizing: border-box;
+    height: calc(var(--all-day-row) - 2px);
+    margin: 2px 2px 0;
+    padding: 0 4px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    pointer-events: auto;
+    transition:
+        background-color 0.1s,
+        color 0.1s;
+}
+
+.month-more:hover {
+    background: var(--bg-active);
+    color: var(--text-primary);
+}

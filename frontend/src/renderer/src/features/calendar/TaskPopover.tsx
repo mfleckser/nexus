@@ -1,11 +1,14 @@
 import "./taskPopover.css";
 import { RefObject, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Task, TaskStatus } from "@renderer/types";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import { useProjects } from "@renderer/features/projects/useProjects";
+import { useEvents } from "@renderer/features/calendar/useEvents";
 import TaskForm from "@renderer/components/TaskForm";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import { formatDueDisplay, toDatetimeLocal } from "@renderer/lib/time";
+import { timeBlockSummary } from "@renderer/lib/timeBlocks";
 import useDismiss from "@renderer/hooks/useDismiss";
 import usePopoverPosition, { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 import useReportError from "@renderer/hooks/useReportError";
@@ -20,17 +23,30 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 
 type TaskPopoverProps = {
     task: Task;
+    // null when the task has no feature or it isn't loaded.
+    featureName: string | null;
     anchor: PopoverAnchor;
     // Presses inside this element don't count as outside clicks (the pin
     // toggles the popover itself).
     ignoreRef?: RefObject<HTMLElement | null>;
     onToggleComplete: () => void;
+    // Opens the block-time popover in this one's place.
+    onBlockTime: () => void;
     onClose: () => void;
 };
 
-function TaskPopover({ task, anchor, ignoreRef, onToggleComplete, onClose }: TaskPopoverProps): React.JSX.Element {
+function TaskPopover({
+    task,
+    featureName,
+    anchor,
+    ignoreRef,
+    onToggleComplete,
+    onBlockTime,
+    onClose,
+}: TaskPopoverProps): React.JSX.Element {
     const { updateTask, deleteTask } = useTasks();
     const { projects } = useProjects();
+    const { events } = useEvents();
     const rootRef = useRef<HTMLDivElement>(null);
     const [editing, setEditing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
@@ -39,6 +55,8 @@ function TaskPopover({ task, anchor, ignoreRef, onToggleComplete, onClose }: Tas
 
     const done = task.status === "complete";
     const project = task.project_id ? projects.find((p) => p.id === task.project_id) : undefined;
+    const timeBlock = timeBlockSummary(task, events);
+    const canBlockTime = !timeBlock && task.status !== "complete" && task.status !== "cancelled";
 
     useDismiss(rootRef, onClose, { ignoreRef });
 
@@ -81,7 +99,26 @@ function TaskPopover({ task, anchor, ignoreRef, onToggleComplete, onClose }: Tas
                             {STATUS_LABELS[task.status] ?? task.status}
                         </span>
                     </div>
-                    {project && <div className="tp-project">{project.title}</div>}
+                    {project && (
+                        <div className="tp-context">
+                            <Link className="tp-project" to={`/projects/${project.id}`} title="Open project board">
+                                {project.title}
+                            </Link>
+                            {featureName && <span className="tp-feature">{featureName}</span>}
+                        </div>
+                    )}
+                    {(timeBlock || canBlockTime) && (
+                        <div className="tp-time-block">
+                            <span className="tp-time-block-label">Time block</span>
+                            {timeBlock ? (
+                                <span>{timeBlock}</span>
+                            ) : (
+                                <button type="button" className="tp-block-time" onClick={onBlockTime}>
+                                    + Block time
+                                </button>
+                            )}
+                        </div>
+                    )}
                     <p className={`tp-description${task.description ? "" : " muted"}`}>
                         {task.description || "No description"}
                     </p>
