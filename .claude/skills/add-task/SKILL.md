@@ -14,6 +14,9 @@ project; other projects (School, etc.) get tasks through the MCP tool directly.
 Arguments: `$ARGUMENTS`
 - **Description**: what the task should accomplish, a bug and how it shows up, or a
   follow-up from another agent.
+- **`source: verified | unverified`** (optional): whether the caller's facts were
+  already confirmed in code (`verified`, e.g. by an `/implement` summary block).
+  Without it, treat the source as unverified.
 - **`unattended`** (optional): an agent is calling, not Mark. Also treat the run as
   unattended if `AskUserQuestion` isn't available to you.
 
@@ -32,8 +35,11 @@ Arguments: `$ARGUMENTS`
    - what the change touches
    - whether it has to wait for another open task
 
-   Skip the lookup if the request is purely a product idea, or if the caller already
-   has the context (e.g. the conductor filing a follow-up).
+   Skip the lookup if the request is purely a product idea, or its source is
+   `verified`: take those facts as given, and judge from the task list alone
+   whether it has to wait for another task. An unverified source (e.g. a code
+   review finding, which can misfire) always gets the lookup. Check the problem it
+   describes is real; if it isn't, skip the task.
 4. **Size.** If it's really several independent tasks, say so and suggest a split.
    With Mark, create one task anyway if he wants. Unattended, create one task for
    what the caller asked; the caller can call again for the rest.
@@ -111,5 +117,5 @@ chose a new feature, call `create_feature` first.
 - **Unattended**: end with exactly this line for the caller:
 
   ```
-  add-task: <created todo | created blocked | updated | skipped> — <title> (<task id>)<; blocked on: … | ; duplicate of: …>
+  add-task: <created todo | created blocked | updated | skipped> — <title> (<task id>)<; blocked on: … | ; duplicate of: … | ; not real: …>
   ```

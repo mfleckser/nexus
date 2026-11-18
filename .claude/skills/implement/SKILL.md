@@ -278,7 +278,7 @@ PR section: <absolute path of the pr-section file — or "none">
 Migrations: <applied migrations, noting any that changed existing data — or "none">
 Manual steps: <Pi deploy (`git pull && systemctl --user restart nexus-backend`) if backend changed, env changes — or "none">
 Remaining: <for partial: what's left to finish the task — or "none">
-Follow-ups: <leftover review findings, bugs noticed outside scope, suggested new tasks — or "none">
+Follow-ups: <leftover review findings, bugs noticed outside scope, suggested new tasks; prefix feedback on the implement/conductor/add-task skills (not the app) with `workflow:` — or "none">
 Questions: <for needs-decision: each question, options, recommendation — or "none">
 ```
 
