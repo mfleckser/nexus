@@ -80,9 +80,17 @@ def delete_project(project_id: str):
     return first_row(res.data, f"project {project_id}")
 
 
+def _with_has_notes(feature: dict) -> dict:
+    """Adds `has_notes`: whether the notes text is non-blank."""
+    return {**feature, "has_notes": bool((feature["notes"] or "").strip())}
+
+
 def get_project_features(project_id: str):
+    """The list leaves out the notes text but says whether there is any (`has_notes`)."""
+
     def load():
-        return supabase.table("features").select(*FEATURE_LIST_COLUMNS).eq("project_id", project_id).execute().data
+        res = supabase.table("features").select(*FEATURE_LIST_COLUMNS, "notes").eq("project_id", project_id).execute()
+        return [{k: f[k] for k in (*FEATURE_LIST_COLUMNS, "has_notes")} for f in map(_with_has_notes, res.data)]
 
     return c.get_or_load(c.project_features(project_id), load)
 
@@ -95,13 +103,13 @@ def create_feature(project_id: str, data: dict):
 
     c.invalidate(c.project_features(project_id))
 
-    return res.data[0]
+    return _with_has_notes(res.data[0])
 
 
 def get_feature(feature_id: str):
     """One feature with its notes. Uncached, like the other single-row reads."""
     res = supabase.table("features").select("*").eq("id", feature_id).execute()
-    return first_row(res.data, f"feature {feature_id}")
+    return _with_has_notes(first_row(res.data, f"feature {feature_id}"))
 
 
 def update_feature(feature_id: str, data: dict):
@@ -115,7 +123,7 @@ def update_feature(feature_id: str, data: dict):
     feature = first_row(res.data, f"feature {feature_id}")
     # The list carries name and notes_updated_at.
     c.invalidate(c.project_features(feature["project_id"]))
-    return feature
+    return _with_has_notes(feature)
 
 
 def delete_feature(feature_id: str):

@@ -25,8 +25,11 @@ function parseProject(p: Wire<Project>): Project {
     };
 }
 
-// Explicit fields: single-feature responses also carry `notes`, which the board doesn't keep.
-function parseFeature(f: Wire<Feature>): Feature {
+// Single-feature responses also carry the notes text.
+type WireFeature = Wire<Feature> & { notes?: string | null };
+
+// Explicit fields: the board doesn't keep the notes text.
+function parseFeature(f: WireFeature): Feature {
     return {
         id: f.id,
         created_at: parseDate(f.created_at),
@@ -34,6 +37,7 @@ function parseFeature(f: Wire<Feature>): Feature {
         project_id: f.project_id,
         name: f.name,
         notes_updated_at: parseNullableDate(f.notes_updated_at),
+        has_notes: f.has_notes,
     };
 }
 
@@ -62,7 +66,7 @@ function deleteProject(id: string): Promise<unknown> {
 }
 
 async function getFeatures(project_id: string): Promise<Feature[]> {
-    const raw = await api.get<Wire<Feature>[]>(`/projects/${project_id}/features`);
+    const raw = await api.get<WireFeature[]>(`/projects/${project_id}/features`);
     return raw.map(parseFeature);
 }
 
@@ -70,9 +74,15 @@ function addFeature(project_id: string, name: string): Promise<unknown> {
     return api.post(`/projects/${project_id}/features`, { name });
 }
 
+// One feature with its notes text ("" when null).
+async function getFeature(feature_id: string): Promise<{ feature: Feature; notes: string }> {
+    const raw = await api.get<WireFeature>(`/features/${feature_id}`);
+    return { feature: parseFeature(raw), notes: raw.notes ?? "" };
+}
+
 // Resolves to the updated row.
 async function updateFeature(feature_id: string, data: { name?: string; notes?: string | null }): Promise<Feature> {
-    return parseFeature(await api.put<Wire<Feature>>(`/features/${feature_id}`, data));
+    return parseFeature(await api.put<WireFeature>(`/features/${feature_id}`, data));
 }
 
 function deleteFeature(feature_id: string): Promise<unknown> {
@@ -87,6 +97,7 @@ export {
     deleteProject,
     getFeatures,
     addFeature,
+    getFeature,
     updateFeature,
     deleteFeature,
 };

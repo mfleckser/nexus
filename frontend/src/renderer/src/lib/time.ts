@@ -82,6 +82,22 @@ export function parseDateTimeInputs(dateStr: string, timeStr: string): Date | nu
 export const formatDateDisplay = (d: Date): string =>
     d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
+// How long ago `d` was, relative to `now`: "just now", "5 min ago", "3 hours ago",
+// "yesterday", "4 days ago", then the date ("Nov 3, 2026") from a week on.
+export function formatRelativeTime(d: Date, now: Date): string {
+    const minutes = Math.floor((now.getTime() - d.getTime()) / 60000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    if (minutes < 24 * 60) {
+        const hours = Math.floor(minutes / 60);
+        return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+    }
+    const days = calendarDaysBetween(d, now);
+    if (days <= 1) return "yesterday";
+    if (days < 7) return `${days} days ago`;
+    return formatDateDisplay(d);
+}
+
 export function formatDueDisplay(value: Date | string | null): string {
     if (!value) return "No due date";
     const d = new Date(value);

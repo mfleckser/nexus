@@ -76,13 +76,19 @@ class ProjectsTest(AppTestCase):
         p = self.create()
         f = self.add_feature(p["id"])
         path = f"/api/features/{f['id']}"
-        self.assertEqual((self.request("GET", path)["name"], self.request("GET", path)["notes"]), ("Calendar", None))
+        got = self.request("GET", path)
+        self.assertEqual((got["name"], got["notes"], got["has_notes"]), ("Calendar", None, False))
         updated = self.request("PUT", path, {"name": "Agenda", "notes": "## Decisions\n- x", "project_id": "other"})
         self.assertEqual(
-            (updated["name"], updated["notes"], updated["project_id"]), ("Agenda", "## Decisions\n- x", p["id"])
+            (updated["name"], updated["notes"], updated["project_id"], updated["has_notes"]),
+            ("Agenda", "## Decisions\n- x", p["id"], True),
         )
         self.assertEqual(self.request("GET", path), updated)
-        self.assertEqual(self.request("GET", f"/api/projects/{p['id']}/features")[0]["name"], "Agenda")
+        listed = self.request("GET", f"/api/projects/{p['id']}/features")[0]
+        self.assertEqual((listed["name"], listed["has_notes"]), ("Agenda", True))
+        self.assertNotIn("notes", listed)
+        self.request("PUT", path, {"notes": "  \n"})
+        self.assertFalse(self.request("GET", f"/api/projects/{p['id']}/features")[0]["has_notes"])
         self.assertEqual(self.request("PUT", path, {})["name"], "Agenda")
         self.assertIsNone(self.request("PUT", path, {"notes": None})["notes"])
         for body in [{"name": None}, {"name": " "}, {"notes": 5}]:

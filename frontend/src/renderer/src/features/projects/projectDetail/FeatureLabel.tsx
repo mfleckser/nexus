@@ -1,5 +1,5 @@
 import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
-import { Ellipsis } from "lucide-react";
+import { Ellipsis, NotebookText } from "lucide-react";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import useDismiss from "@renderer/hooks/useDismiss";
 
@@ -9,12 +9,29 @@ type FeatureLabelProps = {
     featureId: string | null;
     onEdit?: (name: string) => void;
     onDelete?: () => void;
+    // Shows the notes indicator (next to the name) when true.
+    hasNotes?: boolean;
+    // This feature's notes drawer is open.
+    notesOpen?: boolean;
+    // Opens this feature's notes drawer (the indicator toggles it).
+    onOpenNotes?: () => void;
+    onCloseNotes?: () => void;
     // Called before paint when the rename form opens or closes (it changes the height),
     // not on mount.
     onLayoutChange?: () => void;
 };
 
-function FeatureLabel({ name, featureId, onEdit, onDelete, onLayoutChange }: FeatureLabelProps): React.JSX.Element {
+function FeatureLabel({
+    name,
+    featureId,
+    onEdit,
+    onDelete,
+    hasNotes = false,
+    notesOpen = false,
+    onOpenNotes,
+    onCloseNotes,
+    onLayoutChange,
+}: FeatureLabelProps): React.JSX.Element {
     const [menuOpen, setMenuOpen] = useState(false);
     const [editing, setEditing] = useState(false);
     const [editInput, setEditInput] = useState(name);
@@ -84,7 +101,21 @@ function FeatureLabel({ name, featureId, onEdit, onDelete, onLayoutChange }: Fea
 
     return (
         <div className="kb-feature-header">
-            <span className="kb-feature-name">{name}</span>
+            <span className="kb-feature-name">
+                {name}
+                {featureId !== null && (hasNotes || notesOpen) && (
+                    <button
+                        type="button"
+                        className={`kb-feature-notes-btn${notesOpen ? " open" : ""}`}
+                        aria-label={notesOpen ? "Close notes" : "Open notes"}
+                        aria-pressed={notesOpen}
+                        title="Notes"
+                        onClick={notesOpen ? onCloseNotes : onOpenNotes}
+                    >
+                        <NotebookText size={13} />
+                    </button>
+                )}
+            </span>
             {featureId !== null && (
                 <div className="kb-feature-menu-container" ref={menuRef}>
                     <button
@@ -99,6 +130,15 @@ function FeatureLabel({ name, featureId, onEdit, onDelete, onLayoutChange }: Fea
                     </button>
                     {menuOpen && (
                         <div className="kb-feature-menu">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setMenuOpen(false);
+                                    onOpenNotes?.();
+                                }}
+                            >
+                                Notes
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => {

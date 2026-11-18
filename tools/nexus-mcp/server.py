@@ -155,7 +155,7 @@ def build_server(api: NexusApi) -> MCPServer:
 
     @server.tool(annotations=READ)
     def list_features(project_id: str) -> list[dict[str, Any]]:
-        """A project's features (without notes): id, name, project_id, notes_updated_at."""
+        """A project's features (without notes): id, name, project_id, notes_updated_at, has_notes."""
         return call(api.get, f"/projects/{project_id}/features")
 
     @server.tool(annotations=READ)

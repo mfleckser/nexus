@@ -1,6 +1,8 @@
 /* Kanban board — project pillar (cyan). Feature rows × status columns. */
 
 .kanban-container {
+    /* Anchors the feature notes drawer. */
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -86,6 +88,32 @@
     font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
+}
+
+/* Notes indicator next to a feature's name; opens its notes drawer. */
+.kb-feature-notes-btn {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.kb-feature-notes-btn:hover {
+    background: var(--bg-active);
+    color: var(--text-primary);
+}
+
+.kb-feature-notes-btn.open {
+    background: var(--accent-muted);
+    color: var(--accent);
 }
 
 /* Feature row — name + actions header */
