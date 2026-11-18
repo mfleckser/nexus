@@ -14,28 +14,41 @@ import {
     addDays,
     atMinutes,
     calendarDaysBetween,
+    formatMonthSpan,
     minutesIntoDay,
     MINUTES_PER_DAY,
     startOfDay,
     startOfWeek,
 } from "@renderer/lib/time";
-import { layoutDays, overlapsRange } from "@renderer/lib/eventLayout";
+import { layoutDaysWithMarkers, overlapsRange } from "@renderer/lib/eventLayout";
 import { roundUpToQuarterHour, tasksByEventId, tasksForEvent } from "@renderer/lib/timeBlocks";
 import {
     DEFAULT_EVENT_MINUTES,
     DRAG_THRESHOLD,
+    EVENT_HEADER_PX,
     POPOVER_GAP,
+    PX_PER_HOUR,
     PX_PER_MIN,
     SLOT_MINUTES,
     TASK_PIN_HEIGHT,
 } from "@renderer/features/calendar/constants";
+import { isDismissableOpen } from "@renderer/hooks/useDismiss";
 
 const BUFFER_DAYS = 7;
 const SLOTS_PER_DAY = MINUTES_PER_DAY / SLOT_MINUTES;
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type ViewType = "DAY" | "WEEK" | "MONTH";
+
+// The time grid opens at 8 AM, nudged up so the "8 AM" label isn't clipped.
+const INITIAL_SCROLL_HOUR = 8;
+const INITIAL_SCROLL_MARGIN = 8;
+
+// Stable ref callback, so it runs only when the grid mounts (first render, or
+// switching back from month view), not on every render.
+function scrollToInitialHour(el: HTMLDivElement | null): void {
+    if (el) el.scrollTop = INITIAL_SCROLL_HOUR * PX_PER_HOUR - INITIAL_SCROLL_MARGIN;
+}
 
 // In-progress drag-to-create, in grid slots of SLOT_MINUTES.
 type CreateDrag = {
@@ -131,27 +144,12 @@ function Calendar(): React.JSX.Element {
         setRange(fetchWindow);
     }, [fetchWindow, setRange]);
 
-    // Per-day slices of every visible event, laid out in columns.
-    const segments = useMemo(
-        () =>
-            viewType === "MONTH"
-                ? []
-                : layoutDays(
-                      events.filter((e) => overlapsRange(e, visible.start, visible.end)),
-                      visible.start,
-                      dayCount,
-                  ),
-        [events, visible, viewType, dayCount],
-    );
-
     const linkedTasks = useMemo(() => tasksByEventId(tasks), [tasks]);
 
-    // Due tasks in the visible days, with each pin's top pushed below any
-    // earlier pin on the same day it would overlap. Completed/cancelled stay
-    // visible; tasks of projects hidden from the main view don't.
-    const taskPins = useMemo(() => {
+    // Due tasks in the visible days. Completed/cancelled stay visible; tasks
+    // of projects hidden from the main view don't.
+    const dueTasks = useMemo(() => {
         const hiddenProjectIds = new Set(projects.filter((p) => !p.show_tasks_in_main_view).map((p) => p.id));
-        const lastBottom = Array(dayCount).fill(-Infinity);
         return tasks
             .filter(
                 (t): t is Task & { due_at: Date } =>
@@ -160,18 +158,23 @@ function Calendar(): React.JSX.Element {
                     t.due_at.getTime() < visible.end.getTime() &&
                     (t.project_id === null || !hiddenProjectIds.has(t.project_id)),
             )
-            .toSorted((a, b) => a.due_at.getTime() - b.due_at.getTime() || a.title.localeCompare(b.title))
-            .map((task) => {
-                const day = calendarDaysBetween(visible.start, task.due_at);
-                const dueTop = Math.min(
-                    minutesIntoDay(task.due_at) * PX_PER_MIN,
-                    MINUTES_PER_DAY * PX_PER_MIN - TASK_PIN_HEIGHT,
-                );
-                const top = Math.max(dueTop, lastBottom[day] + 1);
-                lastBottom[day] = top + TASK_PIN_HEIGHT;
-                return { task, top, day };
-            });
-    }, [tasks, projects, visible, dayCount]);
+            .toSorted((a, b) => a.due_at.getTime() - b.due_at.getTime() || a.title.localeCompare(b.title));
+    }, [tasks, projects, visible]);
+
+    // Per-day slices of every visible event, and a pin per due task, laid out
+    // in columns: pins at their due time, beside each other and beside any
+    // event title they'd cover.
+    const { segments, markers: taskPins } = useMemo(
+        () =>
+            layoutDaysWithMarkers(
+                viewType === "MONTH" ? [] : events.filter((e) => overlapsRange(e, visible.start, visible.end)),
+                viewType === "MONTH" ? [] : dueTasks.map((task) => ({ item: task, at: task.due_at })),
+                visible.start,
+                dayCount,
+                { markerMinutes: TASK_PIN_HEIGHT / PX_PER_MIN, headerMinutes: EVENT_HEADER_PX / PX_PER_MIN },
+            ),
+        [events, dueTasks, visible, viewType, dayCount],
+    );
 
     const goPrev = () => {
         setFocusedDay((prev) =>
@@ -219,6 +222,8 @@ function Calendar(): React.JSX.Element {
     const handleSlotMouseDown = (day: number) => (e: React.MouseEvent<HTMLDivElement>) => {
         if (e.button !== 0) return;
         e.preventDefault(); // no text selection while dragging
+        // This press is closing an open popover; the next one creates.
+        if (isDismissableOpen()) return;
         const slot = slotAt(e.clientY);
         setCreateDrag({
             dayIndex: day,
@@ -304,6 +309,12 @@ function Calendar(): React.JSX.Element {
         };
     }
 
+    // Month view names its month even though the grid shows edge days of others.
+    const monthLabel =
+        viewType === "MONTH"
+            ? formatMonthSpan(focusedDay, focusedDay)
+            : formatMonthSpan(rangeStart, addDays(rangeStart, dayCount - 1));
+
     const nowDayIndex = calendarDaysBetween(rangeStart, now);
     const nowLineStyle: React.CSSProperties = {
         left: `${(nowDayIndex * 100) / dayCount}%`,
@@ -328,9 +339,7 @@ function Calendar(): React.JSX.Element {
                             ›
                         </button>
                     </div>
-                    <span className="month-year-label">
-                        {MONTH_NAMES[month]} {year}
-                    </span>
+                    <span className="month-year-label">{monthLabel}</span>
                 </div>
                 <div className="select-wrapper">
                     <select
@@ -385,7 +394,7 @@ function Calendar(): React.JSX.Element {
                             <div key={d.getTime()} className="all-day-cell" />
                         ))}
                     </div>
-                    <div className="day-events-scroll">
+                    <div className="day-events-scroll" ref={scrollToInitialHour}>
                         <div className="day-events">
                             {[...Array(24).keys()].map((hour) => (
                                 <Fragment key={hour}>
@@ -404,8 +413,8 @@ function Calendar(): React.JSX.Element {
                                         linkedTasks={tasksForEvent(linkedTasks, segment.item)}
                                     />
                                 ))}
-                                {taskPins.map(({ task, top, day }) => (
-                                    <TaskPin key={task.id} task={task} top={top} dayIdx={day} dayCount={dayCount} />
+                                {taskPins.map((pin) => (
+                                    <TaskPin key={pin.item.id} pin={pin} dayCount={dayCount} />
                                 ))}
                                 {previewDraft && (
                                     <EventDraftPreview

@@ -11,6 +11,7 @@ import RecurrenceScopePrompt from "@renderer/components/RecurrenceScopePrompt";
 import { categoryColor } from "@renderer/features/calendar/categories";
 import {
     DRAG_THRESHOLD,
+    EVENT_HEADER_PX,
     MIN_EVENT_MINUTES,
     POPOVER_GAP,
     PX_PER_MIN,
@@ -30,9 +31,6 @@ import { describeRrule, sameRrule } from "@renderer/lib/rrule";
 import { DaySegment, daySegment } from "@renderer/lib/eventLayout";
 import useReportError from "@renderer/hooks/useReportError";
 import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
-
-// Chips shorter than this (px) show title and time on a single line.
-const COMPACT_CHIP_PX = 30;
 
 const snap = (minutes: number): number => SLOT_MINUTES * Math.round(minutes / SLOT_MINUTES);
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -130,7 +128,7 @@ function EventChip({ segment, dayCount, linkedTasks }: EventChipProps): React.JS
     const style = chipStyle(box, segment.column, segment.columns, dayCount, categoryColor(event.category));
     if (dragging && dragPos)
         Object.assign(style, { left: dragPos.left, top: dragPos.top, width: `${100 / dayCount}%` });
-    const compact = (box.endMin - box.startMin) * PX_PER_MIN < COMPACT_CHIP_PX;
+
     // Task names worth a line of their own: not just the event's title again
     // (a time block is titled after its task by default).
     const taskLine = linkedTasks
@@ -139,6 +137,8 @@ function EventChip({ segment, dayCount, linkedTasks }: EventChipProps): React.JS
         .join(", ");
     const allTasksDone =
         linkedTasks.length > 0 && linkedTasks.every((t) => t.status === "complete" || t.status === "cancelled");
+
+    const compact = (box.endMin - box.startMin) * PX_PER_MIN < EVENT_HEADER_PX;
 
     // Plain events commit straight away; occurrences wait for a scope.
     function requestUpdate(data: EventUpdate, scopes?: RecurrenceScope[]): void {
@@ -460,7 +460,7 @@ function EventDraftPreview({ draft, rangeStart, dayCount }: EventDraftPreviewPro
     const startMin = minutesIntoDay(draft.start_at);
     const endMin = Math.min(MINUTES_PER_DAY, startMin + draft.duration);
     const end = new Date(draft.start_at.getTime() + draft.duration * 60000);
-    const compact = (endMin - startMin) * PX_PER_MIN < COMPACT_CHIP_PX;
+    const compact = (endMin - startMin) * PX_PER_MIN < EVENT_HEADER_PX;
     return (
         <div
             className={`event-chip event-chip-draft${compact ? " event-chip-compact" : ""}`}

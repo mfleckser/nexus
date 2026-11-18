@@ -110,3 +110,14 @@ export function formatDueDisplay(value: Date | string | null): string {
         minute: "2-digit",
     });
 }
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Header label for the days first..last (inclusive): "Sep 2026", or for a span
+// across months "Sep – Oct 2026", or across years "Dec 2026 – Jan 2027".
+export function formatMonthSpan(first: Date, last: Date): string {
+    const [fm, fy, lm, ly] = [first.getMonth(), first.getFullYear(), last.getMonth(), last.getFullYear()];
+    if (fy !== ly) return `${MONTH_NAMES[fm]} ${fy} – ${MONTH_NAMES[lm]} ${ly}`;
+    if (fm !== lm) return `${MONTH_NAMES[fm]} – ${MONTH_NAMES[lm]} ${fy}`;
+    return `${MONTH_NAMES[fm]} ${fy}`;
+}
