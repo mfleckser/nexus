@@ -29,6 +29,9 @@ whole backlog.
   If a decision needs research, hand it to a subagent and take its conclusion. All state lives in Nexus
   and GitHub, so a later `/conductor` run with the same arguments picks up where
   this one stopped.
+- **The scratchpad can vanish mid-run.** Write your own files (PR bodies, comment
+  replies) under `<scratchpad>/<branch>/`, use them right away, and never rely on
+  one later in the run.
 - **Models.** You are `opus`. Never use `fable`. Spawn `/implement` agents on `opus`
   at `high` effort; lookups go to `haiku` or `sonnet`.
 
@@ -264,14 +267,18 @@ Within a lane, groups run in order in the lane's slot. For each group:
    - Embed it with
      `![<what it shows>](https://raw.githubusercontent.com/mfleckser/nexus/pr-evidence/<branch>/<name>.png)`.
    - Never commit screenshots to the PR branch.
-4. **PR.** Once the group has at least one `done` task, write the description to a
-   scratchpad file.
+4. **PR.** Once the group has at least one `done` task, write the description to
+   `<scratchpad>/<branch>/pr-body.md`.
    - If the branch already has an open PR (review fixes), don't edit its
      description. Reply to the comments instead (see Replying to review comments).
    - Otherwise, open the PR:
    `gh pr create --base <main or parent branch> --head <branch> --title "<what the group does>" --body-file <file>`.
    - If it's stacked, link it: `gh stack link <parent PR> <this PR> --open`. If
      linking fails, keep the chained base and add a "Stacked on #N" line.
+   - To edit an existing PR's body, re-fetch it first
+     (`gh pr view <n> --json body -q .body > <scratchpad>/<branch>/pr-body.md`),
+     edit that, then `gh pr edit <n> --body-file <that file>`. Never reuse a body
+     file saved earlier.
    - Add the PR URL to every done task's marker. The tasks stay `active`; Triage
      step 3 closes them once Mark merges.
    - Never use `gh pr merge` or `gh stack merge`.

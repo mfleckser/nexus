@@ -37,6 +37,10 @@ Arguments: `$ARGUMENTS`
   look like the code next to it.
 - **Models.** You (the main agent) are `opus`, the strongest model available. Never
   use `fable`. For subagents, pick the model and `effort` per unit (step 4).
+- **Scratch per branch.** Parallel lanes share one scratchpad. Create
+  `<scratchpad>/<branch>/` when you start (`<branch>` as given, or `main`) and keep
+  every scratch file and all evidence in it, never under generic names at the
+  scratchpad root. Subagents you spawn get paths under the same folder.
 
 ## 1. Understand and size the task
 
@@ -50,8 +54,8 @@ Arguments: `$ARGUMENTS`
 | Tier | Looks like | Planning | Agents | Review |
 |---|---|---|---|---|
 | **S** | One layer, ≤ ~3 files, obvious approach (clamp text, add a CHECK constraint, fix a label) | None | Just you | Re-read your own diff |
-| **M** | One feature across a layer or two, an approach is needed but it's clear (filter params on `GET /tasks`, the header month label) | A short plan in your head or the scratchpad | Usually just you; maybe one helper for an independent piece | `code-review` at `medium`, one fix round |
-| **L** | Cross-stack, schema + API + UI, or a risky change to shared behavior (all-day events, transactional recurring edits, time-blocking) | Written plan in the scratchpad: API/data contract, files, steps, test plan | You conduct; subagents build separable units | `code-review` at `high` per unit plus a final full pass, with a fix loop |
+| **M** | One feature across a layer or two, an approach is needed but it's clear (filter params on `GET /tasks`, the header month label) | A short plan in your head or the branch folder | Usually just you; maybe one helper for an independent piece | `code-review` at `medium`, one fix round |
+| **L** | Cross-stack, schema + API + UI, or a risky change to shared behavior (all-day events, transactional recurring edits, time-blocking) | Written plan in the branch folder: API/data contract, files, steps, test plan | You conduct; subagents build separable units | `code-review` at `high` per unit plus a final full pass, with a fix loop |
 
 If the task is too big for one pass, build the first slice that works on its own,
 and report the rest under **Remaining** with status `partial`.
@@ -85,7 +89,7 @@ reasonable default and record it.
 
 - **M**: name the files you'll change, the API shape if there is one, and how you'll
   verify it. Keep it short.
-- **L**: write `plan.md` in the scratchpad with:
+- **L**: write `<scratchpad>/<branch>/plan.md` with:
   - the contract (endpoints, request/response JSON, DB columns, TS types)
   - work units with file ownership, so no two agents edit the same file
   - order and dependencies (usually migration → backend service/API + tests →
@@ -101,7 +105,8 @@ reasonable default and record it.
 
 **Delegation (L, sometimes M).** Give each subagent a self-contained brief: the
 contract, the files it owns, the conventions that apply (point it at the CLAUDE.md
-sections), what "done" means (including which tests must pass), and "don't commit".
+sections), what "done" means (including which tests must pass), its scratch path
+under `<scratchpad>/<branch>/`, and "don't commit".
 Run units in parallel only when their files don't overlap. Set `model` and `effort`
 on every spawn:
 
@@ -143,9 +148,9 @@ repeat until green.
   helpers in `src/renderer/src/lib` get vitest tests.
 - **UI behavior (M/L tasks with visible changes)**: drive the real app with
   Playwright `_electron`. Always set `NEXUS_HIDDEN=1` so the window never steals focus.
-  - Playwright isn't a project dependency. Install `playwright-core` in a scratchpad
-    folder (`npm init -y && npm i playwright-core`) and launch with
-    `executablePath` set to the default export of
+  - Playwright isn't a project dependency. Install `playwright-core` in
+    `<scratchpad>/<branch>/pw` (`npm init -y && npm i playwright-core`) and launch
+    with `executablePath` set to the default export of
     `frontend/node_modules/electron/index.js` and `args: [<frontend dir>]`.
   - If backend code changed, run it locally on your port (`port=`, default 5055):
     `NEXUS_PORT=<port> backend/start`, in the background. Restart it after more
@@ -160,12 +165,14 @@ repeat until green.
     URL baked in.
   - Test data goes in the live DB: name it `ZZ test …` and delete it afterwards, in a
     `finally`, one delete at a time so one failure doesn't leak the rest.
-  - Keep scripts and screenshots in the scratchpad. Look at the screenshots.
+  - Keep scripts and screenshots in `<scratchpad>/<branch>/`. Look at the
+    screenshots.
 - **Evidence (any tier)**: keep 1–2 pieces that show the change works, and list them
   under **Evidence** in the summary. For a visible change, that's a screenshot
-  cropped to the relevant part of the window, saved as a PNG in the scratchpad and
-  listed by its absolute path. Take one even at tier S. For a non-visual change, use
-  a short excerpt of test output or an API response.
+  cropped to the relevant part of the window, saved as
+  `<scratchpad>/<branch>/<name>.png` and listed by its absolute path. Take one even
+  at tier S. For a non-visual change, use a short excerpt of test output or an API
+  response.
 - **Agent tools (`tools/nexus-mcp`)**: `venv/bin/python -m unittest discover -s tests`
   and `../../backend/venv/bin/ruff check .`. If you add an endpoint agents need, add
   the tool and test it; run `smoke.py` against a local backend
