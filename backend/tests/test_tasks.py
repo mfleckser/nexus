@@ -39,6 +39,8 @@ class TasksTest(AppTestCase):
             {"title": 5},
             {"title": "x", "due_at": "tomorrow"},
             {"title": "x", "description": ["a"]},
+            {"title": "x", "event_id": 5},
+            {"title": "x", "event_id": "not-a-uuid"},
         ]:
             with self.subTest(body=body):
                 self.request("POST", "/api/tasks", body, status=400)
@@ -52,6 +54,9 @@ class TasksTest(AppTestCase):
             {"title": None},
             {"title": ""},
             {"due_at": 12},
+            {"event_id": ["x"]},
+            # A virtual occurrence id (<master>_<epoch>) is not an event row.
+            {"event_id": "11111111-1111-1111-1111-111111111111_1790000000"},
         ]:
             with self.subTest(body=body):
                 self.put(t["id"], body, status=400)
@@ -101,6 +106,21 @@ class TasksTest(AppTestCase):
         for query in ("status=done", "status=todo,done", "status=", "status=,"):
             with self.subTest(query=query):
                 self.request("GET", f"/api/tasks?{query}", status=400)
+
+    def test_event_link(self):
+        body = {"title": "Block", "start_at": "2026-10-01T16:00:00Z", "end_at": "2026-10-01T17:00:00Z"}
+        ev = self.request("POST", "/api/events", body, status=201)
+        t = self.create(event_id=ev["id"])
+        self.assertEqual(t["event_id"], ev["id"])
+        other = self.create(title="later")
+        self.assertEqual(self.put(other["id"], {"event_id": ev["id"]})["event_id"], ev["id"])
+        self.assertIsNone(self.put(other["id"], {"event_id": None})["event_id"])
+
+        # Deleting the event clears the link; the task stays.
+        self.request("DELETE", f"/api/events/{ev['id']}")
+        task = self.request("GET", f"/api/tasks/{t['id']}")
+        self.assertIsNone(task["event_id"])
+        self.assertEqual(task["title"], "Write tests")
 
     def test_update_without_known_fields_returns_current_row(self):
         t = self.create()
