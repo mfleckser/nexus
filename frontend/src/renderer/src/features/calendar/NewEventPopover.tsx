@@ -3,7 +3,15 @@ import { Trash2 } from "lucide-react";
 import "./newEventPopover.css";
 import categoryData from "./categories.json";
 import { NewEventDraft } from "@renderer/types";
-import { addDays, calendarDaysBetween, parseDateTimeInputs, toDateInput, toTimeInput } from "@renderer/lib/time";
+import {
+    addDays,
+    addMinutes,
+    calendarDaysBetween,
+    minutesBetween,
+    parseDateTimeInputs,
+    toDateInput,
+    toTimeInput,
+} from "@renderer/lib/time";
 import { localDaySpan } from "@renderer/lib/allDay";
 import useDismiss from "@renderer/hooks/useDismiss";
 import usePopoverPosition, { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
@@ -36,8 +44,6 @@ const DEFAULT_DURATION = 60;
 const DEFAULT_START_TIME = "09:00";
 
 const parseDateInput = (s: string): Date | null => parseDateTimeInputs(s, "00:00");
-const addMinutes = (d: Date, minutes: number): Date => new Date(d.getTime() + minutes * 60000);
-const minutesBetween = (a: Date, b: Date): number => Math.round((b.getTime() - a.getTime()) / 60000);
 
 const formatDuration = (mins: number): string =>
     mins < 60 ? `${mins}m` : mins % 60 === 0 ? `${mins / 60}h` : `${Math.floor(mins / 60)}h${mins % 60}`;

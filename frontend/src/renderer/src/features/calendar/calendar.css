@@ -260,11 +260,11 @@
     cursor: pointer;
 }
 
-/* One all-day event: rows are ALL_DAY_ROW_PX (constants.ts) apart. */
+/* One all-day event; --all-day-row (ALL_DAY_ROW_PX) is set on the container. */
 .all-day-chip {
     position: absolute;
     box-sizing: border-box;
-    height: 20px;
+    height: calc(var(--all-day-row) - 2px);
     margin: 2px 2px 0;
     display: flex;
     align-items: center;

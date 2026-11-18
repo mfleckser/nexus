@@ -13,6 +13,7 @@ import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 import { DateRange, NewEventDraft, Task } from "@renderer/types";
 import {
     addDays,
+    addMinutes,
     atMinutes,
     calendarDaysBetween,
     browserTimeZone,
@@ -237,7 +238,7 @@ function Calendar(): React.JSX.Element {
     }, []);
 
     const openNewEventAt = (start: Date, anchor: PopoverAnchor, end?: Date, allDay = false) => {
-        setPopover({ anchor, start, end: end ?? new Date(start.getTime() + DEFAULT_EVENT_MINUTES * 60000), allDay });
+        setPopover({ anchor, start, end: end ?? addMinutes(start, DEFAULT_EVENT_MINUTES), allDay });
     };
 
     // Grid slot under the pointer's y, clamped to the day.
@@ -291,7 +292,7 @@ function Calendar(): React.JSX.Element {
                 y: rect.top + startMin * PX_PER_MIN,
                 flipX: rect.left + drag.dayIndex * colWidth - POPOVER_GAP,
             },
-            new Date(start.getTime() + duration * 60000),
+            addMinutes(start, duration),
         );
     });
 
@@ -385,7 +386,7 @@ function Calendar(): React.JSX.Element {
             title: "",
             description: "",
             start_at: start,
-            end_at: new Date(start.getTime() + duration * 60000),
+            end_at: addMinutes(start, duration),
             all_day: false,
             category: "",
         };
@@ -489,7 +490,10 @@ function Calendar(): React.JSX.Element {
                     <div
                         className="all-day-container"
                         ref={allDayRef}
-                        style={{ height: allDayRows * ALL_DAY_ROW_PX + ALL_DAY_PAD_PX }}
+                        style={{
+                            height: allDayRows * ALL_DAY_ROW_PX + ALL_DAY_PAD_PX,
+                            ["--all-day-row" as string]: `${ALL_DAY_ROW_PX}px`,
+                        }}
                         onMouseDown={handleAllDayMouseDown}
                     >
                         {gridDays.map((d) => (

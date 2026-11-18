@@ -24,6 +24,6 @@ export const TASK_PIN_INSET = 3;
 // Snap increment for dragging task pins.
 export const TASK_SNAP_MINUTES = 15;
 
-// Height (px) of one stacked row of bars in the all-day row. Must match
-// .all-day-chip height + gap in calendar.css.
+// Height (px) of one stacked row of bars in the all-day row (passed to CSS
+// as --all-day-row).
 export const ALL_DAY_ROW_PX = 22;

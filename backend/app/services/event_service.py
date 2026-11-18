@@ -302,7 +302,11 @@ def _apply_to_clicked(override, data: dict):
 
 
 def _changed_details(master: dict, data: dict) -> dict:
-    return {f: data[f] for f in DETAIL_FIELDS if f in data and data[f] != master[f]}
+    def differs(f):
+        # all_day NULL (older rows) and false are the same.
+        return bool(data[f]) != bool(master[f]) if f == "all_day" else data[f] != master[f]
+
+    return {f: data[f] for f in DETAIL_FIELDS if f in data and differs(f)}
 
 
 def _current_times(master: dict, original_start: datetime, override):
@@ -327,10 +331,10 @@ def _instance_edit(master: dict, original_start: datetime, override, data: dict)
     new_end = parse_instant(data["end_at"]) if data.get("end_at") else cur_end
     _check_order(new_start, new_end)
     moved = data.get("start_at") or data.get("end_at")
-    if moved and override and bool(override["all_day"]) != bool(master["all_day"]):
-        # An override of the other kind (all-day vs timed) shares nothing
-        # with the series' shape: measure from where the series puts this
-        # occurrence, so the series lands on the new times.
+    if moved and override and _changes_kind(master, override, data):
+        # An instance that is, or becomes, the other kind (all-day vs timed)
+        # shares nothing with the series' shape: measure from where the series
+        # puts this occurrence, so the series lands on the new times.
         cur_start, cur_end = _current_times(master, original_start, None)
 
     tz = master["timezone"]
@@ -338,6 +342,13 @@ def _instance_edit(master: dict, original_start: datetime, override, data: dict)
     if duration <= timedelta(0):
         raise ValidationError("edit would give the series a non-positive duration")
     return rr.wall_delta(cur_start, new_start, tz), duration
+
+
+def _changes_kind(master: dict, override: dict, data: dict) -> bool:
+    """Whether the override is, or the edit makes it, all-day where the series
+    is timed or vice versa (all_day NULL counts as timed)."""
+    series = bool(master["all_day"])
+    return bool(override["all_day"]) != series or bool(data.get("all_day", override["all_day"])) != series
 
 
 def _wall_duration(master: dict) -> timedelta:

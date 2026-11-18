@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { allDayTimes, dayColumnAt, daySpan, DayItem, layoutDayBars, localDaySpan, wallDate } from "./allDay";
+import {
+    allDayTimes,
+    dayColumnAt,
+    zonedMidnight,
+    daySpan,
+    DayItem,
+    layoutDayBars,
+    localDaySpan,
+    wallDate,
+} from "./allDay";
 
 // Tests run in America/Los_Angeles (vitest.config.ts); DST ends 2026-11-01.
 const local = (y: number, mo: number, d: number, h = 0, mi = 0): Date => new Date(y, mo - 1, d, h, mi);
@@ -133,5 +142,30 @@ describe("dayColumnAt", () => {
         expect(dayColumnAt(799, rect, 7)).toBe(6);
         expect(dayColumnAt(850, rect, 7)).toBe(7);
         expect(dayColumnAt(50, rect, 7)).toBe(-1);
+    });
+});
+
+describe("zonedMidnight", () => {
+    it("finds the instant a date begins in a zone, either side of DST", () => {
+        expect(zonedMidnight(local(2026, 11, 5), "America/New_York").toISOString()).toBe("2026-11-05T05:00:00.000Z");
+        expect(zonedMidnight(local(2026, 10, 30), "America/New_York").toISOString()).toBe("2026-10-30T04:00:00.000Z");
+        // Nov 1: NY falls back at 2 AM, so its midnight is still EDT.
+        expect(zonedMidnight(local(2026, 11, 1), "America/New_York").toISOString()).toBe("2026-11-01T04:00:00.000Z");
+        expect(zonedMidnight(local(2026, 3, 8), LA).toISOString()).toBe("2026-03-08T08:00:00.000Z");
+        expect(zonedMidnight(local(2026, 11, 5), "Asia/Tokyo").toISOString()).toBe("2026-11-04T15:00:00.000Z");
+        expect(zonedMidnight(local(2026, 11, 5), "UTC").toISOString()).toBe("2026-11-05T00:00:00.000Z");
+    });
+
+    it("round-trips with wallDate and matches local midnights in the local zone", () => {
+        const day = local(2026, 11, 2);
+        expect(wallDate(zonedMidnight(day, "Asia/Tokyo"), "Asia/Tokyo")).toEqual(day);
+        expect(zonedMidnight(day, LA)).toEqual(day);
+    });
+
+    it("anchors allDayTimes in a zone when given", () => {
+        expect(allDayTimes(local(2026, 11, 5), local(2026, 11, 6), "America/New_York")).toEqual({
+            start_at: new Date("2026-11-05T05:00:00Z"),
+            end_at: new Date("2026-11-07T05:00:00Z"),
+        });
     });
 });

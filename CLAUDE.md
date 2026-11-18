@@ -57,8 +57,8 @@
     any write that leaves an all-day row off midnight (`_check_all_day`).
   - Frontend maps them to the viewer's days by their dates in the event's timezone
     (`lib/allDay.ts`: `daySpan`, `layoutDayBars` — bars reusable for month cells) and
-    sends `timezone` = browser zone with all-day times. Timed multi-day events stay in
-    the time grid.
+    anchors edited dates back in that same zone (`zonedMidnight`); new events use the
+    browser zone. Timed multi-day events stay in the time grid.
 
   ## Recurring Events
 

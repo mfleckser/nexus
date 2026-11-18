@@ -4,7 +4,7 @@ import { addDays, calendarDaysBetween, startOfDay } from "./time";
 // [midnight of the first day, midnight after the last day). The helpers here
 // turn them into calendar days of the viewer — local midnights carrying the
 // event's dates — so an all-day event stays on its dates when viewed from
-// another timezone.
+// another timezone, and back (zonedMidnight) so edits stay in that timezone.
 
 export type DayItem = { start_at: Date; end_at: Date; all_day: boolean | null; timezone: string };
 
@@ -20,6 +20,39 @@ export function wallDate(instant: Date, timeZone: string): Date {
     const parts = fmt.formatToParts(instant);
     const part = (type: string): number => Number(parts.find((p) => p.type === type)?.value);
     return new Date(part("year"), part("month") - 1, part("day"));
+}
+
+const offsetFormats = new Map<string, Intl.DateTimeFormat>();
+
+// How far `timeZone`'s wall clock is ahead of UTC at `instant`, in ms.
+function zoneOffset(instant: Date, timeZone: string): number {
+    let fmt = offsetFormats.get(timeZone);
+    if (!fmt) {
+        fmt = new Intl.DateTimeFormat("en-US", {
+            timeZone,
+            hourCycle: "h23",
+            year: "numeric",
+            month: "numeric",
+            day: "numeric",
+            hour: "numeric",
+            minute: "numeric",
+            second: "numeric",
+        });
+        offsetFormats.set(timeZone, fmt);
+    }
+    const parts = fmt.formatToParts(instant);
+    const part = (type: string): number => Number(parts.find((p) => p.type === type)?.value);
+    const wall = Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"), part("second"));
+    return wall - Math.floor(instant.getTime() / 1000) * 1000;
+}
+
+// The instant `day`'s date (a local midnight) begins in `timeZone`: the
+// inverse of wallDate.
+export function zonedMidnight(day: Date, timeZone: string): Date {
+    const utc = Date.UTC(day.getFullYear(), day.getMonth(), day.getDate());
+    // Second pass corrects for an offset change between the guess and midnight.
+    const guess = utc - zoneOffset(new Date(utc), timeZone);
+    return new Date(utc - zoneOffset(new Date(guess), timeZone));
 }
 
 // Last instant of [start, end) (start itself if empty): an end exactly at
@@ -42,12 +75,13 @@ export function daySpan(item: DayItem): { first: Date; last: Date } {
     };
 }
 
-// Instants of an all-day event over local days first..last (inclusive), in
-// the viewer's timezone (sent with them).
-export const allDayTimes = (first: Date, last: Date): { start_at: Date; end_at: Date } => ({
-    start_at: startOfDay(first),
-    end_at: addDays(last, 1),
-});
+// Instants of an all-day event over local days first..last (inclusive): the
+// viewer's local midnights, or with `timeZone`, that zone's.
+export function allDayTimes(first: Date, last: Date, timeZone?: string): { start_at: Date; end_at: Date } {
+    const [start, end] = [startOfDay(first), addDays(last, 1)];
+    if (!timeZone) return { start_at: start, end_at: end };
+    return { start_at: zonedMidnight(start, timeZone), end_at: zonedMidnight(end, timeZone) };
+}
 
 // Day column under clientX in a row of `days` equal columns spanning `rect`;
 // unclamped (negative or >= days outside the row).

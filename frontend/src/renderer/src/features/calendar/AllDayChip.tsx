@@ -8,7 +8,7 @@ import { allDayTimes, daySpan, DayBar, dayColumnAt, layoutDayBars } from "@rende
 import { addDays, browserTimeZone } from "@renderer/lib/time";
 import { describeRrule } from "@renderer/lib/rrule";
 
-// `event`'s all-day times moved `days` whole days, in the viewer's timezone.
+// `event`'s all-day times moved `days` whole days, as the viewer's local midnights.
 function shiftedTimes(event: CalendarEvent, days: number): { start_at: Date; end_at: Date } {
     const { first, last } = daySpan(event);
     return allDayTimes(addDays(first, days), addDays(last, days));

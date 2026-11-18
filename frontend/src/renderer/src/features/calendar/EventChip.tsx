@@ -114,6 +114,8 @@ function EventChip({ segment, dayCount, linkedTasks }: EventChipProps): React.JS
         if (start.getTime() !== event.start_at.getTime()) data.start_at = start;
         if (end.getTime() !== event.end_at.getTime()) data.end_at = end;
         if (!Object.keys(data).length) return;
+        // A series edited from this occurrence becomes timed like it (see timesUpdate).
+        if (isOccurrence) data.all_day = false;
         if (isOccurrence) setPreview({ start, end });
         requestUpdate(data);
     }

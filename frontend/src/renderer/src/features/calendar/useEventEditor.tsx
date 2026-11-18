@@ -8,7 +8,7 @@ import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import RecurrenceScopePrompt from "@renderer/components/RecurrenceScopePrompt";
 import { POPOVER_GAP } from "@renderer/features/calendar/constants";
-import { allDayTimes, daySpan } from "@renderer/lib/allDay";
+import { allDayTimes, daySpan, zonedMidnight } from "@renderer/lib/allDay";
 import { browserTimeZone } from "@renderer/lib/time";
 import { sameRrule } from "@renderer/lib/rrule";
 import useReportError from "@renderer/hooks/useReportError";
@@ -26,13 +26,15 @@ export function formTimes(event: CalendarEvent): { start_at: Date; end_at: Date 
 }
 
 // Update moving `event` to [start_at, end_at), all-day or not. All-day
-// midnights are the viewer's, so the viewer's timezone goes with them.
-// all_day is sent when it changes, and always for an occurrence: a series
-// edited from one takes that occurrence's kind.
+// times come in as the viewer's local midnights and are re-anchored to the
+// event's own timezone, which stays as it is. all_day is sent when it
+// changes, and always for an occurrence: a series edited from one takes that
+// occurrence's kind.
 export function timesUpdate(event: CalendarEvent, start_at: Date, end_at: Date, all_day: boolean): EventUpdate {
-    const data: EventUpdate = { start_at, end_at };
+    const data: EventUpdate = all_day
+        ? { start_at: zonedMidnight(start_at, event.timezone), end_at: zonedMidnight(end_at, event.timezone) }
+        : { start_at, end_at };
     if (all_day !== (event.all_day === true) || event.recurring_event_id !== null) data.all_day = all_day;
-    if (all_day) data.timezone = browserTimeZone();
     return data;
 }
 
@@ -136,14 +138,13 @@ export default function useEventEditor(
         // be rewritten (the backend treats an rrule change as a series reshape).
         // Compared semantically — the picker may re-emit an equivalent rule in
         // a different form (e.g. UNTIL after a series split).
-        // Send the browser timezone with it: the backend expands BYDAY/monthday
-        // in the row's timezone, and older rows were stored as UTC.
-        // An all-day event's midnights are re-sent for that timezone.
+        // Send the browser timezone with a timed one: the backend expands
+        // BYDAY/monthday in the row's timezone, and older rows were stored as
+        // UTC. An all-day event keeps its zone, where its midnights are.
         const rruleChanged = draft.rrule !== undefined && !sameRrule(draft.rrule, event.rrule, shown.start_at);
         if (rruleChanged) {
             data.rrule = draft.rrule;
-            data.timezone = browserTimeZone();
-            if (draft.all_day) data = { ...data, ...timesUpdate(event, draft.start_at, draft.end_at, true) };
+            if (!draft.all_day) data.timezone = browserTimeZone();
         }
 
         if (!Object.keys(data).length) {

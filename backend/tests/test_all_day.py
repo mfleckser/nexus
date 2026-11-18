@@ -170,6 +170,29 @@ class AllDayTest(AppTestCase):
             ],
         )
 
+    def test_moved_override_converted_for_series_lands_on_midnight(self):
+        m = self.create(start_at="2026-10-30T16:00:00Z", end_at="2026-10-30T17:00:00Z", rrule="FREQ=DAILY;COUNT=3")
+        occ = f"{m['id']}/occurrences/2026-10-31T16:00:00Z"
+        # Moved to 10-11 AM, then made all-day for the whole series.
+        self.put(occ, {"scope": "this", "start_at": "2026-10-31T17:00:00Z", "end_at": "2026-10-31T18:00:00Z"})
+        self.put(occ, {"scope": "all", "all_day": True, "start_at": OCT_31, "end_at": NOV_1})
+        evs = self.events()
+        self.assertTrue(all(e["all_day"] for e in evs))
+        self.assertEqual(evs[0]["start_at"], "2026-10-30T07:00:00+00:00")
+
+    def test_timed_all_day_false_is_no_detail_change(self):
+        # A timed series (all_day NULL) with an all-day override: a series
+        # title edit that also sends all_day=false must leave the override all-day.
+        m = self.create(start_at="2026-10-30T16:00:00Z", end_at="2026-10-30T17:00:00Z", rrule="FREQ=DAILY;COUNT=3")
+        self.put(
+            f"{m['id']}/occurrences/2026-10-31T16:00:00Z",
+            {"scope": "this", "all_day": True, "start_at": OCT_31, "end_at": NOV_1},
+        )
+        self.put(f"{m['id']}/occurrences/2026-10-30T16:00:00Z", {"scope": "all", "title": "Renamed", "all_day": False})
+        evs = self.events()
+        self.assertEqual([e["title"] for e in evs], ["Renamed"] * 3)
+        self.assertEqual([bool(e["all_day"]) for e in evs], [False, True, False])
+
 
 if __name__ == "__main__":
     unittest.main()
