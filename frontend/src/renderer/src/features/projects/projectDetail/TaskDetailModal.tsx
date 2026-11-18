@@ -1,17 +1,9 @@
 import "@renderer/components/taskForm.css";
 import "./taskDetailModal.css";
 import Modal from "@renderer/components/Modal";
-import { Task, TaskStatus } from "@renderer/types";
+import { Task } from "@renderer/types";
 import { formatDateDisplay, formatDueDisplay } from "@renderer/lib/time";
-
-// Kanban column names, plus cancelled (which has no column).
-const STATUS_LABELS: Record<TaskStatus, string> = {
-    todo: "To Do",
-    active: "Active",
-    blocked: "Blocked",
-    complete: "Complete",
-    cancelled: "Cancelled",
-};
+import { TASK_STATUS_LABELS } from "@renderer/lib/kanban";
 
 type TaskDetailModalProps = {
     task: Task;
@@ -33,7 +25,7 @@ function TaskDetailModal({ task, featureName, onEdit, onClose }: TaskDetailModal
                     </>
                 )}
                 <span className={`td-status td-status-${task.status}`}>
-                    {STATUS_LABELS[task.status] ?? task.status}
+                    {TASK_STATUS_LABELS[task.status] ?? task.status}
                 </span>
                 <span className="td-sep">·</span>
                 <span>{task.due_at ? `Due ${formatDueDisplay(task.due_at)}` : "No due date"}</span>

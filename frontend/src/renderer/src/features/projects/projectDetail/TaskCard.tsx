@@ -4,7 +4,7 @@ import { Task } from "@renderer/types";
 import "./taskCard.css";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import { useTasks } from "@renderer/features/tasks/useTasks";
-import useDismiss from "@renderer/hooks/useDismiss";
+import useDismiss, { isDismissableOpen } from "@renderer/hooks/useDismiss";
 import useReportError from "@renderer/hooks/useReportError";
 
 type TaskCardProps = {
@@ -30,9 +30,9 @@ function TaskCard({
 }: TaskCardProps): React.JSX.Element {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
-    // Whether a card's ⋯ menu (this one or another) was open when the current click
-    // began: that click only dismisses it (useDismiss closes it on mousedown).
-    const menuOpenAtPressRef = useRef(false);
+    // Whether a popover or menu (this card's ⋯ menu or any other) was open when the
+    // current click began: that click only dismisses it.
+    const dismissingRef = useRef(false);
 
     const { deleteTask } = useTasks();
     const reportError = useReportError();
@@ -52,14 +52,14 @@ function TaskCard({
             }}
             onDragEnd={() => onDragEnd?.()}
             onMouseDown={() => {
-                menuOpenAtPressRef.current = document.querySelector(".task-card-menu") !== null;
+                dismissingRef.current = isDismissableOpen();
             }}
             onClick={(e) => {
                 const target = e.target as Element;
                 // Clicks inside portaled children (the delete confirm) bubble here
                 // through the React tree; only clicks on the card itself count.
                 if (!e.currentTarget.contains(target)) return;
-                if (menuOpenAtPressRef.current || target.closest(".task-card-menu-container")) return;
+                if (dismissingRef.current || target.closest(".task-card-menu-container")) return;
                 onOpen?.();
             }}
         >

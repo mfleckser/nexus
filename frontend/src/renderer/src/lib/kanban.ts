@@ -1,3 +1,15 @@
+import type { TaskStatus } from "../types";
+
+// Kanban column names, plus cancelled (which has no column). The calendar's task
+// popover words statuses differently on purpose and keeps its own labels.
+const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+    todo: "To Do",
+    active: "Active",
+    blocked: "Blocked",
+    complete: "Complete",
+    cancelled: "Cancelled",
+};
+
 type Completable = { completed_at: Date | null };
 
 // Most recently completed first; tasks with no completed_at go last.
@@ -25,4 +37,4 @@ function fitCount(heights: number[], gap: number, buttonHeight: number, availabl
     return Math.max(count, Math.min(heights.length, 1));
 }
 
-export { compareCompleted, fitCount };
+export { TASK_STATUS_LABELS, compareCompleted, fitCount };

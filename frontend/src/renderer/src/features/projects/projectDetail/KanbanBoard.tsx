@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import "./kanbanBoard.css";
 import TaskForm from "@renderer/components/TaskForm";
 import { useTasks } from "../../tasks/useTasks";
-import { Project, Task, TaskStatus } from "@renderer/types";
+import { Feature, Project, Task, TaskStatus } from "@renderer/types";
 import TaskCard from "./TaskCard";
 import TaskDetailModal from "./TaskDetailModal";
 import FeatureLabel from "./FeatureLabel";
@@ -10,14 +10,14 @@ import { useProjects } from "../useProjects";
 import useReportError from "@renderer/hooks/useReportError";
 import useDragAutoScroll from "@renderer/hooks/useDragAutoScroll";
 import { toDatetimeLocal } from "@renderer/lib/time";
-import { compareCompleted, fitCount } from "@renderer/lib/kanban";
+import { TASK_STATUS_LABELS, compareCompleted, fitCount } from "@renderer/lib/kanban";
 
-const STATUSES: { key: TaskStatus; label: string }[] = [
-    { key: "todo", label: "To Do" },
-    { key: "active", label: "Active" },
-    { key: "blocked", label: "Blocked" },
-    { key: "complete", label: "Complete" },
-];
+const STATUSES: { key: TaskStatus; label: string }[] = (["todo", "active", "blocked", "complete"] as const).map(
+    (key) => ({ key, label: TASK_STATUS_LABELS[key] }),
+);
+
+// Stable fallback while a project's features load, so effects keyed on them don't rerun.
+const NO_FEATURES: Feature[] = [];
 
 // "general" is the synthetic row for tasks with no feature_id; it always sorts first.
 const GENERAL_ROW = "general";
@@ -38,9 +38,27 @@ const DEFAULT_COMPLETE_COUNT = 3;
 
 type DropTarget = { status: TaskStatus; feature_id: string | null };
 
+const px = (v: string) => parseFloat(v) || 0;
+
+// Vertical padding + border of an element.
+function verticalChrome(cs: CSSStyleDeclaration): number {
+    return px(cs.paddingTop) + px(cs.paddingBottom) + px(cs.borderTopWidth) + px(cs.borderBottomWidth);
+}
+
+// Height from an element's first in-flow child's top to its last one's bottom: its
+// content's own height, even when the grid row stretches the element taller. Absolutely
+// positioned children (the add-task popover, the measurement layer) don't count.
+function contentSpan(el: Element): number {
+    const inFlow = [...el.children].filter((c) => getComputedStyle(c).position !== "absolute");
+    const first = inFlow[0];
+    const last = inFlow[inFlow.length - 1];
+    if (!first || !last) return 0;
+    return last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
+}
+
 // For each row with a measurement layer (see .kb-complete-measure), how many completed
-// cards fit within the row's height as set by its other status columns, so a collapsed
-// Complete column never makes the row taller.
+// cards fit within the row's height as set by its feature label and other status
+// columns, so a collapsed Complete column never makes the row taller.
 function measureFitCounts(grid: HTMLElement): Record<string, number> {
     const counts: Record<string, number> = {};
     for (const layer of grid.querySelectorAll<HTMLElement>(".kb-complete-measure")) {
@@ -48,22 +66,18 @@ function measureFitCounts(grid: HTMLElement): Record<string, number> {
         const rowKey = cell?.dataset.row;
         if (!cell || !rowKey) continue;
         const cs = getComputedStyle(cell);
-        const px = (v: string) => parseFloat(v) || 0;
+        const chrome = verticalChrome(cs);
         // Cells are border-box: the content area their min-height leaves.
-        let available =
-            px(cs.minHeight) -
-            px(cs.paddingTop) -
-            px(cs.paddingBottom) -
-            px(cs.borderTopWidth) -
-            px(cs.borderBottomWidth);
-        const others = grid.querySelectorAll<HTMLElement>(
-            `.kb-cell[data-row="${CSS.escape(rowKey)}"]:not(.kb-cell-complete)`,
-        );
-        for (const other of others) {
-            const first = other.firstElementChild;
-            const last = other.lastElementChild;
-            if (!first || !last) continue;
-            available = Math.max(available, last.getBoundingClientRect().bottom - first.getBoundingClientRect().top);
+        let available = px(cs.minHeight) - chrome;
+        const row = CSS.escape(rowKey);
+        for (const other of grid.querySelectorAll(`.kb-cell[data-row="${row}"]:not(.kb-cell-complete)`)) {
+            available = Math.max(available, contentSpan(other));
+        }
+        // The label cell has its own padding; convert its height to this cell's content area.
+        const label = grid.querySelector(`.kb-feature-label[data-row="${row}"]`);
+        if (label) {
+            const labelHeight = contentSpan(label) + verticalChrome(getComputedStyle(label));
+            available = Math.max(available, labelHeight - chrome);
         }
         const heights = [...layer.querySelectorAll(":scope > .task-card")].map(
             (el) => el.getBoundingClientRect().height,
@@ -91,7 +105,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
     const { tasks, addTask, updateTask } = useTasks();
     const reportError = useReportError();
     const projectTasks = tasks.filter((t) => t.project_id === project.id);
-    const features = featuresByProjectId[project.id] ?? [];
+    const features = featuresByProjectId[project.id] ?? NO_FEATURES;
 
     useEffect(() => {
         loadFeatures(project.id).catch((err) => reportError("Couldn't load features", err));
@@ -148,8 +162,8 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
         });
     };
 
-    // Collapsed completed-card counts, measured before paint whenever the cards or the
-    // column widths can change, and whenever the board resizes.
+    // Collapsed completed-card counts, measured before paint whenever the cards, column
+    // widths or a row's label cell can change, and whenever the board resizes.
     const gridRef = useRef<HTMLDivElement>(null);
     const [fitCounts, setFitCounts] = useState<Record<string, number>>({});
     const remeasure = useCallback(() => {
@@ -157,7 +171,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
         const next = measureFitCounts(gridRef.current);
         setFitCounts((prev) => (sameCounts(prev, next) ? prev : next));
     }, []);
-    useLayoutEffect(remeasure, [remeasure, tasks, features, editingTaskId]);
+    useLayoutEffect(remeasure, [remeasure, tasks, features, editingTaskId, formRow]);
     useEffect(() => {
         if (!gridRef.current) return;
         const observer = new ResizeObserver(remeasure);
@@ -206,10 +220,11 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                         const rowTasks = projectTasks.filter((t) => t.feature_id === row.featureId);
                         return (
                             <Fragment key={row.key}>
-                                <div className="kb-feature-label">
+                                <div className="kb-feature-label" data-row={row.key}>
                                     <FeatureLabel
                                         name={row.name}
                                         featureId={row.featureId}
+                                        onLayoutChange={remeasure}
                                         onEdit={(name) => {
                                             if (!row.featureId || name === row.name) return;
                                             renameFeature(row.featureId, name).catch((err) =>

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { Ellipsis } from "lucide-react";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import useDismiss from "@renderer/hooks/useDismiss";
@@ -9,9 +9,12 @@ type FeatureLabelProps = {
     featureId: string | null;
     onEdit?: (name: string) => void;
     onDelete?: () => void;
+    // Called before paint when the rename form opens or closes (it changes the height),
+    // not on mount.
+    onLayoutChange?: () => void;
 };
 
-function FeatureLabel({ name, featureId, onEdit, onDelete }: FeatureLabelProps): React.JSX.Element {
+function FeatureLabel({ name, featureId, onEdit, onDelete, onLayoutChange }: FeatureLabelProps): React.JSX.Element {
     const [menuOpen, setMenuOpen] = useState(false);
     const [editing, setEditing] = useState(false);
     const [editInput, setEditInput] = useState(name);
@@ -19,6 +22,14 @@ function FeatureLabel({ name, featureId, onEdit, onDelete }: FeatureLabelProps):
     const menuRef = useRef<HTMLDivElement>(null);
 
     useDismiss(menuRef, () => setMenuOpen(false), { enabled: menuOpen });
+
+    // Skips mount: the board measures once itself after its rows mount.
+    const layoutChanged = useEffectEvent(() => onLayoutChange?.());
+    const mountedRef = useRef(false);
+    useLayoutEffect(() => {
+        if (mountedRef.current) layoutChanged();
+        mountedRef.current = true;
+    }, [editing]);
 
     const handleEditSubmit = () => {
         const next = editInput.trim();
