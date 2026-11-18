@@ -5,6 +5,7 @@ import EventChip, { EventDraftPreview } from "./EventChip";
 import AllDayChip, { AllDayDraftPreview } from "@renderer/features/calendar/AllDayChip";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import TaskPin from "@renderer/features/calendar/TaskPin";
+import MonthView from "@renderer/features/calendar/MonthView";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import { useProjects } from "@renderer/features/projects/useProjects";
 import useNow from "@renderer/hooks/useNow";
@@ -28,6 +29,7 @@ import { roundUpToQuarterHour, tasksByEventId, tasksForEvent } from "@renderer/l
 import { allDayTimes, dayColumnAt, layoutDayBars } from "@renderer/lib/allDay";
 import {
     ALL_DAY_ROW_PX,
+    DAY_NAMES,
     DEFAULT_EVENT_MINUTES,
     DRAG_THRESHOLD,
     EVENT_HEADER_PX,
@@ -43,7 +45,6 @@ const BUFFER_DAYS = 7;
 // Space (px) below the all-day row's bars: room to click and create.
 const ALL_DAY_PAD_PX = 6;
 const SLOTS_PER_DAY = MINUTES_PER_DAY / SLOT_MINUTES;
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type ViewType = "DAY" | "WEEK" | "MONTH";
 
@@ -134,8 +135,6 @@ function Calendar(): React.JSX.Element {
         return { gridStart, gridEnd, cells };
     }, [year, month]);
 
-    const monthCells = viewType === "MONTH" ? monthGrid.cells : [];
-
     // The window the user can actually see.
     const visible = useMemo<DateRange>(() => {
         if (viewType === "MONTH") {
@@ -184,7 +183,7 @@ function Calendar(): React.JSX.Element {
 
     // Per-day slices of every visible timed event, and a pin per due task,
     // laid out in columns: pins at their due time, beside each other and
-    // beside any event title they'd cover.
+    // beside any event title they'd cover. Month view lays out its own.
     const { segments, markers: taskPins } = useMemo(
         () =>
             layoutDaysWithMarkers(
@@ -215,6 +214,12 @@ function Calendar(): React.JSX.Element {
         setFocusedDay((prev) =>
             viewType === "MONTH" ? new Date(prev.getFullYear(), prev.getMonth() + 1, 1) : addDays(prev, dayCount),
         );
+    };
+
+    // Day view of `day` (a month cell's date or "+N more").
+    const openDay = (day: Date) => {
+        setFocusedDay(day);
+        setViewType("DAY");
     };
 
     // Reads the clock rather than `now`, which can be up to a minute stale.
@@ -453,28 +458,15 @@ function Calendar(): React.JSX.Element {
                 </div>
             </div>
             {viewType === "MONTH" ? (
-                <div id="month-container">
-                    <div className="month-header">
-                        {DAY_NAMES.map((name) => (
-                            <div key={name} className="day-header">
-                                <span className="day-name">{name}</span>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="month-grid">
-                        {monthCells.map((d) => {
-                            const outOfMonth = d.getMonth() !== month;
-                            return (
-                                <div
-                                    key={d.getTime()}
-                                    className={`month-day-cell${isToday(d) ? " today-cell" : ""}${outOfMonth ? " out-of-month" : ""}`}
-                                >
-                                    <span className="date-num">{d.getDate()}</span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
+                <MonthView
+                    cells={monthGrid.cells}
+                    month={month}
+                    events={events}
+                    dueTasks={dueTasks}
+                    linkedTasks={linkedTasks}
+                    isToday={isToday}
+                    onOpenDay={openDay}
+                />
             ) : (
                 <div id="week-container" style={{ ["--day-count" as string]: dayCount }}>
                     <div className="gutter-spacer" />

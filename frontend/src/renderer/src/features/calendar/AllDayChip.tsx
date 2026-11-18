@@ -5,11 +5,14 @@ import useEventEditor, { formTimes, timesUpdate } from "@renderer/features/calen
 import { categoryColor } from "@renderer/features/calendar/categories";
 import { ALL_DAY_ROW_PX, DRAG_THRESHOLD } from "@renderer/features/calendar/constants";
 import { allDayTimes, daySpan, DayBar, dayColumnAt, layoutDayBars } from "@renderer/lib/allDay";
-import { addDays, browserTimeZone } from "@renderer/lib/time";
+import { addDays, browserTimeZone, formatTime, shiftDays } from "@renderer/lib/time";
 import { describeRrule } from "@renderer/lib/rrule";
 
-// `event`'s all-day times moved `days` whole days, as the viewer's local midnights.
+// `event`'s times moved `days` whole days: an all-day event's as the viewer's
+// local midnights, a timed one's (a multi-day bar in month view) at the same
+// wall-clock times.
 function shiftedTimes(event: CalendarEvent, days: number): { start_at: Date; end_at: Date } {
+    if (!event.all_day) return { start_at: shiftDays(event.start_at, days), end_at: shiftDays(event.end_at, days) };
     const { first, last } = daySpan(event);
     return allDayTimes(addDays(first, days), addDays(last, days));
 }
@@ -24,15 +27,16 @@ const barBox = (startIndex: number, span: number, dayCount: number): React.CSSPr
 type AllDayChipProps = {
     bar: DayBar<CalendarEvent>;
     // Local midnight of the row's first day, and its day columns (7 in week
-    // view, 1 in day view).
+    // view or a month week row, 1 in day view).
     rangeStart: Date;
     dayCount: number;
     // Tasks this event is a time block for.
     linkedTasks: Task[];
 };
 
-// An all-day event's bar in the all-day row. Click to edit; drag sideways to
-// move it by whole days.
+// An all-day event's bar in the all-day row, or an all-day or multi-day
+// event's bar in a month week row. Click to edit; drag sideways to move it by
+// whole days.
 function AllDayChip({ bar, rangeStart, dayCount, linkedTasks }: AllDayChipProps): React.JSX.Element {
     const event = bar.item;
     const chipRef = useRef<HTMLDivElement>(null);
@@ -53,7 +57,7 @@ function AllDayChip({ bar, rangeStart, dayCount, linkedTasks }: AllDayChipProps)
         shift === 0
             ? bar
             : (layoutDayBars(
-                  [{ ...shiftedTimes(event, shift), all_day: true, timezone: browserTimeZone() }],
+                  [{ ...shiftedTimes(event, shift), all_day: event.all_day, timezone: browserTimeZone() }],
                   rangeStart,
                   dayCount,
               ).bars[0] ?? null);
@@ -94,7 +98,7 @@ function AllDayChip({ bar, rangeStart, dayCount, linkedTasks }: AllDayChipProps)
         const { start_at, end_at } = shiftedTimes(event, days);
         // Occurrences keep the shifted preview until the scope prompt settles.
         if (!isOccurrence) setShift(0);
-        requestUpdate(timesUpdate(event, start_at, end_at, true));
+        requestUpdate(timesUpdate(event, start_at, end_at, event.all_day === true));
     });
 
     useEffect(() => {
@@ -141,6 +145,9 @@ function AllDayChip({ bar, rangeStart, dayCount, linkedTasks }: AllDayChipProps)
                     openFromChip();
                 }}
             >
+                {!event.all_day && !shown?.clippedStart && (
+                    <span className="all-day-chip-time">{formatTime(event.start_at)}</span>
+                )}
                 <span className="all-day-chip-title">{event.title}</span>
                 {isOccurrence && (
                     <Repeat className="event-chip-repeat" size={10} aria-label="Repeats">

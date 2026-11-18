@@ -2,16 +2,12 @@ import "./taskPin.css";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Task } from "@renderer/types";
 import { useTasks } from "@renderer/features/tasks/useTasks";
-import TaskPopover from "@renderer/features/calendar/TaskPopover";
-import BlockTimePopover from "@renderer/features/calendar/BlockTimePopover";
-import { useTaskFeatureName } from "@renderer/features/projects/useTaskFeatures";
+import useTaskItem from "@renderer/features/calendar/useTaskItem";
 import { formatTime, MINUTES_PER_DAY, shiftDays } from "@renderer/lib/time";
 import useReportError from "@renderer/hooks/useReportError";
-import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 import { DayMarker } from "@renderer/lib/eventLayout";
 import {
     DRAG_THRESHOLD,
-    POPOVER_GAP,
     PX_PER_MIN,
     TASK_PIN_HEIGHT,
     TASK_PIN_INSET,
@@ -30,7 +26,6 @@ function TaskPin({ pin, dayCount }: TaskPinProps): React.JSX.Element {
     const { item: task, dayIndex: dayIdx } = pin;
     const { updateTask } = useTasks();
     const reportError = useReportError();
-    const featureName = useTaskFeatureName(task);
     const pinRef = useRef<HTMLDivElement>(null);
     const parentRectRef = useRef<DOMRect | null>(null);
     const grabOffsetRef = useRef({ x: 0, y: 0 });
@@ -40,21 +35,11 @@ function TaskPin({ pin, dayCount }: TaskPinProps): React.JSX.Element {
     const suppressClickRef = useRef(false);
     // Kept at the width it had when grabbed, so it can't widen past the grid.
     const [dragPos, setDragPos] = useState<{ left: number; top: number; width: number } | null>(null);
-    // Popover anchor, captured from the pin's rect when it opens; null = closed.
-    const [popoverAnchor, setPopoverAnchor] = useState<PopoverAnchor | null>(null);
-    // Block-time popover, opened from the task popover in its place; null = closed.
-    const [blockAnchor, setBlockAnchor] = useState<PopoverAnchor | null>(null);
+    const { done, toggleComplete, featureName, popoverOpen, togglePopover, popover } = useTaskItem(task, pinRef);
 
     const due = task.due_at;
-    const done = task.status === "complete";
     const cancelled = task.status === "cancelled";
     const blocked = task.status === "blocked";
-
-    function toggleComplete(): void {
-        updateTask(task.id, { status: done ? "todo" : "complete" }).catch((err) =>
-            reportError("Couldn't update task", err),
-        );
-    }
 
     function onMouseDown(e: React.MouseEvent): void {
         if (e.button !== 0) return;
@@ -134,16 +119,6 @@ function TaskPin({ pin, dayCount }: TaskPinProps): React.JSX.Element {
               height: TASK_PIN_HEIGHT,
           };
 
-    function togglePopover(): void {
-        if (popoverAnchor) {
-            setPopoverAnchor(null);
-            return;
-        }
-        const rect = pinRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        setPopoverAnchor({ x: rect.right + POPOVER_GAP, y: rect.top, flipX: rect.left - POPOVER_GAP });
-    }
-
     return (
         <>
             <div
@@ -153,7 +128,7 @@ function TaskPin({ pin, dayCount }: TaskPinProps): React.JSX.Element {
                 title={featureName ? `${task.title} · ${featureName}` : task.title}
                 role="button"
                 tabIndex={0}
-                aria-expanded={popoverAnchor !== null}
+                aria-expanded={popoverOpen}
                 onMouseDown={onMouseDown}
                 onClick={() => {
                     if (suppressClickRef.current) {
@@ -187,21 +162,7 @@ function TaskPin({ pin, dayCount }: TaskPinProps): React.JSX.Element {
                     <span className="task-pin-time">{formatTime(due)}</span>
                 </div>
             </div>
-            {popoverAnchor && (
-                <TaskPopover
-                    task={task}
-                    featureName={featureName}
-                    anchor={popoverAnchor}
-                    ignoreRef={pinRef}
-                    onToggleComplete={toggleComplete}
-                    onBlockTime={() => {
-                        setBlockAnchor(popoverAnchor);
-                        setPopoverAnchor(null);
-                    }}
-                    onClose={() => setPopoverAnchor(null)}
-                />
-            )}
-            {blockAnchor && <BlockTimePopover task={task} anchor={blockAnchor} onClose={() => setBlockAnchor(null)} />}
+            {popover}
         </>
     );
 }

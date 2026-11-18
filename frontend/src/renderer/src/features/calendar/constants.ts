@@ -27,3 +27,6 @@ export const TASK_SNAP_MINUTES = 15;
 // Height (px) of one stacked row of bars in the all-day row (passed to CSS
 // as --all-day-row).
 export const ALL_DAY_ROW_PX = 22;
+
+// Weekday labels, Sunday first (the calendar's week start).
+export const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
