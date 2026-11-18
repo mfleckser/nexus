@@ -154,7 +154,9 @@ is then part of the task text.
      small enough that one PR description explains it all. Each group gets one
      branch, a short kebab-case name for what it does.
    - **Order:** real dependencies first, then whatever moves the request forward
-     most, then oldest first.
+     most. Among groups with no ordering constraint (no stacking or `Needs first:`
+     between them), smaller or cheaper first, so more PRs land before a usage
+     cutoff. Then oldest first.
    - **Stacking:** a group that depends on another group's unmerged branch is
      stacked on it.
    - **Review fixes:** tasks filed from PR comments form a group on their PR's
@@ -202,6 +204,21 @@ run, and pass all of it in `decisions:` to every spawn, so lanes don't contradic
 each other. If a result shows two lanes went different ways on the same question,
 pick one and file a task to make the other match.
 
+**Rate and usage limits.**
+- **Resume, never respawn.** If an `/implement` or other spawned agent fails on a
+  rate or usage limit, wait for the limit to reset (a long sleep or `Monitor`),
+  then continue that same agent with `SendMessage`; its transcript is saved. A
+  fresh spawn throws away its work. Tell it that any subagents of its own were
+  killed too, so it must re-run whatever was in flight.
+- **Wrap up near the limit**, judging from the limit warnings you see (there's no
+  fixed threshold), or when Mark asks. `SendMessage` each running `/implement`
+  agent: stop at a clean point, commit and push working code, leave the worktree
+  clean, and return `partial` with a precise **Remaining** list. Start no new tasks
+  or groups. Handle those `partial` results as below, but skip the once-more spawn
+  (that's new work): treat the task as done and leave its Remaining for the task's
+  marker or Filing tasks.
+- If you're cut off yourself, the markers let the next run resume.
+
 Within a lane, groups run in order in the lane's slot. For each group:
 
 1. **Branch.** Inside the lane's slot, do one of:
@@ -248,7 +265,7 @@ Within a lane, groups run in order in the lane's slot. For each group:
    - **`partial`**: spawn once more on the same branch, with the same task title
      and the **Remaining** text as the description, so it updates the same PR
      section file. If it's still partial, file the rest (see Filing tasks) and treat
-     this task as done.
+     this task as done. After a wrap-up, see Rate and usage limits instead.
    - **`blocked`**: set the task to `blocked` with the reason. Keep going with the
      rest of the group, unless they depend on it.
 
@@ -366,5 +383,7 @@ Filed: <new tasks from review comments and follow-ups — or "none">
 Manual steps: <Pi deploy, migrations to know about — or "none">
 ```
 
-If the run stopped early (usage limit, an error you couldn't route around), say
-where each lane stopped. The markers already let the next run resume.
+If the run stopped early (a usage limit or wrap-up, an error you couldn't route
+around), say where each lane stopped and what each wrapped-up task has left. After
+a wrap-up, stop once every running agent has returned and its PR step is done. The
+markers already let the next run resume.
