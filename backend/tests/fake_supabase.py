@@ -268,7 +268,7 @@ class _Rpc:
         rows = {r["id"]: r for r in self.db.tables["events"]}
         for op in self.ops:
             expected = op.get("expect_updated_at") if op["op"] in ("update", "delete") else None
-            if expected is None:
+            if expected is None or op.get("id") is None:
                 continue
             row = rows.get(op["id"])
             if row is None or _instant(row["updated_at"]) != _instant(expected):

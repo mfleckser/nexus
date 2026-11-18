@@ -708,7 +708,7 @@ class EventServiceTest(AppTestCase):
             (master["title"], master["rrule"], len(self.db.rows)), ("Studio 1", "FREQ=WEEKLY;BYDAY=WE", before)
         )
 
-    def test_every_row_the_edit_read_is_guarded(self):
+    def test_every_row_the_edit_writes_is_guarded(self):
         all_day = {"all_day": True, "start_at": "2026-10-14T07:00:00Z", "end_at": "2026-10-15T07:00:00Z"}
         edits = {
             "all move": {"scope": "all", **self.AN_HOUR_LATER},

@@ -4,7 +4,7 @@
 -- An update / delete op may now carry expect_updated_at, the updated_at the
 -- backend read; if that row's updated_at differs (or the row is gone), the
 -- whole call fails with SQLSTATE PT409 (PostgREST: HTTP 409) and nothing is
--- written. Rows are checked and locked before any op runs.
+-- written. Rows are locked and checked before any op runs.
 -- Same signature, grants and behaviour for every op without the key.
 
 -- ops: JSON array, applied in order:
@@ -27,22 +27,33 @@ declare
     op jsonb;
     cols text;
     n bigint;
-    seen timestamptz;
+    stale text;
 begin
     if jsonb_typeof(ops) is distinct from 'array' then
         raise exception 'ops must be a JSON array' using errcode = '22023';
     end if;
 
-    -- Stale-write guard, before anything is written: lock each expected row
-    -- and fail the whole call if it changed since the backend read it.
-    for op in select value from jsonb_array_elements(ops) loop
-        if op->>'op' in ('update', 'delete') and op->>'expect_updated_at' is not null then
-            select e.updated_at into seen from public.events e where e.id = (op->>'id')::uuid for update;
-            if not found or seen is distinct from (op->>'expect_updated_at')::timestamptz then
-                raise exception 'event % was changed elsewhere', op->>'id' using errcode = 'PT409';
-            end if;
-        end if;
-    end loop;
+    -- Stale-write guard, before anything is written: lock the expected rows,
+    -- masters first (the order a cascading master delete locks them in, so the
+    -- two can't deadlock), then fail the whole call if any is gone or changed.
+    perform 1 from public.events e
+    where e.id in (
+        select (o->>'id')::uuid from jsonb_array_elements(ops) o
+        where o->>'op' in ('update', 'delete') and o->>'id' is not null and o->>'expect_updated_at' is not null
+    )
+    order by e.recurring_event_id is not null, e.id
+    for update;
+
+    select o->>'id' into stale from jsonb_array_elements(ops) o
+    where o->>'op' in ('update', 'delete') and o->>'id' is not null and o->>'expect_updated_at' is not null
+        and not exists (
+            select 1 from public.events e
+            where e.id = (o->>'id')::uuid and e.updated_at = (o->>'expect_updated_at')::timestamptz
+        )
+    limit 1;
+    if stale is not null then
+        raise exception 'event % was changed elsewhere', stale using errcode = 'PT409';
+    end if;
 
     set constraints public.events_override_unique deferred;
 
