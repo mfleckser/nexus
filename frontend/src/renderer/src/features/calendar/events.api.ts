@@ -1,4 +1,4 @@
-import { CalendarEvent, RecurrenceScope } from "@renderer/types";
+import { CalendarEvent, NewEventDraft, RecurrenceScope } from "@renderer/types";
 import { browserTimeZone } from "@renderer/lib/time";
 import { api, parseDate, parseNullableDate, Wire } from "@renderer/lib/api";
 
@@ -9,6 +9,7 @@ export type EventUpdate = Partial<{
     description: string | null;
     start_at: Date;
     end_at: Date;
+    all_day: boolean;
     category: string | null;
     rrule: string | null;
     timezone: string;
@@ -37,22 +38,16 @@ async function getEvents(start: Date, end: Date): Promise<CalendarEvent[]> {
 }
 
 // Resolves to the created row (a series master when rrule is set).
-async function addEvent(
-    title: string,
-    description: string | null,
-    start_at: Date,
-    end_at: Date,
-    category: string,
-    rrule: string | null = null,
-): Promise<CalendarEvent> {
+async function addEvent(draft: NewEventDraft): Promise<CalendarEvent> {
     const created = await api.post<Wire<CalendarEvent>>("/events", {
-        title: title,
-        description: description,
-        start_at: start_at,
-        end_at: end_at,
-        category: category,
+        title: draft.title,
+        description: draft.description,
+        start_at: draft.start_at,
+        end_at: draft.end_at,
+        all_day: draft.all_day,
+        category: draft.category,
         timezone: browserTimeZone(),
-        ...(rrule ? { rrule } : {}),
+        ...(draft.rrule ? { rrule: draft.rrule } : {}),
     });
     return parseEvent(created);
 }

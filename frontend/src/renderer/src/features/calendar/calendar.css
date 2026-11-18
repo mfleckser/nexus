@@ -237,20 +237,88 @@
     border-bottom: 1px solid var(--border-default);
 }
 
+/* Height set inline from the number of stacked bar rows. */
 .all-day-container {
     grid-column: 2 / -1;
+    position: relative;
     display: grid;
     grid-template-columns: repeat(var(--day-count), 1fr);
-    min-height: 24px;
     border-bottom: 1px solid var(--border-default);
 }
 
 .all-day-cell {
     border-right: 1px solid var(--border-subtle);
+    transition: background-color 0.1s;
 }
 
 .all-day-cell:last-child {
     border-right: none;
+}
+
+.all-day-cell:hover {
+    background-color: var(--bg-hover);
+    cursor: pointer;
+}
+
+/* One all-day event: rows are ALL_DAY_ROW_PX (constants.ts) apart. */
+.all-day-chip {
+    position: absolute;
+    box-sizing: border-box;
+    height: 20px;
+    margin: 2px 2px 0;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 6px;
+    background: color-mix(in srgb-linear, var(--chip-background) 30%, transparent 70%);
+    border-left: 3px solid var(--pillar-calendar);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.all-day-chip:hover,
+.all-day-chip-dragging {
+    background: var(--chip-background);
+    color: var(--text-on-accent);
+}
+
+.all-day-chip:hover .event-chip-repeat,
+.all-day-chip-dragging .event-chip-repeat {
+    color: var(--text-on-accent);
+    opacity: 0.85;
+}
+
+.all-day-chip-dragging {
+    cursor: grabbing;
+    z-index: 1;
+}
+
+/* The event continues past the visible days: square off that edge. */
+.all-day-chip-clipped-start {
+    border-left-style: dashed;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.all-day-chip-clipped-end {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.all-day-chip-title {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.all-day-chip-draft {
+    pointer-events: none;
 }
 
 .day-events-scroll {

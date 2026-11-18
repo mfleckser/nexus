@@ -137,10 +137,10 @@
     border-color: var(--border-focus);
 }
 
-.nep-duration {
+.nep-label-row {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
 }
 
 .nep-chips {
@@ -177,9 +177,14 @@
     color: var(--accent);
 }
 
-.nep-custom {
-    width: 100%;
-    flex: none;
+.nep-chip-small {
+    font-size: 11px;
+    padding: 2px 10px;
+}
+
+.nep-input-invalid,
+.nep-input-invalid:focus {
+    border-color: var(--status-danger);
 }
 
 /* ===== Repeat ===== */

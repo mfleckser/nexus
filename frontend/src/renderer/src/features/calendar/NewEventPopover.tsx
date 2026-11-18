@@ -3,7 +3,7 @@ import { Trash2 } from "lucide-react";
 import "./newEventPopover.css";
 import categoryData from "./categories.json";
 import { NewEventDraft } from "@renderer/types";
-import { parseDateTimeInputs, toDateInput, toTimeInput } from "@renderer/lib/time";
+import { addDays, calendarDaysBetween, parseDateTimeInputs, toDateInput, toTimeInput } from "@renderer/lib/time";
 import useDismiss from "@renderer/hooks/useDismiss";
 import usePopoverPosition, { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 import {
@@ -29,10 +29,23 @@ const DURATION_PRESETS = [30, 45, 60, 90, 120];
 const REPEAT_PRESETS: RepeatPreset[] = ["none", "daily", "weekdays", "weekly", "monthly", "yearly"];
 const FREQ_UNITS: Record<RecurrenceFreq, string> = { DAILY: "day", WEEKLY: "week", MONTHLY: "month", YEARLY: "year" };
 
-const parseDateInput = (s: string): Date | null => parseDateTimeInputs(s, "00:00");
+// Length of a new timed event, and of an all-day event switched to timed.
+const DEFAULT_DURATION = 60;
+// Start time given to an all-day event switched to timed.
+const DEFAULT_START_TIME = "09:00";
 
-// Positive whole minutes, or null.
-const parseMinutes = (s: string): number | null => (/^\d+$/.test(s.trim()) && Number(s) > 0 ? Number(s) : null);
+const parseDateInput = (s: string): Date | null => parseDateTimeInputs(s, "00:00");
+const addMinutes = (d: Date, minutes: number): Date => new Date(d.getTime() + minutes * 60000);
+const minutesBetween = (a: Date, b: Date): number => Math.round((b.getTime() - a.getTime()) / 60000);
+
+// Last calendar day [start, end) reaches into: an end at midnight doesn't count.
+const lastDayOf = (start: Date, end: Date): Date => {
+    const last = new Date(Math.max(start.getTime(), end.getTime() - 1));
+    return new Date(last.getFullYear(), last.getMonth(), last.getDate());
+};
+
+const formatDuration = (mins: number): string =>
+    mins < 60 ? `${mins}m` : mins % 60 === 0 ? `${mins / 60}h` : `${Math.floor(mins / 60)}h${mins % 60}`;
 
 type RepeatMode = RepeatPreset | "custom";
 
@@ -100,8 +113,11 @@ function initialRepeatState(
 
 export type NewEventPopoverProps = {
     anchor: PopoverAnchor;
+    // For an all-day event: local midnight of its first day, and of the day
+    // after its last. Defaults to an hour after the start.
     initialStart: Date;
-    initialDuration?: number;
+    initialEnd?: Date;
+    initialAllDay?: boolean;
     initialTitle?: string;
     initialDescription?: string;
     initialCategory?: string;
@@ -122,7 +138,8 @@ export type NewEventPopoverProps = {
 function NewEventPopover({
     anchor,
     initialStart,
-    initialDuration = 60,
+    initialEnd,
+    initialAllDay = false,
     initialTitle = "",
     initialDescription = "",
     initialCategory = "",
@@ -140,11 +157,26 @@ function NewEventPopover({
     const [title, setTitle] = useState(initialTitle);
     const [description, setDescription] = useState(initialDescription);
     const [category, setCategory] = useState(initialCategory);
+    const [allDay, setAllDay] = useState(initialAllDay);
+    // Start date (the first day, for all-day) and time (kept, but unused, while all-day).
     const [dateStr, setDateStr] = useState(toDateInput(initialStart));
-    const [timeStr, setTimeStr] = useState(toTimeInput(initialStart));
-    const [duration, setDuration] = useState(initialDuration);
-    const [customDuration, setCustomDuration] = useState(
-        DURATION_PRESETS.includes(initialDuration) ? "" : String(initialDuration),
+    const [timeStr, setTimeStr] = useState(initialAllDay ? DEFAULT_START_TIME : toTimeInput(initialStart));
+    // Timed end, and the timed length it follows when the start moves (the last
+    // valid one while the end is mid-edit or before the start).
+    const [timedInit] = useState(() => {
+        if (!initialAllDay) {
+            const end = initialEnd ?? addMinutes(initialStart, DEFAULT_DURATION);
+            return { end, duration: minutesBetween(initialStart, end) };
+        }
+        const start = parseDateTimeInputs(toDateInput(initialStart), DEFAULT_START_TIME) ?? initialStart;
+        return { end: addMinutes(start, DEFAULT_DURATION), duration: DEFAULT_DURATION };
+    });
+    const [duration, setDuration] = useState(timedInit.duration);
+    const [endDateStr, setEndDateStr] = useState(toDateInput(timedInit.end));
+    const [endTimeStr, setEndTimeStr] = useState(toTimeInput(timedInit.end));
+    // All-day: last day (inclusive).
+    const [lastDateStr, setLastDateStr] = useState(() =>
+        toDateInput(initialAllDay && initialEnd ? addDays(initialEnd, -1) : initialStart),
     );
     const { left, top } = usePopoverPosition(rootRef, anchor);
 
@@ -154,33 +186,42 @@ function NewEventPopover({
     const [repeatTouched, setRepeatTouched] = useState(false);
     const showUnknownRule = initialRepeat.unknown && !repeatTouched;
 
-    // null while the date/time inputs are empty or mid-edit.
-    const startAt = parseDateTimeInputs(dateStr, timeStr);
+    // null while the date/time inputs are empty or mid-edit; endAt also while
+    // it isn't after the start (on or after the first day, for all-day).
+    const startAt = allDay ? parseDateInput(dateStr) : parseDateTimeInputs(dateStr, timeStr);
+    const endAt = ((): Date | null => {
+        if (!startAt) return null;
+        if (allDay) {
+            const last = parseDateInput(lastDateStr);
+            return last && last >= startAt ? addDays(last, 1) : null;
+        }
+        const end = parseDateTimeInputs(endDateStr, endTimeStr);
+        return end && end > startAt ? end : null;
+    })();
     const startMs = startAt?.getTime() ?? null;
-    // A non-empty custom duration must itself be valid (the last good value
-    // stays in `duration` while it's being typed).
-    const durationValid = duration > 0 && (customDuration === "" || parseMinutes(customDuration) !== null);
+    const endMs = endAt?.getTime() ?? null;
     // Labels/presets follow the chosen start; fall back while the date input is mid-edit.
     const repeatStart = startAt ?? initialStart;
     const customRecurrence = repeatMode === "custom" ? customFormToRecurrence(customRepeat, repeatStart) : null;
     const rrule = computeRrule();
-    const canSave = !!title.trim() && startAt !== null && durationValid && rrule !== undefined;
+    const canSave = !!title.trim() && startAt !== null && endAt !== null && rrule !== undefined;
 
     useEffect(() => {
         titleRef.current?.focus();
     }, []);
 
     useEffect(() => {
-        if (startMs === null || !durationValid || !onDraftChange) return;
+        if (startMs === null || endMs === null || !onDraftChange) return;
         onDraftChange({
             title,
             description,
             start_at: new Date(startMs),
-            duration,
+            end_at: new Date(endMs),
+            all_day: allDay,
             category,
             rrule: rrule ?? null,
         });
-    }, [title, description, startMs, duration, durationValid, category, rrule, onDraftChange]);
+    }, [title, description, startMs, endMs, allDay, category, rrule, onDraftChange]);
 
     useDismiss(rootRef, onClose);
 
@@ -194,15 +235,72 @@ function NewEventPopover({
 
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (!canSave || startAt === null || rrule === undefined) return;
+        if (!canSave || startAt === null || endAt === null || rrule === undefined) return;
         onSave({
             title: title.trim(),
             description: description.trim(),
             start_at: startAt,
-            duration,
+            end_at: endAt,
+            all_day: allDay,
             category,
             rrule,
         });
+    }
+
+    // The timed end follows the start, keeping the event's length.
+    function setTimedEnd(start: Date | null, minutes: number) {
+        if (!start) return;
+        const end = addMinutes(start, minutes);
+        setEndDateStr(toDateInput(end));
+        setEndTimeStr(toTimeInput(end));
+    }
+
+    function onStartDateChange(v: string) {
+        if (allDay) {
+            // Move the last day along, keeping the number of days.
+            const [oldFirst, oldLast, first] = [
+                parseDateInput(dateStr),
+                parseDateInput(lastDateStr),
+                parseDateInput(v),
+            ];
+            if (oldFirst && oldLast && first && oldLast >= oldFirst) {
+                setLastDateStr(toDateInput(addDays(first, calendarDaysBetween(oldFirst, oldLast))));
+            }
+        } else {
+            setTimedEnd(parseDateTimeInputs(v, timeStr), duration);
+        }
+        setDateStr(v);
+    }
+
+    function onStartTimeChange(v: string) {
+        setTimeStr(v);
+        setTimedEnd(parseDateTimeInputs(dateStr, v), duration);
+    }
+
+    function onEndChange(date: string, time: string) {
+        setEndDateStr(date);
+        setEndTimeStr(time);
+        const start = parseDateTimeInputs(dateStr, timeStr);
+        const end = parseDateTimeInputs(date, time);
+        if (start && end && end > start) setDuration(minutesBetween(start, end));
+    }
+
+    function selectPreset(mins: number) {
+        setDuration(mins);
+        setTimedEnd(startAt, mins);
+    }
+
+    function toggleAllDay() {
+        if (!allDay) {
+            // Keep the days the timed event touches.
+            const start = parseDateTimeInputs(dateStr, timeStr);
+            const end = parseDateTimeInputs(endDateStr, endTimeStr);
+            if (start && end && end > start) setLastDateStr(toDateInput(lastDayOf(start, end)));
+            else setLastDateStr(dateStr);
+        } else {
+            setTimedEnd(parseDateTimeInputs(dateStr, timeStr), duration);
+        }
+        setAllDay(!allDay);
     }
 
     function onRepeatModeChange(mode: RepeatMode) {
@@ -226,17 +324,6 @@ function NewEventPopover({
         updateCustomRepeat({
             byday: has ? customRepeat.byday.filter((d) => d !== day) : [...customRepeat.byday, day],
         });
-    }
-
-    function selectPreset(mins: number) {
-        setDuration(mins);
-        setCustomDuration("");
-    }
-
-    function onCustomChange(v: string) {
-        setCustomDuration(v);
-        const n = parseMinutes(v);
-        if (n !== null) setDuration(n);
     }
 
     const style: React.CSSProperties = {
@@ -297,59 +384,92 @@ function NewEventPopover({
                 </div>
 
                 <div className="nep-field-row">
-                    <label className="nep-label" htmlFor={`${ids}-date`}>
-                        Start
-                    </label>
+                    <div className="nep-label-row">
+                        <label className="nep-label" htmlFor={`${ids}-date`}>
+                            Start
+                        </label>
+                        <button
+                            type="button"
+                            className={`nep-chip nep-chip-small${allDay ? " nep-chip-active" : ""}`}
+                            aria-pressed={allDay}
+                            onClick={toggleAllDay}
+                        >
+                            All day
+                        </button>
+                    </div>
                     <div className="nep-datetime">
                         <input
                             id={`${ids}-date`}
                             className="nep-input"
                             type="date"
                             value={dateStr}
-                            onChange={(e) => setDateStr(e.target.value)}
+                            onChange={(e) => onStartDateChange(e.target.value)}
                         />
-                        <input
-                            className="nep-input"
-                            type="time"
-                            aria-label="Start time"
-                            value={timeStr}
-                            onChange={(e) => setTimeStr(e.target.value)}
-                        />
+                        {!allDay && (
+                            <input
+                                className="nep-input"
+                                type="time"
+                                aria-label="Start time"
+                                value={timeStr}
+                                onChange={(e) => onStartTimeChange(e.target.value)}
+                            />
+                        )}
                     </div>
                 </div>
 
                 <div className="nep-field-row">
-                    <label className="nep-label" htmlFor={`${ids}-duration`}>
-                        Duration
+                    <label className="nep-label" htmlFor={`${ids}-end-date`}>
+                        End
                     </label>
-                    <div className="nep-duration">
-                        <div className="nep-chips" role="group" aria-label="Duration presets">
-                            {DURATION_PRESETS.map((mins) => (
-                                <button
-                                    key={mins}
-                                    type="button"
-                                    className={`nep-chip${duration === mins && customDuration === "" ? " nep-chip-active" : ""}`}
-                                    aria-pressed={duration === mins && customDuration === ""}
-                                    onClick={() => selectPreset(mins)}
-                                >
-                                    {mins < 60
-                                        ? `${mins}m`
-                                        : mins % 60 === 0
-                                          ? `${mins / 60}h`
-                                          : `${Math.floor(mins / 60)}h${mins % 60}`}
-                                </button>
-                            ))}
-                        </div>
-                        <input
-                            id={`${ids}-duration`}
-                            className="nep-input nep-custom"
-                            type="number"
-                            min={1}
-                            placeholder="Custom (min)"
-                            value={customDuration}
-                            onChange={(e) => onCustomChange(e.target.value)}
-                        />
+                    <div className="nep-datetime">
+                        {allDay ? (
+                            <input
+                                id={`${ids}-end-date`}
+                                className={`nep-input${endAt ? "" : " nep-input-invalid"}`}
+                                type="date"
+                                min={dateStr}
+                                value={lastDateStr}
+                                onChange={(e) => setLastDateStr(e.target.value)}
+                            />
+                        ) : (
+                            <>
+                                <input
+                                    id={`${ids}-end-date`}
+                                    className={`nep-input${endAt ? "" : " nep-input-invalid"}`}
+                                    type="date"
+                                    min={dateStr}
+                                    value={endDateStr}
+                                    onChange={(e) => onEndChange(e.target.value, endTimeStr)}
+                                />
+                                <input
+                                    className={`nep-input${endAt ? "" : " nep-input-invalid"}`}
+                                    type="time"
+                                    aria-label="End time"
+                                    value={endTimeStr}
+                                    onChange={(e) => onEndChange(endDateStr, e.target.value)}
+                                />
+                            </>
+                        )}
                     </div>
+                    {!allDay && (
+                        <div className="nep-chips" role="group" aria-label="Duration presets">
+                            {DURATION_PRESETS.map((mins) => {
+                                const active =
+                                    endAt !== null && startAt !== null && minutesBetween(startAt, endAt) === mins;
+                                return (
+                                    <button
+                                        key={mins}
+                                        type="button"
+                                        className={`nep-chip${active ? " nep-chip-active" : ""}`}
+                                        aria-pressed={active}
+                                        onClick={() => selectPreset(mins)}
+                                    >
+                                        {formatDuration(mins)}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 <div className="nep-field-row">

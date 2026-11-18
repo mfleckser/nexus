@@ -46,11 +46,14 @@ export type DateRange = {
     end: Date;
 };
 
+// The new/edit-event form's values. An all-day draft runs from local midnight
+// of its first day to local midnight after its last.
 export type NewEventDraft = {
     title: string;
     description: string;
     start_at: Date;
-    duration: number;
+    end_at: Date;
+    all_day: boolean;
     category: string;
     rrule?: string | null;
 };
