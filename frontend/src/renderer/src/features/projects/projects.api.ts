@@ -47,8 +47,8 @@ async function getNotes(project_id: string): Promise<string> {
     return raw.notes ?? "";
 }
 
-function addProject(title: string, description: string, type: string | null): Promise<unknown> {
-    return api.post("/projects", { title, description, type });
+async function addProject(title: string, description: string, type: string | null): Promise<Project> {
+    return parseProject(await api.post<Wire<Project>>("/projects", { title, description, type }));
 }
 
 // Resolves to the updated row (the response also carries `notes`, which
