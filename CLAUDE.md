@@ -93,7 +93,9 @@
   - Agent workflow (`.claude/skills/`): the backlog is the app's "Nexus" project.
     `/add-task` writes a task spec (settles product questions with Mark), `/conductor`
     triages tasks and runs `/implement` per task unattended, then opens one PR per
-    group (stacked via `gh stack`). Only Mark merges.
+    group (stacked via `gh stack`). Independent PRs run in parallel lanes (max 3,
+    worktrees `.claude/worktrees/conductor-<n>`, backend ports 5055–5057). Only Mark
+    merges.
   - Tests: backend `unittest` against an in-memory fake (`tests/fake_supabase.py`);
     frontend `vitest` for pure helpers in `src/renderer/src/lib`; MCP tools `unittest`
     against a fake API plus a live `smoke.py`. Setup and commands in `README.md`.

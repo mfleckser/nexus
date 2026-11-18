@@ -1,7 +1,7 @@
 ---
 name: implement
-description: "Take one Nexus feature, fix, or chore and implement it end to end without needing Mark: plans, builds, tests, reviews, commits and pushes to a branch, with effort scaled to the task's size, then returns a summary. Invoked with /implement <task> [branch=<name>] [unattended] [decisions: ...]."
-argument-hint: "<task description> [branch=<name>] [unattended] [decisions: ...]"
+description: "Take one Nexus feature, fix, or chore and implement it end to end without needing Mark: plans, builds, tests, reviews, commits and pushes to a branch, with effort scaled to the task's size, then returns a summary. Invoked with /implement <task> [branch=<name>] [port=<n>] [unattended] [decisions: ...]."
+argument-hint: "<task description> [branch=<name>] [port=<n>] [unattended] [decisions: ...]"
 ---
 
 # Implement
@@ -15,6 +15,8 @@ Arguments: `$ARGUMENTS`
   from any source; don't go looking for it in a backlog file, and don't edit planning
   files. Whoever invoked you tracks the task.
 - **`branch=<name>`** (optional): the branch to commit to. If omitted, see step 6.
+- **`port=<n>`** (optional): the local backend port for UI checks. Default `5055`.
+  Other agents may run in parallel on other ports, so use only this one.
 - **`decisions:`** (optional, always last): product answers already made. They are
   settled.
 - **`unattended`** (optional): nobody is watching. Never wait on Mark. Also treat
@@ -143,13 +145,14 @@ repeat until green.
     folder (`npm init -y && npm i playwright-core`) and launch with
     `executablePath` set to the default export of
     `frontend/node_modules/electron/index.js` and `args: [<frontend dir>]`.
-  - If backend code changed, run it locally on a free port
-    (`NEXUS_PORT=5055 backend/start`, in the background). Restart it after more
+  - If backend code changed, run it locally on your port (`port=`, default 5055):
+    `NEXUS_PORT=<port> backend/start`, in the background. Restart it after more
     backend edits (no reloader). Stop it by the PID on that port only
-    (`lsof -ti tcp:5055 -sTCP:LISTEN`); never `pkill` by name, which can hit Mark's
-    own dev server.
+    (`lsof -ti tcp:<port> -sTCP:LISTEN`); never `pkill` by name, which can hit Mark's
+    own dev server or another agent's. If the port is already taken when you start,
+    report `blocked` rather than using someone else's server.
   - Build against that backend:
-    `MAIN_VITE_NEXUS_API_URL=http://127.0.0.1:5055 npx electron-vite build`.
+    `MAIN_VITE_NEXUS_API_URL=http://127.0.0.1:<port> npx electron-vite build`.
     Otherwise a plain build talks to whatever `frontend/.env` points at. When done,
     rebuild with a plain `npx electron-vite build` so `out/` doesn't keep the test
     URL baked in.
@@ -164,7 +167,7 @@ repeat until green.
 - **Agent tools (`tools/nexus-mcp`)**: `venv/bin/python -m unittest discover -s tests`
   and `../../backend/venv/bin/ruff check .`. If you add an endpoint agents need, add
   the tool and test it; run `smoke.py` against a local backend
-  (`NEXUS_API_URL=http://127.0.0.1:5055`) when the backend changed.
+  (`NEXUS_API_URL=http://127.0.0.1:<port>`) when the backend changed.
 
 ## 5. Review (scaled to tier)
 
