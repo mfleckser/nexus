@@ -346,11 +346,18 @@ def _relink_tasks_op(from_id: str, to_id: str) -> dict:
     return {"op": "relink_tasks", "from": from_id, "to": to_id}
 
 
-def _holds_day(series: dict, override: dict, old_tz: str) -> bool:
+def _moved_day(slot: datetime, slots: dict, anchor, old_tz: str, tz: str):
+    """The local date, in the new series' zone `tz`, an edit takes the old
+    occurrence `slot` to: its new slot's (`slots`, see _slot_map), else that of
+    the edited slot's wall-clock shift (`anchor`: its old and new start)."""
+    moved = slots.get(slot) or rr.shift_wall(slot, rr.wall_delta(anchor[0], anchor[1], old_tz, tz), old_tz, tz)
+    return moved.astimezone(rr.get_zone(tz)).date()
+
+
+def _holds_day(series: dict, day) -> bool:
     """Whether a series (or plain event), given by its new columns (rrule,
     start_at, end_at, timezone, exdates), has an occurrence starting on the
-    local date of `override`'s slot (read in the old series' timezone)."""
-    day = parse_instant(override["original_start_at"]).astimezone(rr.get_zone(old_tz)).date()
+    local date `day` of its timezone (see _moved_day)."""
     tz = series["timezone"]
     zone = rr.get_zone(tz)
     lo = datetime.combine(day, time(0), zone)
@@ -362,13 +369,18 @@ def _holds_day(series: dict, override: dict, old_tz: str) -> bool:
     return any(occ >= lo for occ, _ in rr.expand(series["rrule"], start, end, tz, lo, hi, excluded))
 
 
-def _drop_overrides(overrides: list, old_tz: str, target_id: str, target: dict, sweep: dict) -> list:
+def _drop_overrides(overrides: list, day_of, target_id: str, target: dict, sweep: dict) -> list:
     """Ops dropping the override rows an edit read, then `sweep` (the
     delete_overrides op for their range, which also takes any added since):
     tasks time-blocked on one move first to the series `target_id` when its new
-    columns `target` still have an occurrence on that override's day; the
-    others are unlinked by the delete (FK), as for a cancelled occurrence."""
-    relinks = [_relink_tasks_op(ov["id"], target_id) for ov in overrides if _holds_day(target, ov, old_tz)]
+    columns `target` still have an occurrence on the day `day_of(slot)` the
+    edit takes that override's slot to; the others are unlinked by the delete
+    (FK), as for a cancelled occurrence."""
+    relinks = [
+        _relink_tasks_op(ov["id"], target_id)
+        for ov in overrides
+        if _holds_day(target, day_of(parse_instant(ov["original_start_at"])))
+    ]
     return [*relinks, *(_delete_op(ov) for ov in overrides), sweep]
 
 
@@ -418,7 +430,7 @@ def _carry_exceptions(
         if not new_slot or new_slot in taken:
             # Its slot is gone or another override's: its tasks stay on the
             # series when that still occurs on the day (always so for a taken slot).
-            if new_slot or _holds_day(target, ov, old_tz):
+            if new_slot or _holds_day(target, _moved_day(slot, slots, anchor, old_tz, tz)):
                 ops.append(_relink_tasks_op(ov["id"], new_id))
             ops.append(_delete_op(ov))
             continue
@@ -714,7 +726,11 @@ def _update_all(master, original_start, override, data):
             rrule=None, recurrence_end_at=None, exdates=[], start_at=_iso(series_start), end_at=_iso(series_end)
         )
         ops = _drop_overrides(
-            _overrides(master["id"]), old_tz, master["id"], updates, _delete_overrides_op(master["id"])
+            _overrides(master["id"]),
+            lambda slot: _moved_day(slot, {}, (old_start, series_start), old_tz, tz),
+            master["id"],
+            updates,
+            _delete_overrides_op(master["id"]),
         )
 
     return _apply([*ops, _update_op(master["id"], updates, master)], master["id"])
@@ -729,7 +745,13 @@ def _switch_kind(old: dict, new_id: str, new: dict, *, anchor, explicit: bool, e
     back), dropped where the new series has no occurrence.
     Returns (exdates for the new series, ops)."""
     kept = [_iso(x) for x in sorted(set(_slot_map(old, new, anchor, explicit, exdates).values()))]
-    return kept, _drop_overrides(overrides, old["timezone"], new_id, {**new, "exdates": kept}, drop_overrides)
+    # Mapped on their own, so a dropped override never takes an exdate's slot.
+    slots = _slot_map(old, new, anchor, explicit, [parse_instant(o["original_start_at"]) for o in overrides])
+
+    def day_of(slot):
+        return _moved_day(slot, slots, anchor, old["timezone"], new["timezone"])
+
+    return kept, _drop_overrides(overrides, day_of, new_id, {**new, "exdates": kept}, drop_overrides)
 
 
 def _moved_rule(body: str, anchor, old_tz: str, tz: str) -> str:
@@ -791,7 +813,7 @@ def _update_following(master, split_at, override, data):
         new_row.update(start_at=_iso(new_start), end_at=_iso(new_end))
         moved = _drop_overrides(
             _overrides(master["id"], split_at),
-            old_tz,
+            lambda slot: _moved_day(slot, {}, (split_at, new_start), old_tz, tz),
             new_row["id"],
             new_row,
             _delete_overrides_op(master["id"], split_at),

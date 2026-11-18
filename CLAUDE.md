@@ -76,14 +76,15 @@
     on the series to the half with its next occurrence from now (none left: the later
     half); tasks on an override stay on it as it is carried. An override the edit
     drops (kind switch, slot gone, rule cleared) hands its tasks to the series if it
-    still occurs that day, else they're unlinked, as for a cancelled occurrence.
+    occurs on the day the edit moves that slot to (`_moved_day`, read in the new
+    zone), else they're unlinked, as for a cancelled occurrence.
   - Moving a series (time, duration, timezone, rule) carries its exdates and overrides
     along by the same wall-clock shift; when a re-aimed monthly/yearly rule misses
     (2nd Tue → 2nd Wed), the same position in the same month/year (counted from a
     split); a monthly rule with several ordinals (2TU,4TU) pairs them by token
-    (2TU → 2WE of the same month, `pair_by_token`). Every-n-weeks
-    rules move WKST with the days (written only when MO would regroup them). Ones the new
-    series no longer has are dropped. A "following" split makes two independent
+    (2TU → 2WE of the same month, `pair_by_token`). Every-n-weeks rules move WKST
+    with the days (written only when MO would regroup them). Ones the new series no
+    longer has are dropped. A "following" split makes two independent
     series; "all" edits only touch one. All-day overrides move by whole days.
   - Switching a series' kind (all-day ↔ timed) drops its overrides; each exdate keeps
     its local day (moved like a series move, `_slot_map`: 9 AM → that day's midnight),
