@@ -57,6 +57,14 @@
     cancelled occurrences go in master `exdates`.
   - Frontend never mutates recurring rows via plain `/events/<id>` — always
     `/events/<master>/occurrences/<original_start>` with scope `this|following|all`.
+  - Multi-row edits are atomic: the service computes every row change and sends them
+    as ops to the `apply_event_writes` RPC (one transaction; mirrored in the fake).
+  - Moving a series (time, duration, timezone, rule) carries its exdates and overrides
+    along: paired by position when the rule is only re-aimed, shifted by the same
+    wall-clock delta for a new rule (dropped if it no longer produces them). A
+    "following" split makes two independent series; "all" edits only touch one.
+  - Event writes are serialized by a per-process lock (`_write_lock`), one more
+    reason to keep gunicorn at one worker.
 
   ## Architecture
 

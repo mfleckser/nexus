@@ -272,24 +272,30 @@ def _local_naive(dt: datetime, tz_name: str) -> datetime:
     return dt.astimezone(get_zone(tz_name)).replace(tzinfo=None)
 
 
-def wall_delta(before: datetime, after: datetime, tz_name: str) -> timedelta:
-    """How far an instance moved in local wall-clock terms."""
-    return _local_naive(after, tz_name) - _local_naive(before, tz_name)
+def wall_delta(before: datetime, after: datetime, tz_name: str, after_tz: str = None) -> timedelta:
+    """How far an instance moved in local wall-clock terms: `before` read in
+    `tz_name`, `after` in `after_tz` (default: the same zone)."""
+    return _local_naive(after, after_tz or tz_name) - _local_naive(before, tz_name)
 
 
-def shift_wall(dt: datetime, delta: timedelta, tz_name: str) -> datetime:
-    """Move `dt` by a wall-clock delta in `tz_name` (DST-safe); returns UTC."""
-    return to_utc((_local_naive(dt, tz_name) + delta).replace(tzinfo=get_zone(tz_name)))
+def shift_wall(dt: datetime, delta: timedelta, tz_name: str, to_tz: str = None) -> datetime:
+    """Move `dt` by a wall-clock delta (DST-safe); returns UTC. With `to_tz`,
+    `dt`'s wall clock is read in `tz_name` and the result's is set in `to_tz`,
+    so `shift_wall(x, wall_delta(a, b, tz, to_tz), tz, to_tz)` moves x the way
+    a moved to b: what a series move (incl. a timezone change) does to each of
+    its instants."""
+    return to_utc((_local_naive(dt, tz_name) + delta).replace(tzinfo=get_zone(to_tz or tz_name)))
 
 
-def shift_rule_days(body: str, old_anchor: datetime, new_anchor: datetime, tz_name: str) -> str:
+def shift_rule_days(body: str, old_anchor: datetime, new_anchor: datetime, tz_name: str, new_tz: str = None) -> str:
     """Re-aim a rule when its series moves to another local day (GCal-style):
     BYDAY weekdays shift by the day delta, BYMONTHDAY / BYMONTH values move
     with the new local day / month (see _shift_values). A single ordinal BYDAY
     (e.g. 2TU, -1FR) gets its ordinal recomputed from the new date; with
-    several, ordinals are kept as-is."""
+    several, ordinals are kept as-is. Days are local: `old_anchor` in
+    `tz_name`, `new_anchor` in `new_tz` (default: the same zone)."""
     old_date = _local_naive(old_anchor, tz_name).date()
-    new_date = _local_naive(new_anchor, tz_name).date()
+    new_date = _local_naive(new_anchor, new_tz or tz_name).date()
     days = (new_date - old_date).days
     if days == 0:
         return body
@@ -313,6 +319,39 @@ def shift_rule_days(body: str, old_anchor: datetime, new_anchor: datetime, tz_na
         months = (new_date.year - old_date.year) * 12 + new_date.month - old_date.month
         parts["BYMONTH"] = _shift_values(parts["BYMONTH"], old_date.month, new_date.month, months, 12)
     return format_rule(parts)
+
+
+def shift_until(body: str, delta: timedelta, tz_name: str, new_tz: str = None) -> str:
+    """Move a rule's UNTIL along with its series (see shift_wall), so a moved
+    series keeps its last occurrence."""
+    parts = parse_rule(body)
+    if "UNTIL" not in parts:
+        return body
+    until = datetime.strptime(parts["UNTIL"], UNTIL_FORMAT).replace(tzinfo=UTC)
+    parts["UNTIL"] = format_until(shift_wall(until, delta, tz_name, new_tz))
+    return format_rule(parts)
+
+
+def pair_occurrences(old: tuple, new: tuple, instants, skip_before: datetime = None) -> dict:
+    """Map occurrences of a series to the occurrences at the same position in
+    its moved / re-aimed version. `old` and `new` are (rrule body, start, tz);
+    old occurrences before `skip_before` don't count (the part a split left
+    behind). Returns {old instant: new instant} for each of `instants`; those
+    past the new series' end are left out."""
+    wanted = {to_utc(x) for x in instants}
+    if not wanted:
+        return {}
+    last = max(wanted)
+    olds = (to_utc(o) for o in build_rule(*old))
+    if skip_before:
+        olds = (o for o in olds if o >= skip_before)
+    result = {}
+    for i, (o, n) in enumerate(zip(olds, build_rule(*new), strict=False)):
+        if o > last or i > MAX_SCAN:
+            break
+        if o in wanted:
+            result[o] = to_utc(n)
+    return result
 
 
 def _shift_values(value: str, old_anchor: int, new_anchor: int, delta: int, size: int) -> str:
