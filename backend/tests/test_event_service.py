@@ -13,6 +13,8 @@ LA = "America/Los_Angeles"
 
 
 class EventServiceTest(AppTestCase):
+    AN_HOUR_LATER = {"start_at": "2026-10-14T17:00:00Z", "end_at": "2026-10-14T18:00:00Z"}
+
     # -- helpers --
 
     def create(self, **body):
@@ -601,6 +603,109 @@ class EventServiceTest(AppTestCase):
             es._apply([es._update_op("00000000-0000-0000-0000-000000000000", {"title": "x"})])
         self.assertEqual(len(self.db.rows), 1)
         self.assertEqual(self.row(m["id"])["title"], "Standup")
+
+    # -- stale-write guard: another writer between the service's read and write --
+
+    def studio(self, event_id, **fields):
+        """Another writer (Studio, another process) changing a row directly."""
+        self.db.table("events").update(fields).eq("id", event_id).execute()
+
+    def racing(self, change, times=1):
+        """Patch _apply so `change` runs right before each of the first `times`
+        RPCs, i.e. after the service read the rows. Returns (patcher, ops of
+        each RPC call)."""
+        real, calls = es._apply, []
+
+        def apply(ops, result_id=None):
+            calls.append(ops)
+            if len(calls) <= times:
+                change()
+            return real(ops, result_id)
+
+        return mock.patch.object(es, "_apply", side_effect=apply), calls
+
+    def test_stale_master_is_redone_from_a_fresh_read(self):
+        m = self.weekly_wed()
+        patch, calls = self.racing(lambda: self.studio(m["id"], exdates=["2026-10-21T16:00:00Z"]))
+        with patch:
+            self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": "all", **self.AN_HOUR_LATER})
+        self.assertEqual(len(calls), 2)
+        # The retry saw Studio's exdate and moved it along with the series.
+        self.assertEqual(self.row(m["id"])["exdates"], ["2026-10-21T17:00:00+00:00"])
+        self.assertEqual(self.row(m["id"])["start_at"], "2026-09-30T17:00:00+00:00")
+
+    def test_stale_override_is_redone_from_a_fresh_read(self):
+        m = self._series_with_exceptions()
+        ov = next(r for r in self.db.rows if r["original_start_at"] == "2026-10-28T16:00:00+00:00")
+        # After the service read it, Studio moves the override from 11:00 to 13:00 PDT.
+        patch, _ = self.racing(
+            lambda: self.studio(ov["id"], start_at="2026-10-28T20:00:00Z", end_at="2026-10-28T21:00:00Z")
+        )
+        with patch:
+            self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": "all", **self.AN_HOUR_LATER})
+        row = self.row(ov["id"])
+        self.assertEqual((row["start_at"], row["end_at"]), ("2026-10-28T21:00:00+00:00", "2026-10-28T22:00:00+00:00"))
+
+    def test_stale_cancel_keeps_the_other_writers_exdate(self):
+        m = self.weekly_wed()
+        patch, calls = self.racing(lambda: self.studio(m["id"], exdates=["2026-10-21T16:00:00Z"]))
+        with patch:
+            self.delete_occ(m["id"], "2026-10-07T16:00:00Z", "this")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.row(m["id"])["exdates"], ["2026-10-07T16:00:00+00:00", "2026-10-21T16:00:00+00:00"])
+
+    def test_edit_still_stale_after_the_retry_is_409(self):
+        m = self._series_with_exceptions()
+        n = iter(range(100))
+        patch, calls = self.racing(lambda: self.studio(m["id"], title=f"Studio {next(n)}"), times=2)
+        before = len(self.db.rows)
+        with patch:
+            res = self.client.put(
+                f"/api/events/{m['id']}/occurrences/2026-10-14T16:00:00Z",
+                json={"scope": "following", **self.AN_HOUR_LATER},
+            )
+        self.assertEqual(res.status_code, 409)
+        self.assertEqual(res.get_json(), {"error": "This event was changed elsewhere. Try again."})
+        self.assertEqual(len(calls), 2)
+        master = self.row(m["id"])
+        self.assertEqual(
+            (master["title"], master["rrule"], len(self.db.rows)), ("Studio 1", "FREQ=WEEKLY;BYDAY=WE", before)
+        )
+
+    def test_every_row_the_edit_read_is_guarded(self):
+        all_day = {"all_day": True, "start_at": "2026-10-14T07:00:00Z", "end_at": "2026-10-15T07:00:00Z"}
+        edits = {
+            "all move": {"scope": "all", **self.AN_HOUR_LATER},
+            "following move": {"scope": "following", **self.AN_HOUR_LATER},
+            "kind change": {"scope": "all", **all_day},
+            "following kind change": {"scope": "following", **all_day},
+            "rule cleared": {"scope": "all", "rrule": None},
+        }
+        for name, body in edits.items():
+            with self.subTest(name):
+                m = self._series_with_exceptions()
+                with mock.patch.object(es, "_apply", wraps=es._apply) as spy:
+                    self.put_occ(m["id"], "2026-10-14T16:00:00Z", body)
+                guarded = [op for op in spy.call_args.args[0] if op["op"] in ("update", "delete")]
+                self.assertTrue(guarded)
+                for op in guarded:
+                    self.assertIn("expect_updated_at", op, op)
+
+    def test_rpc_refuses_ops_on_changed_rows(self):
+        m = self.weekly_wed()
+        stamp = self.row(m["id"])["updated_at"]
+        with self.app.app_context():
+            es._apply([es._update_op(m["id"], {"title": "A"}, {"updated_at": stamp})])
+            self.assertEqual(self.row(m["id"])["title"], "A")
+            stale = [
+                [es._update_op(m["id"], {"title": "B"}, {"updated_at": stamp})],
+                [es._delete_op({"id": m["id"], "updated_at": stamp})],
+                [es._delete_op({"id": "00000000-0000-0000-0000-000000000000", "updated_at": stamp})],
+            ]
+            for ops in stale:
+                with self.subTest(ops=ops), self.assertRaises(es.Conflict):
+                    es._apply(ops)
+        self.assertEqual((len(self.db.rows), self.row(m["id"])["title"]), (1, "A"))
 
     # -- exceptions move with the series --
 

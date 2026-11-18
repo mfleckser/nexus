@@ -86,7 +86,10 @@
     its local day (moved like a series move, `_slot_map`: 9 AM → that day's midnight),
     dropped if the new series has no occurrence there. All-day checks run before the RPC.
   - Event writes are serialized by a per-process lock (`_write_lock`), one more
-    reason to keep gunicorn at one worker.
+    reason to keep gunicorn at one worker. Against other writers (Studio), each RPC
+    op on a row the edit was computed from carries the `updated_at` it read
+    (`expect_updated_at`); a changed row fails the call (PT409), the service redoes
+    the edit once from a fresh read, then returns 409.
 
   ## Architecture
 
@@ -107,7 +110,8 @@
   - Backend layout: `app/api` blueprints (thin) → `app/services` (logic, Supabase
     calls). Writes whitelist columns; input checks in `app/validation.py`.
   - Errors: every error is JSON `{"error": "<message>"}` (`app/errors.py`) — 400 bad
-    input, 404 missing id, 500 otherwise. Success bodies are bare JSON.
+    input, 404 missing id, 409 row changed under a recurring edit (`Conflict`), 500
+    otherwise. Success bodies are bare JSON.
   - Caching: Flask-Caching SimpleCache, keys + `get_or_load`/`invalidate` in
     `app/extensions/cache.py`. Standard for every entity: cached reads, and every write
     invalidates each key it can change, including FK on-delete side effects. Cache is

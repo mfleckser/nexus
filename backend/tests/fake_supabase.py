@@ -5,7 +5,7 @@ mimicked because the API maps them to status codes: NOT NULL (23502), CHECK
 (23514), UNIQUE (23505), FK to a missing master (23503), invalid uuid /
 timestamp text (22P02 / 22007), and FK on-delete cascade / set null.
 `rpc("apply_event_writes")` mirrors the SQL function of that name,
-all-or-nothing like a Postgres transaction."""
+all-or-nothing like a Postgres transaction, incl. its stale-write guard (PT409)."""
 
 import copy
 import re
@@ -243,6 +243,7 @@ class _Rpc:
         db = self.db
         if db.fail_on == "rpc":
             raise RuntimeError("simulated DB failure")
+        self._check_expected()
         snapshot = copy.deepcopy(db.tables)
         db.in_rpc = True
         try:
@@ -260,6 +261,18 @@ class _Rpc:
             db.in_rpc = False
         rows = [r for r in db.tables["events"] if r["id"] == self.result_id]
         return _Result(copy.deepcopy(rows))
+
+    def _check_expected(self):
+        """Stale-write guard, before any op runs: an update / delete op with
+        expect_updated_at fails the call if its row is gone or changed."""
+        rows = {r["id"]: r for r in self.db.tables["events"]}
+        for op in self.ops:
+            expected = op.get("expect_updated_at") if op["op"] in ("update", "delete") else None
+            if expected is None:
+                continue
+            row = rows.get(op["id"])
+            if row is None or _instant(row["updated_at"]) != _instant(expected):
+                raise _pg_error("PT409", f"event {op['id']} was changed elsewhere")
 
     def _apply(self, op):
         q = _Query(self.db, "events")
