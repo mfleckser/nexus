@@ -35,7 +35,7 @@
   ## MVP Scope — Calendar + Tasks
 
   - Event CRUD: recurring, all-day, multi-day — done
-  - Day / week / month views — done: day, week; open: month (no events)
+  - Day / week / month views — done
   - Task CRUD w/ due dates, optional time-block on calendar — done: CRUD, due dates,
     due-task pins on the week view, time-blocking ("Block time" on a task creates a
     linked event)
@@ -56,9 +56,10 @@
     of the first day, `end_at` = midnight after the last (exclusive). The backend 400s
     any write that leaves an all-day row off midnight (`_check_all_day`).
   - Frontend maps them to the viewer's days by their dates in the event's timezone
-    (`lib/allDay.ts`: `daySpan`, `layoutDayBars` — bars reusable for month cells) and
-    anchors edited dates back in that same zone (`zonedMidnight`); new events use the
-    browser zone. Timed multi-day events stay in the time grid.
+    (`lib/allDay.ts`: `daySpan`, `layoutDayBars`) and anchors edited dates back in that
+    same zone (`zonedMidnight`); new events use the browser zone. Timed multi-day events
+    stay in the time grid of day/week view; month view draws all-day and multi-day events
+    as bars per week row (`lib/monthLayout.ts`, slots + "+N more" overflow).
 
   ## Recurring Events
 
