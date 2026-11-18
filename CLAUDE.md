@@ -34,8 +34,7 @@
 
   ## MVP Scope — Calendar + Tasks
 
-  - Event CRUD: recurring, all-day, multi-day — done: CRUD + recurring; open: all-day
-    and multi-day creation (`all_day` column exists, unused)
+  - Event CRUD: recurring, all-day, multi-day — done
   - Day / week / month views — done: day, week; open: month (no events)
   - Task CRUD w/ due dates, optional time-block on calendar — done: CRUD, due dates,
     due-task pins on the week view, time-blocking ("Block time" on a task creates a
@@ -50,6 +49,16 @@
   - Initial project-type templates beyond `coding`
   - Habit trigger model flexibility
   - Plugin/integration API shape
+
+  ## All-day Events
+
+  - `all_day=true` rows span whole local days of their `timezone`: `start_at` = midnight
+    of the first day, `end_at` = midnight after the last (exclusive). The backend 400s
+    any write that leaves an all-day row off midnight (`_check_all_day`).
+  - Frontend maps them to the viewer's days by their dates in the event's timezone
+    (`lib/allDay.ts`: `daySpan`, `layoutDayBars` — bars reusable for month cells) and
+    anchors edited dates back in that same zone (`zonedMidnight`); new events use the
+    browser zone. Timed multi-day events stay in the time grid.
 
   ## Recurring Events
 

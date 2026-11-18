@@ -2,6 +2,7 @@ import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState } from "
 import "./calendar.css";
 import { useEvents } from "@renderer/features/calendar/useEvents";
 import EventChip, { EventDraftPreview } from "./EventChip";
+import AllDayChip, { AllDayDraftPreview } from "@renderer/features/calendar/AllDayChip";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import TaskPin from "@renderer/features/calendar/TaskPin";
 import { useTasks } from "@renderer/features/tasks/useTasks";
@@ -12,8 +13,10 @@ import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 import { DateRange, NewEventDraft, Task } from "@renderer/types";
 import {
     addDays,
+    addMinutes,
     atMinutes,
     calendarDaysBetween,
+    browserTimeZone,
     formatMonthSpan,
     minutesIntoDay,
     MINUTES_PER_DAY,
@@ -22,7 +25,9 @@ import {
 } from "@renderer/lib/time";
 import { layoutDaysWithMarkers, overlapsRange } from "@renderer/lib/eventLayout";
 import { roundUpToQuarterHour, tasksByEventId, tasksForEvent } from "@renderer/lib/timeBlocks";
+import { allDayTimes, dayColumnAt, layoutDayBars } from "@renderer/lib/allDay";
 import {
+    ALL_DAY_ROW_PX,
     DEFAULT_EVENT_MINUTES,
     DRAG_THRESHOLD,
     EVENT_HEADER_PX,
@@ -35,6 +40,8 @@ import {
 import { isDismissableOpen } from "@renderer/hooks/useDismiss";
 
 const BUFFER_DAYS = 7;
+// Space (px) below the all-day row's bars: room to click and create.
+const ALL_DAY_PAD_PX = 6;
 const SLOTS_PER_DAY = MINUTES_PER_DAY / SLOT_MINUTES;
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -69,6 +76,15 @@ function dragMinutes(drag: CreateDrag): { startMin: number; duration: number } {
     return { startMin: first * SLOT_MINUTES, duration: (last - first + 1) * SLOT_MINUTES };
 }
 
+// In-progress drag-to-create across the all-day row, in day columns.
+type AllDayDrag = { anchorDay: number; pointerDay: number };
+
+// The day columns an all-day drag covers, in either direction.
+const dragDays = (drag: AllDayDrag): { first: number; last: number } => ({
+    first: Math.min(drag.anchorDay, drag.pointerDay),
+    last: Math.max(drag.anchorDay, drag.pointerDay),
+});
+
 // Keys belong to whatever has focus, or to an open dialog/popover.
 function shortcutsBlocked(e: KeyboardEvent): boolean {
     if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return true;
@@ -94,11 +110,16 @@ function Calendar(): React.JSX.Element {
     const { tasks } = useTasks();
     const { projects } = useProjects();
     const reportError = useReportError();
-    const [popover, setPopover] = useState<{ anchor: PopoverAnchor; start: Date; duration?: number } | null>(null);
+    // An all-day popover's start/end are local midnights (end after the last day).
+    const [popover, setPopover] = useState<{ anchor: PopoverAnchor; start: Date; end: Date; allDay: boolean } | null>(
+        null,
+    );
     // Live values of the new-event popover, previewed on the grid.
     const [eventDraft, setEventDraft] = useState<NewEventDraft | null>(null);
     const [createDrag, setCreateDrag] = useState<CreateDrag | null>(null);
+    const [allDayDrag, setAllDayDrag] = useState<AllDayDrag | null>(null);
     const overlayRef = useRef<HTMLDivElement>(null);
+    const allDayRef = useRef<HTMLDivElement>(null);
 
     const year = focusedDay.getFullYear();
     const month = focusedDay.getMonth();
@@ -161,19 +182,27 @@ function Calendar(): React.JSX.Element {
             .toSorted((a, b) => a.due_at.getTime() - b.due_at.getTime() || a.title.localeCompare(b.title));
     }, [tasks, projects, visible]);
 
-    // Per-day slices of every visible event, and a pin per due task, laid out
-    // in columns: pins at their due time, beside each other and beside any
-    // event title they'd cover.
+    // Per-day slices of every visible timed event, and a pin per due task,
+    // laid out in columns: pins at their due time, beside each other and
+    // beside any event title they'd cover.
     const { segments, markers: taskPins } = useMemo(
         () =>
             layoutDaysWithMarkers(
-                viewType === "MONTH" ? [] : events.filter((e) => overlapsRange(e, visible.start, visible.end)),
+                viewType === "MONTH"
+                    ? []
+                    : events.filter((e) => !e.all_day && overlapsRange(e, visible.start, visible.end)),
                 viewType === "MONTH" ? [] : dueTasks.map((task) => ({ item: task, at: task.due_at })),
                 visible.start,
                 dayCount,
                 { markerMinutes: TASK_PIN_HEIGHT / PX_PER_MIN, headerMinutes: EVENT_HEADER_PX / PX_PER_MIN },
             ),
         [events, dueTasks, visible, viewType, dayCount],
+    );
+
+    // All-day events as bars across the all-day row.
+    const allDayLayout = useMemo(
+        () => layoutDayBars(viewType === "MONTH" ? [] : events.filter((e) => e.all_day), visible.start, dayCount),
+        [events, visible, viewType, dayCount],
     );
 
     const goPrev = () => {
@@ -208,8 +237,8 @@ function Calendar(): React.JSX.Element {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, []);
 
-    const openNewEventAt = (start: Date, anchor: PopoverAnchor, duration: number = DEFAULT_EVENT_MINUTES) => {
-        setPopover({ anchor, start, duration });
+    const openNewEventAt = (start: Date, anchor: PopoverAnchor, end?: Date, allDay = false) => {
+        setPopover({ anchor, start, end: end ?? addMinutes(start, DEFAULT_EVENT_MINUTES), allDay });
     };
 
     // Grid slot under the pointer's y, clamped to the day.
@@ -255,14 +284,15 @@ function Calendar(): React.JSX.Element {
         if (!drag || !rect) return;
         const { startMin, duration } = dragMinutes(drag);
         const colWidth = rect.width / dayCount;
+        const start = atMinutes(addDays(rangeStart, drag.dayIndex), startMin);
         openNewEventAt(
-            atMinutes(addDays(rangeStart, drag.dayIndex), startMin),
+            start,
             {
                 x: rect.left + (drag.dayIndex + 1) * colWidth + POPOVER_GAP,
                 y: rect.top + startMin * PX_PER_MIN,
                 flipX: rect.left + drag.dayIndex * colWidth - POPOVER_GAP,
             },
-            duration,
+            addMinutes(start, duration),
         );
     });
 
@@ -276,6 +306,57 @@ function Calendar(): React.JSX.Element {
             window.removeEventListener("mouseup", onCreateDragEnd);
         };
     }, [dragActive]);
+
+    // Day column of the all-day row under clientX, clamped to the row.
+    const allDayColumnAt = (clientX: number): number => {
+        const rect = allDayRef.current?.getBoundingClientRect();
+        if (!rect) return 0;
+        return Math.min(dayCount - 1, Math.max(0, dayColumnAt(clientX, rect, dayCount)));
+    };
+
+    const handleAllDayMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        if (isDismissableOpen()) return;
+        const day = allDayColumnAt(e.clientX);
+        setAllDayDrag({ anchorDay: day, pointerDay: day });
+    };
+
+    const onAllDayDragMove = useEffectEvent((e: MouseEvent) => {
+        setAllDayDrag((prev) => prev && { ...prev, pointerDay: allDayColumnAt(e.clientX) });
+    });
+
+    // A click makes a one-day event; a drag spans the days it crossed.
+    const onAllDayDragEnd = useEffectEvent(() => {
+        const drag = allDayDrag;
+        setAllDayDrag(null);
+        const rect = allDayRef.current?.getBoundingClientRect();
+        if (!drag || !rect) return;
+        const { first, last } = dragDays(drag);
+        const colWidth = rect.width / dayCount;
+        const { start_at, end_at } = allDayTimes(addDays(rangeStart, first), addDays(rangeStart, last));
+        openNewEventAt(
+            start_at,
+            {
+                x: rect.left + (last + 1) * colWidth + POPOVER_GAP,
+                y: rect.top,
+                flipX: rect.left + first * colWidth - POPOVER_GAP,
+            },
+            end_at,
+            true,
+        );
+    });
+
+    const allDayDragActive = allDayDrag !== null;
+    useEffect(() => {
+        if (!allDayDragActive) return;
+        window.addEventListener("mousemove", onAllDayDragMove);
+        window.addEventListener("mouseup", onAllDayDragEnd);
+        return () => {
+            window.removeEventListener("mousemove", onAllDayDragMove);
+            window.removeEventListener("mouseup", onAllDayDragEnd);
+        };
+    }, [allDayDragActive]);
 
     const handleNewEventButton = (e: React.MouseEvent<HTMLButtonElement>) => {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -300,14 +381,31 @@ function Calendar(): React.JSX.Element {
     let previewDraft = eventDraft;
     if (createDrag) {
         const { startMin, duration } = dragMinutes(createDrag);
+        const start = atMinutes(addDays(rangeStart, createDrag.dayIndex), startMin);
         previewDraft = {
             title: "",
             description: "",
-            start_at: atMinutes(addDays(rangeStart, createDrag.dayIndex), startMin),
-            duration,
+            start_at: start,
+            end_at: addMinutes(start, duration),
+            all_day: false,
+            category: "",
+        };
+    } else if (allDayDrag) {
+        const { first, last } = dragDays(allDayDrag);
+        previewDraft = {
+            title: "",
+            description: "",
+            ...allDayTimes(addDays(rangeStart, first), addDays(rangeStart, last)),
+            all_day: true,
             category: "",
         };
     }
+
+    // An all-day draft's bar (its midnights are local), drawn below the events.
+    const allDayDraftBar = previewDraft?.all_day
+        ? layoutDayBars([{ ...previewDraft, timezone: browserTimeZone() }], rangeStart, dayCount).bars[0]
+        : undefined;
+    const allDayRows = Math.max(1, allDayLayout.rows + (allDayDraftBar ? 1 : 0));
 
     // Month view names its month even though the grid shows edge days of others.
     const monthLabel =
@@ -389,10 +487,39 @@ function Calendar(): React.JSX.Element {
                         ))}
                     </div>
                     <div className="gutter-spacer all-day-gutter" />
-                    <div className="all-day-container">
+                    <div
+                        className="all-day-container"
+                        ref={allDayRef}
+                        style={{
+                            height: allDayRows * ALL_DAY_ROW_PX + ALL_DAY_PAD_PX,
+                            ["--all-day-row" as string]: `${ALL_DAY_ROW_PX}px`,
+                        }}
+                        onMouseDown={handleAllDayMouseDown}
+                    >
                         {gridDays.map((d) => (
                             <div key={d.getTime()} className="all-day-cell" />
                         ))}
+                        <div className="all-day-bars">
+                            {allDayLayout.bars.map((bar) => (
+                                <AllDayChip
+                                    key={bar.item.id}
+                                    bar={bar}
+                                    rangeStart={rangeStart}
+                                    dayCount={dayCount}
+                                    linkedTasks={tasksForEvent(linkedTasks, bar.item)}
+                                />
+                            ))}
+                            {previewDraft && allDayDraftBar && (
+                                <AllDayDraftPreview
+                                    title={previewDraft.title}
+                                    category={previewDraft.category}
+                                    startIndex={allDayDraftBar.startIndex}
+                                    span={allDayDraftBar.span}
+                                    row={allDayLayout.rows}
+                                    dayCount={dayCount}
+                                />
+                            )}
+                        </div>
                     </div>
                     <div className="day-events-scroll" ref={scrollToInitialHour}>
                         <div className="day-events">
@@ -416,7 +543,7 @@ function Calendar(): React.JSX.Element {
                                 {taskPins.map((pin) => (
                                     <TaskPin key={pin.item.id} pin={pin} dayCount={dayCount} />
                                 ))}
-                                {previewDraft && (
+                                {previewDraft && !previewDraft.all_day && (
                                     <EventDraftPreview
                                         draft={previewDraft}
                                         rangeStart={rangeStart}
@@ -433,10 +560,11 @@ function Calendar(): React.JSX.Element {
             )}
             {popover && (
                 <NewEventPopover
-                    key={`${popover.start.getTime()}:${popover.duration}`}
+                    key={`${popover.start.getTime()}:${popover.end.getTime()}:${popover.allDay}`}
                     anchor={popover.anchor}
                     initialStart={popover.start}
-                    initialDuration={popover.duration}
+                    initialEnd={popover.end}
+                    initialAllDay={popover.allDay}
                     onSave={handlePopoverSave}
                     onClose={closePopover}
                     onDraftChange={setEventDraft}

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from functools import wraps
 
 from app import validation as v
@@ -117,6 +117,20 @@ def _check_order(start: datetime, end: datetime):
         raise ValidationError("end_at must be after start_at")
 
 
+# Fields whose change can break an all-day row's midnight alignment.
+ALL_DAY_INPUTS = ("start_at", "end_at", "timezone", "all_day")
+
+
+def _check_all_day(all_day, start: datetime, end: datetime, tz: str):
+    """An all-day event spans whole local days of its timezone: it starts at
+    midnight of its first day and ends (exclusive) at midnight after its last."""
+    if not all_day:
+        return
+    zone = rr.get_zone(tz)
+    if not (start.astimezone(zone).time() == time(0) == end.astimezone(zone).time()):
+        raise ValidationError("an all-day event must start and end at midnight in its timezone")
+
+
 def _series_fields(body: str, start: datetime, end: datetime, tz: str) -> dict:
     """Master columns for a series. start/end snap to the rule's first
     occurrence so the master always sits on its first occurrence."""
@@ -156,7 +170,9 @@ def invalidates_events(fn):
 def create_event(data: dict):
     v.require(data, "title", "start_at", "end_at")
     _validate(data)
-    _check_order(parse_instant(data["start_at"]), parse_instant(data["end_at"]))
+    start, end = parse_instant(data["start_at"]), parse_instant(data["end_at"])
+    _check_order(start, end)
+    _check_all_day(data.get("all_day"), start, end, data.get("timezone") or "UTC")
 
     # timezone is omitted (-> column default UTC) when the client didn't send one.
     row = v.pick(data, EVENT_FIELDS)
@@ -185,11 +201,12 @@ def update_event(event_id: str, data: dict):
 
     # rrule / time changes need the current row to validate and to (re)compute
     # series columns.
-    if any(f in data for f in ("rrule", "start_at", "end_at", "timezone")):
+    if any(f in data for f in ("rrule", *ALL_DAY_INPUTS)):
         row = _get_event(event_id)
         start = parse_instant(updates.get("start_at") or row["start_at"])
         end = parse_instant(updates.get("end_at") or row["end_at"])
         _check_order(start, end)
+        _check_all_day(updates.get("all_day", row["all_day"]), start, end, updates.get("timezone") or row["timezone"])
 
         body = (data.get("rrule") or None) if "rrule" in data else row["rrule"]
         if body and row["recurring_event_id"]:
@@ -280,14 +297,20 @@ def _exdates(master: dict) -> list:
 
 def _apply_to_clicked(override, data: dict):
     """Give the clicked (overridden) occurrence every detail field sent, even
-    ones equal to the series value that _changed_details leaves out."""
-    fields = v.pick(data, DETAIL_FIELDS)
+    ones equal to the series value that _changed_details leaves out, and the
+    times sent: with the series unchanged they only differ from the override's
+    own when it switches kind (all-day vs timed) onto the series' times."""
+    fields = v.pick(data, DETAIL_FIELDS + ["start_at", "end_at"])
     if override and fields:
         supabase.table("events").update(fields).eq("id", override["id"]).execute()
 
 
 def _changed_details(master: dict, data: dict) -> dict:
-    return {f: data[f] for f in DETAIL_FIELDS if f in data and data[f] != master[f]}
+    def differs(f):
+        # all_day NULL (older rows) and false are the same.
+        return bool(data[f]) != bool(master[f]) if f == "all_day" else data[f] != master[f]
+
+    return {f: data[f] for f in DETAIL_FIELDS if f in data and differs(f)}
 
 
 def _current_times(master: dict, original_start: datetime, override):
@@ -311,12 +334,25 @@ def _instance_edit(master: dict, original_start: datetime, override, data: dict)
     new_start = parse_instant(data["start_at"]) if data.get("start_at") else cur_start
     new_end = parse_instant(data["end_at"]) if data.get("end_at") else cur_end
     _check_order(new_start, new_end)
+    moved = data.get("start_at") or data.get("end_at")
+    if moved and override and _changes_kind(master, override, data):
+        # An instance that is, or becomes, the other kind (all-day vs timed)
+        # shares nothing with the series' shape: measure from where the series
+        # puts this occurrence, so the series lands on the new times.
+        cur_start, cur_end = _current_times(master, original_start, None)
 
     tz = master["timezone"]
     duration = _wall_duration(master) + rr.wall_delta(new_start, new_end, tz) - rr.wall_delta(cur_start, cur_end, tz)
     if duration <= timedelta(0):
         raise ValidationError("edit would give the series a non-positive duration")
     return rr.wall_delta(cur_start, new_start, tz), duration
+
+
+def _changes_kind(master: dict, override: dict, data: dict) -> bool:
+    """Whether the override is, or the edit makes it, all-day where the series
+    is timed or vice versa (all_day NULL counts as timed)."""
+    series = bool(master["all_day"])
+    return bool(override["all_day"]) != series or bool(data.get("all_day", override["all_day"])) != series
 
 
 def _wall_duration(master: dict) -> timedelta:
@@ -354,10 +390,14 @@ def update_occurrence(master_id: str, original_start: datetime, data: dict):
 def _update_this(master, original_start, override, data):
     updates = v.pick(data, EVENT_FIELDS)  # rrule ignored for "this"
     cur_start, cur_end = _current_times(master, original_start, override)
-    _check_order(
-        parse_instant(updates["start_at"]) if updates.get("start_at") else cur_start,
-        parse_instant(updates["end_at"]) if updates.get("end_at") else cur_end,
-    )
+    new_start = parse_instant(updates["start_at"]) if updates.get("start_at") else cur_start
+    new_end = parse_instant(updates["end_at"]) if updates.get("end_at") else cur_end
+    _check_order(new_start, new_end)
+    if any(f in data for f in ALL_DAY_INPUTS):
+        cur = override or master
+        _check_all_day(
+            updates.get("all_day", cur["all_day"]), new_start, new_end, updates.get("timezone") or cur["timezone"]
+        )
 
     if not updates:
         row = override or _instance(master, cur_start, cur_end)
@@ -383,6 +423,7 @@ def _update_all(master, original_start, override, data):
     old_start = parse_instant(master["start_at"])
     series_start = rr.shift_wall(old_start, shift, master["timezone"])
     series_end = rr.shift_wall(series_start, duration, master["timezone"])
+    _check_all_day(data.get("all_day", master["all_day"]), series_start, series_end, tz)
 
     body, explicit = _requested_rule(master, data)
     if body and not explicit:
@@ -399,6 +440,9 @@ def _update_all(master, original_start, override, data):
     if _series_changed(master, updates):
         updates["exdates"] = []
         _delete_overrides(master["id"])
+    elif "all_day" in details:
+        # Same instants, new kind: the overrides' times fit the old kind only.
+        _delete_overrides(master["id"])
     else:
         if details:
             supabase.table("events").update(details).eq("recurring_event_id", master["id"]).execute()
@@ -413,6 +457,7 @@ def _update_following(master, split_at, override, data):
     old_start = parse_instant(master["start_at"])
     new_start = rr.shift_wall(split_at, shift, master["timezone"])
     new_end = rr.shift_wall(new_start, duration, master["timezone"])
+    _check_all_day(data.get("all_day", master["all_day"]), new_start, new_end, tz)
 
     truncated, remaining = rr.truncate(master["rrule"], old_start, master["timezone"], split_at)
 
@@ -421,12 +466,17 @@ def _update_following(master, split_at, override, data):
         # Continue the old rule (COUNT -> remaining), re-aimed if moved to another day.
         body = rr.shift_rule_days(rr.continuation_rule(body, remaining), split_at, new_start, master["timezone"])
 
-    # Overrides / exdates only still line up if the series isn't moved or re-ruled.
+    details = _changed_details(master, data)
+    # Overrides / exdates only still line up if the series isn't moved,
+    # re-ruled, or switched kind (all-day vs timed).
     carry_over = (
-        not explicit and shift == timedelta(0) and duration == _wall_duration(master) and tz == master["timezone"]
+        not explicit
+        and shift == timedelta(0)
+        and duration == _wall_duration(master)
+        and tz == master["timezone"]
+        and "all_day" not in details
     )
 
-    details = _changed_details(master, data)
     exdates_before, exdates_after = rr.partition_instants(_exdates(master), split_at)
 
     new_row = {f: master[f] for f in DETAIL_FIELDS}

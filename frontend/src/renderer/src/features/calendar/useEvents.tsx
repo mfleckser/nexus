@@ -94,14 +94,7 @@ export function EventsProvider({ children }: { children: ReactNode }) {
 
     const addEvent = useCallback(
         async (draft: NewEventDraft) => {
-            const created = await eventsApi.addEvent(
-                draft.title,
-                draft.description,
-                draft.start_at,
-                new Date(draft.start_at.getTime() + draft.duration * 1000 * 60),
-                draft.category,
-                draft.rrule ?? null,
-            );
+            const created = await eventsApi.addEvent(draft);
             // Not awaited: callers get the row as soon as it exists (a time
             // block links its task right away). A failed refresh is reported,
             // not thrown; the poll picks the event up later.

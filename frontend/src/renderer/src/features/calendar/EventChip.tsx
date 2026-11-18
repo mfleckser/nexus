@@ -1,42 +1,30 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { CircleCheck, Repeat } from "lucide-react";
-import { useEvents } from "@renderer/features/calendar/useEvents";
-import { useTasks } from "@renderer/features/tasks/useTasks";
-import LinkedTasks from "@renderer/features/calendar/LinkedTasks";
 import { EventUpdate } from "@renderer/features/calendar/events.api";
-import { CalendarEvent, NewEventDraft, RecurrenceScope, Task } from "@renderer/types";
-import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
-import ConfirmDelete from "@renderer/components/ConfirmDelete";
-import RecurrenceScopePrompt from "@renderer/components/RecurrenceScopePrompt";
+import { CalendarEvent, NewEventDraft, Task } from "@renderer/types";
+import useEventEditor from "@renderer/features/calendar/useEventEditor";
 import { categoryColor } from "@renderer/features/calendar/categories";
 import {
     DRAG_THRESHOLD,
     EVENT_HEADER_PX,
     MIN_EVENT_MINUTES,
-    POPOVER_GAP,
     PX_PER_MIN,
     SLOT_MINUTES,
 } from "@renderer/features/calendar/constants";
 import {
     addDays,
     atMinutes,
-    browserTimeZone,
     calendarDaysBetween,
     formatTime as fmtTime,
     minutesIntoDay,
     MINUTES_PER_DAY,
     shiftDays,
 } from "@renderer/lib/time";
-import { describeRrule, sameRrule } from "@renderer/lib/rrule";
+import { describeRrule } from "@renderer/lib/rrule";
 import { DaySegment, daySegment } from "@renderer/lib/eventLayout";
-import useReportError from "@renderer/hooks/useReportError";
-import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 
 const snap = (minutes: number): number => SLOT_MINUTES * Math.round(minutes / SLOT_MINUTES);
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
-
-// A mutation of a recurring occurrence waiting on the scope prompt.
-type PendingScope = { action: "edit"; data: EventUpdate; scopes?: RecurrenceScope[] } | { action: "delete" };
 
 type ChipBox = { dayIndex: number; startMin: number; endMin: number };
 
@@ -83,31 +71,10 @@ function EventChip({ segment, dayCount, linkedTasks }: EventChipProps): React.JS
     // prompt is open. Nothing is committed until a scope is chosen; Cancel
     // just clears this and the chip falls back to `event`.
     const [preview, setPreview] = useState<{ start: Date; end: Date } | null>(null);
-    const [pendingScope, setPendingScope] = useState<PendingScope | null>(null);
-    // Edit popover anchor, captured from the chip's rect on open; null = closed.
-    const [popoverAnchor, setPopoverAnchor] = useState<PopoverAnchor | null>(null);
-    const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+    const { isOccurrence, popoverOpen, openPopover, requestUpdate, overlays } = useEventEditor(event, linkedTasks, () =>
+        setPreview(null),
+    );
 
-    const { updateEvent, deleteEvent } = useEvents();
-    const { refreshTasks } = useTasks();
-    const reportError = useReportError();
-
-    // Deleting event rows (the event itself, or overrides/masters an edit of
-    // a series drops) clears tasks' event_id server-side (FK on delete set
-    // null), possibly for tasks linked to other rows: refetch tasks after
-    // every successful event change.
-    function afterEventChange(pending: Promise<void>, failure: string): void {
-        pending.then(
-            () => refreshTasks().catch((err) => reportError("Couldn't refresh tasks", err)),
-            (err) => reportError(failure, err),
-        );
-    }
-
-    function removeEvent(scope?: RecurrenceScope): void {
-        afterEventChange(deleteEvent(event, scope), "Couldn't delete event");
-    }
-
-    const isOccurrence = event.recurring_event_id !== null;
     const eventMinutes = (event.end_at.getTime() - event.start_at.getTime()) / 60000;
     const singleDay = !segment.clippedStart && !segment.clippedEnd;
 
@@ -140,15 +107,6 @@ function EventChip({ segment, dayCount, linkedTasks }: EventChipProps): React.JS
 
     const compact = (box.endMin - box.startMin) * PX_PER_MIN < EVENT_HEADER_PX;
 
-    // Plain events commit straight away; occurrences wait for a scope.
-    function requestUpdate(data: EventUpdate, scopes?: RecurrenceScope[]): void {
-        if (!isOccurrence) {
-            afterEventChange(updateEvent(event, data), "Couldn't save event");
-            return;
-        }
-        setPendingScope({ action: "edit", data, scopes });
-    }
-
     // Drag/resize result. Only changed fields are sent; a drop back onto the
     // same slot sends nothing.
     function commitTimes(start: Date, end: Date): void {
@@ -156,78 +114,15 @@ function EventChip({ segment, dayCount, linkedTasks }: EventChipProps): React.JS
         if (start.getTime() !== event.start_at.getTime()) data.start_at = start;
         if (end.getTime() !== event.end_at.getTime()) data.end_at = end;
         if (!Object.keys(data).length) return;
+        // A series edited from this occurrence becomes timed like it (see timesUpdate).
+        if (isOccurrence) data.all_day = false;
         if (isOccurrence) setPreview({ start, end });
         requestUpdate(data);
     }
 
-    function confirmScope(scope: RecurrenceScope): void {
-        const pending = pendingScope;
-        if (!pending) return;
-        // Same batch as the hook's synchronous optimistic update, so the chip
-        // goes straight from the preview to the updated event — no flash of
-        // the old position before the post-mutation refetch remounts it.
-        setPendingScope(null);
-        setPreview(null);
-        setPopoverAnchor(null);
-        if (pending.action === "delete") {
-            removeEvent(scope);
-        } else {
-            afterEventChange(updateEvent(event, pending.data, scope), "Couldn't save event");
-        }
-    }
-
-    function cancelScope(): void {
-        setPendingScope(null);
-        setPreview(null);
-    }
-
-    const handlePopoverSave = (draft: NewEventDraft): void => {
-        // Only fields the user changed: an unchanged field must not overwrite
-        // other occurrences' values under "all"/"following".
-        const data: EventUpdate = {};
-        const end = new Date(draft.start_at.getTime() + draft.duration * 1000 * 60);
-        if (draft.title !== event.title) data.title = draft.title;
-        if (draft.description !== (event.description ?? "")) data.description = draft.description;
-        if (draft.start_at.getTime() !== event.start_at.getTime()) data.start_at = draft.start_at;
-        if (end.getTime() !== event.end_at.getTime()) data.end_at = end;
-        if ((draft.category || null) !== (event.category || null)) data.category = draft.category;
-        // Only send rrule when the picker changed it: an unchanged rule must not
-        // be rewritten (the backend treats an rrule change as a series reshape).
-        // Compared semantically — the picker may re-emit an equivalent rule in
-        // a different form (e.g. UNTIL after a series split).
-        // Send the browser timezone with it: the backend expands BYDAY/monthday
-        // in the row's timezone, and older rows were stored as UTC.
-        const rruleChanged = draft.rrule !== undefined && !sameRrule(draft.rrule, event.rrule, event.start_at);
-        if (rruleChanged) {
-            data.rrule = draft.rrule;
-            data.timezone = browserTimeZone();
-        }
-
-        if (!Object.keys(data).length) {
-            setPopoverAnchor(null);
-            return;
-        }
-        if (!isOccurrence) {
-            requestUpdate(data);
-            setPopoverAnchor(null);
-            return;
-        }
-        // The popover stays open behind the prompt so Cancel returns to the
-        // edits. "This event" can't change a rule (the backend ignores rrule
-        // for it), so rule changes only offer series scopes.
-        requestUpdate(data, rruleChanged ? ["following", "all"] : undefined);
-    };
-
-    const handlePopoverDelete = (): void => {
-        // For an occurrence the scope prompt is the confirmation.
-        if (isOccurrence) setPendingScope({ action: "delete" });
-        else setShowConfirmDelete(true);
-    };
-
-    function openPopover(): void {
+    function openFromChip(): void {
         const rect = chipRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        setPopoverAnchor({ x: rect.right + POPOVER_GAP, y: rect.top, flipX: rect.left - POPOVER_GAP });
+        if (rect) openPopover(rect);
     }
 
     function movedPastThreshold(e: MouseEvent): boolean {
@@ -365,19 +260,19 @@ function EventChip({ segment, dayCount, linkedTasks }: EventChipProps): React.JS
                 className={`event-chip${resizing ? " event-chip-adjusting" : ""}${compact ? " event-chip-compact" : ""}`}
                 role="button"
                 tabIndex={0}
-                aria-expanded={popoverAnchor !== null}
+                aria-expanded={popoverOpen}
                 onMouseDown={onMouseDown}
                 onClick={() => {
                     if (suppressClickRef.current) {
                         suppressClickRef.current = false;
                         return;
                     }
-                    openPopover();
+                    openFromChip();
                 }}
                 onKeyDown={(e) => {
                     if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
                     e.preventDefault();
-                    openPopover();
+                    openFromChip();
                 }}
                 style={style}
             >
@@ -404,43 +299,7 @@ function EventChip({ segment, dayCount, linkedTasks }: EventChipProps): React.JS
                     <div className="event-chip-duration-adjuster" onMouseDown={resizeMouseDown}></div>
                 )}
             </div>
-            {/* Inert behind the scope prompt: its form must not be edited or
-                submitted while a pending change is waiting on a scope. */}
-            {popoverAnchor && (
-                <div inert={pendingScope !== null}>
-                    <NewEventPopover
-                        anchor={popoverAnchor}
-                        initialStart={event.start_at}
-                        initialDuration={eventMinutes}
-                        initialTitle={event.title}
-                        initialDescription={event.description || ""}
-                        initialCategory={event.category || ""}
-                        initialRrule={event.rrule}
-                        extraFields={<LinkedTasks tasks={linkedTasks} />}
-                        onSave={handlePopoverSave}
-                        onClose={() => setPopoverAnchor(null)}
-                        onDelete={handlePopoverDelete}
-                    />
-                </div>
-            )}
-            {showConfirmDelete && (
-                <ConfirmDelete
-                    onClose={() => setShowConfirmDelete(false)}
-                    onDelete={() => {
-                        removeEvent();
-                        setShowConfirmDelete(false);
-                    }}
-                    itemName="event"
-                />
-            )}
-            {pendingScope && (
-                <RecurrenceScopePrompt
-                    action={pendingScope.action}
-                    scopes={pendingScope.action === "edit" ? pendingScope.scopes : undefined}
-                    onCancel={cancelScope}
-                    onConfirm={confirmScope}
-                />
-            )}
+            {overlays}
         </div>
     );
 }
@@ -458,8 +317,9 @@ function EventDraftPreview({ draft, rangeStart, dayCount }: EventDraftPreviewPro
     const dayIndex = calendarDaysBetween(rangeStart, draft.start_at);
     if (dayIndex < 0 || dayIndex >= dayCount) return null;
     const startMin = minutesIntoDay(draft.start_at);
-    const endMin = Math.min(MINUTES_PER_DAY, startMin + draft.duration);
-    const end = new Date(draft.start_at.getTime() + draft.duration * 60000);
+    const end = draft.end_at;
+    const endMin =
+        calendarDaysBetween(draft.start_at, end) > 0 ? MINUTES_PER_DAY : Math.max(startMin, minutesIntoDay(end));
     const compact = (endMin - startMin) * PX_PER_MIN < EVENT_HEADER_PX;
     return (
         <div

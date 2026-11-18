@@ -33,6 +33,11 @@ export const calendarDaysBetween = (a: Date, b: Date): number =>
             86400000,
     );
 
+export const addMinutes = (d: Date, minutes: number): Date => new Date(d.getTime() + minutes * 60000);
+
+// Whole minutes from a to b (negative if b is earlier).
+export const minutesBetween = (a: Date, b: Date): number => Math.round((b.getTime() - a.getTime()) / 60000);
+
 // Wall-clock minutes since local midnight.
 export const minutesIntoDay = (d: Date): number => d.getHours() * 60 + d.getMinutes();
 

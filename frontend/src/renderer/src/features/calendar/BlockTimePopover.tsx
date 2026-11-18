@@ -22,12 +22,13 @@ function BlockTimePopover({ task, anchor, onClose }: BlockTimePopoverProps): Rea
     const { updateTask } = useTasks();
     const reportError = useReportError();
     const [start] = useState(() => roundUpToQuarterHour(new Date()));
+    const [end] = useState(() => new Date(start.getTime() + DEFAULT_BLOCK_MINUTES * 60000));
 
     return (
         <NewEventPopover
             anchor={anchor}
             initialStart={start}
-            initialDuration={DEFAULT_BLOCK_MINUTES}
+            initialEnd={end}
             initialTitle={task.title}
             onSave={(draft) => {
                 onClose();
