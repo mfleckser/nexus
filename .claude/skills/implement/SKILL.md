@@ -1,7 +1,7 @@
 ---
 name: implement
-description: "Take one Nexus feature, fix, or chore and implement it end to end without needing Mark: plans, builds, tests, reviews, commits and pushes to a branch, with effort scaled to the task's size, then returns a summary. Invoked with /implement <task> [branch=<name>] [port=<n>] [unattended] [decisions: ...]."
-argument-hint: "<task description> [branch=<name>] [port=<n>] [unattended] [decisions: ...]"
+description: "Take one Nexus feature, fix, or chore and implement it end to end without needing Mark: plans, builds, tests, reviews, commits and pushes to a branch, with effort scaled to the task's size, then returns a summary. Invoked with /implement <task> [branch=<name>] [base=<branch>] [port=<n>] [unattended] [decisions: ...]."
+argument-hint: "<task description> [branch=<name>] [base=<branch>] [port=<n>] [unattended] [decisions: ...]"
 ---
 
 # Implement
@@ -15,6 +15,8 @@ Arguments: `$ARGUMENTS`
   from any source; don't go looking for it in a backlog file, and don't edit planning
   files. Whoever invoked you tracks the task.
 - **`branch=<name>`** (optional): the branch to commit to. If omitted, see step 6.
+- **`base=<branch>`** (optional): the branch this one is stacked on. Reviews diff
+  against it (step 5). Default `main`.
 - **`port=<n>`** (optional): the local backend port for UI checks. Default `5055`.
   Other agents may run in parallel on other ports, so use only this one.
 - **`decisions:`** (optional, always last): product answers already made. They are
@@ -35,6 +37,10 @@ Arguments: `$ARGUMENTS`
   look like the code next to it.
 - **Models.** You (the main agent) are `opus`, the strongest model available. Never
   use `fable`. For subagents, pick the model and `effort` per unit (step 4).
+- **Scratch per branch.** Parallel lanes share one scratchpad. Create
+  `<scratchpad>/<branch>/` when you start (`<branch>` as given, or `main`) and keep
+  every scratch file and all evidence in it, never under generic names at the
+  scratchpad root. Subagents you spawn get paths under the same folder.
 
 ## 1. Understand and size the task
 
@@ -48,8 +54,8 @@ Arguments: `$ARGUMENTS`
 | Tier | Looks like | Planning | Agents | Review |
 |---|---|---|---|---|
 | **S** | One layer, ≤ ~3 files, obvious approach (clamp text, add a CHECK constraint, fix a label) | None | Just you | Re-read your own diff |
-| **M** | One feature across a layer or two, an approach is needed but it's clear (filter params on `GET /tasks`, the header month label) | A short plan in your head or the scratchpad | Usually just you; maybe one helper for an independent piece | `code-review` at `medium`, one fix round |
-| **L** | Cross-stack, schema + API + UI, or a risky change to shared behavior (all-day events, transactional recurring edits, time-blocking) | Written plan in the scratchpad: API/data contract, files, steps, test plan | You conduct; subagents build separable units | `code-review` at `high` per unit plus a final full pass, with a fix loop |
+| **M** | One feature across a layer or two, an approach is needed but it's clear (filter params on `GET /tasks`, the header month label) | A short plan in your head or the branch folder | Usually just you; maybe one helper for an independent piece | `code-review` at `medium`, one fix round |
+| **L** | Cross-stack, schema + API + UI, or a risky change to shared behavior (all-day events, transactional recurring edits, time-blocking) | Written plan in the branch folder: API/data contract, files, steps, test plan | You conduct; subagents build separable units | `code-review` at `high` per unit plus a final full pass, with a fix loop |
 
 If the task is too big for one pass, build the first slice that works on its own,
 and report the rest under **Remaining** with status `partial`.
@@ -83,7 +89,7 @@ reasonable default and record it.
 
 - **M**: name the files you'll change, the API shape if there is one, and how you'll
   verify it. Keep it short.
-- **L**: write `plan.md` in the scratchpad with:
+- **L**: write `<scratchpad>/<branch>/plan.md` with:
   - the contract (endpoints, request/response JSON, DB columns, TS types)
   - work units with file ownership, so no two agents edit the same file
   - order and dependencies (usually migration → backend service/API + tests →
@@ -99,7 +105,8 @@ reasonable default and record it.
 
 **Delegation (L, sometimes M).** Give each subagent a self-contained brief: the
 contract, the files it owns, the conventions that apply (point it at the CLAUDE.md
-sections), what "done" means (including which tests must pass), and "don't commit".
+sections), what "done" means (including which tests must pass), its scratch path
+under `<scratchpad>/<branch>/`, and "don't commit".
 Run units in parallel only when their files don't overlap. Set `model` and `effort`
 on every spawn:
 
@@ -141,9 +148,9 @@ repeat until green.
   helpers in `src/renderer/src/lib` get vitest tests.
 - **UI behavior (M/L tasks with visible changes)**: drive the real app with
   Playwright `_electron`. Always set `NEXUS_HIDDEN=1` so the window never steals focus.
-  - Playwright isn't a project dependency. Install `playwright-core` in a scratchpad
-    folder (`npm init -y && npm i playwright-core`) and launch with
-    `executablePath` set to the default export of
+  - Playwright isn't a project dependency. Install `playwright-core` in
+    `<scratchpad>/<branch>/pw` (`npm init -y && npm i playwright-core`) and launch
+    with `executablePath` set to the default export of
     `frontend/node_modules/electron/index.js` and `args: [<frontend dir>]`.
   - If backend code changed, run it locally on your port (`port=`, default 5055):
     `NEXUS_PORT=<port> backend/start`, in the background. Restart it after more
@@ -158,12 +165,14 @@ repeat until green.
     URL baked in.
   - Test data goes in the live DB: name it `ZZ test …` and delete it afterwards, in a
     `finally`, one delete at a time so one failure doesn't leak the rest.
-  - Keep scripts and screenshots in the scratchpad. Look at the screenshots.
+  - Keep scripts and screenshots in `<scratchpad>/<branch>/`. Look at the
+    screenshots.
 - **Evidence (any tier)**: keep 1–2 pieces that show the change works, and list them
   under **Evidence** in the summary. For a visible change, that's a screenshot
-  cropped to the relevant part of the window, saved as a PNG in the scratchpad and
-  listed by its absolute path. Take one even at tier S. For a non-visual change, use
-  a short excerpt of test output or an API response.
+  cropped to the relevant part of the window, saved as
+  `<scratchpad>/<branch>/<name>.png` and listed by its absolute path. Take one even
+  at tier S. For a non-visual change, use a short excerpt of test output or an API
+  response.
 - **Agent tools (`tools/nexus-mcp`)**: `venv/bin/python -m unittest discover -s tests`
   and `../../backend/venv/bin/ruff check .`. If you add an endpoint agents need, add
   the tool and test it; run `smoke.py` against a local backend
@@ -171,14 +180,27 @@ repeat until green.
 
 ## 5. Review (scaled to tier)
 
-- **S**: read `git diff` start to finish for leftovers, debug output, and convention
+Every review covers this branch's changes against its base, nothing else:
+- First confirm `git rev-parse --show-toplevel` and `git branch --show-current` are
+  the worktree and branch you're building, and run the review from there.
+- The diff is `git diff <mb>`, where `<mb>` is `git merge-base origin/<base> HEAD`:
+  commits plus uncommitted work. Its files are `git diff --name-only <mb>` plus
+  untracked files in `git status --short`.
+
+- **S**: read that diff start to finish for leftovers, debug output, and convention
   breaks.
-- **M**: invoke the `code-review` skill at `medium` on the diff. Fix the findings that
-  hold up after you check them, rerun verification, done.
+- **M**: invoke the `code-review` skill at `medium` with an explicit target: the
+  branch against its base (`origin/<base>...HEAD`, plus uncommitted changes), never
+  the implicit "current diff". Fix the findings that hold up after you check them,
+  rerun verification, done.
 - `code-review` runs in the background. Wait for its result before committing, and
-  give every finding a verdict (fixed, or why not) in your summary.
-- **L**: `code-review` at `high` after each major unit lands, then once more over the
-  full diff. If the change added a lot of code, run `simplify` too. Loop
+  give every finding a verdict (fixed, or why not) in your summary. When it arrives,
+  before acting on any finding, check that the files it reviewed match the diff's
+  files. If not, discard it and re-run with the explicit target. If it still doesn't
+  match, review the diff by hand and say so under **Verified**.
+- **L**: `code-review` at `high` after each major unit lands (target that unit's
+  commits or files within the same base), then once more over the full diff. If the
+  change added a lot of code, run `simplify` too. Loop
   fix → verify → re-review until a pass turns up nothing significant (at most 3
   rounds; anything left over goes under **Follow-ups**).
 - Never use the `max` or `ultra` review levels.
@@ -192,7 +214,8 @@ doc you edit.
 
 **Choose the branch:**
 - `branch=` given: use it. If it exists locally or on `origin`, check it out and
-  `git pull --ff-only`. If it doesn't exist, create it from an up-to-date `main`.
+  `git pull --ff-only`. If it doesn't exist, create it from an up-to-date `base`
+  (default `main`).
 - No branch given: commit to `main`.
 
 **Protect work that isn't yours.** Check `git status` before you start building, not
@@ -220,6 +243,24 @@ didn't write, stop and return `blocked`; don't guess at resolutions.
 
 ## 7. Return the summary
 
+**PR section.** For `done` or `partial`, first write your task's part of the PR
+description to `<scratchpad>/<branch>/pr-section-<task-slug>.md` (`<task-slug>`: the
+task title in kebab-case; several tasks can share a branch). If it already exists
+(a resumed partial task), update it to cover the whole task. The conductor pastes
+it into the PR as is (see "PR description" in `.claude/skills/conductor/SKILL.md`),
+so write it for Mark, from the same facts as the summary block:
+
+```
+### <task title>
+- <what changed for the user, 1–3 bullets>
+- Product calls: <the Product defaults, plus answers given in decisions: — or omit the line>
+- Technical calls: <ones worth a second look — or omit the line>
+
+#### Evidence
+- `<name>.png`: <one-line caption>  ← per screenshot, by its filename
+- <one-line caption>, then the excerpt in a code block  ← per output excerpt
+```
+
 End with exactly this block, short and factual. It is the whole hand-off to your
 caller, so write it to stand on its own:
 
@@ -231,6 +272,7 @@ Product defaults: <product questions you answered yourself, with the choice made
 Technical decisions: <notable calls a reviewer might want to revisit — or "none">
 Verified: <tests/lint/typecheck/UI checks run and their results; anything skipped and why>
 Evidence: <1–2 items: absolute PNG path + what it shows, or a short output excerpt — or "none">
+PR section: <absolute path of the pr-section file — or "none">
 Migrations: <applied migrations, noting any that changed existing data — or "none">
 Manual steps: <Pi deploy (`git pull && systemctl --user restart nexus-backend`) if backend changed, env changes — or "none">
 Remaining: <for partial: what's left to finish the task — or "none">

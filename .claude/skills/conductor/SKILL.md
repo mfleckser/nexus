@@ -29,6 +29,9 @@ whole backlog.
   If a decision needs research, hand it to a subagent and take its conclusion. All state lives in Nexus
   and GitHub, so a later `/conductor` run with the same arguments picks up where
   this one stopped.
+- **The scratchpad can vanish mid-run.** Write your own files (PR bodies, comment
+  replies) under `<scratchpad>/<branch>/`, use them right away, and never rely on
+  one later in the run.
 - **Models.** You are `opus`. Never use `fable`. Spawn `/implement` agents on `opus`
   at `high` effort; lookups go to `haiku` or `sonnet`.
 
@@ -223,22 +226,28 @@ Within a lane, groups run in order in the lane's slot. For each group:
    <task title>
    <task description, verbatim, minus the Conductor: line>
    (Nexus feature: <feature name>)  ← only if it has one
-   branch=<branch> port=<slot port> unattended decisions: <the run's answers so far, or omit>
+   branch=<branch> base=<parent branch> port=<slot port> unattended decisions: <the run's answers so far, or omit>
 
    When it finishes, reply with only its final summary block.
    ```
 
+   Pass `base=` only when the branch is stacked (for review fixes, the PR's base if
+   it isn't `main`). `/implement` reviews the diff against it.
+
    Ignore everything but the summary block. For a `done` or `partial` result,
    confirm the reported commit is on `origin/<branch>` (`git fetch` and
    `git branch -r --contains <hash>`). If it isn't, treat the result as `blocked`.
+   Also check its **PR section** file exists (`test -f`), without reading it; if it
+   doesn't, note that this task's section gets written from the summary block.
    Handle each result:
    - **`done`**: keep it for the PR description.
    - **`needs-decision`**: answer each question yourself. Use its recommendation
      unless the request, `CLAUDE.md` or the pursuit doc point another way. Spawn
      again with the answers in `decisions:`. If a question falls under the blocking
      rules in Triage, block the task instead.
-   - **`partial`**: spawn once more with the **Remaining** text as the task on the
-     same branch. If it's still partial, file the rest (see Filing tasks) and treat
+   - **`partial`**: spawn once more on the same branch, with the same task title
+     and the **Remaining** text as the description, so it updates the same PR
+     section file. If it's still partial, file the rest (see Filing tasks) and treat
      this task as done.
    - **`blocked`**: set the task to `blocked` with the reason. Keep going with the
      rest of the group, unless they depend on it.
@@ -261,14 +270,19 @@ Within a lane, groups run in order in the lane's slot. For each group:
    - Embed it with
      `![<what it shows>](https://raw.githubusercontent.com/mfleckser/nexus/pr-evidence/<branch>/<name>.png)`.
    - Never commit screenshots to the PR branch.
-4. **PR.** Once the group has at least one `done` task, write the description to a
-   scratchpad file.
+4. **PR.** Once the group has at least one `done` task, write the description to
+   `<scratchpad>/<branch>/pr-body.md`, assembled from the tasks' PR section files
+   (see PR description).
    - If the branch already has an open PR (review fixes), don't edit its
      description. Reply to the comments instead (see Replying to review comments).
    - Otherwise, open the PR:
    `gh pr create --base <main or parent branch> --head <branch> --title "<what the group does>" --body-file <file>`.
    - If it's stacked, link it: `gh stack link <parent PR> <this PR> --open`. If
      linking fails, keep the chained base and add a "Stacked on #N" line.
+   - To edit an existing PR's body, re-fetch it first
+     (`gh pr view <n> --json body -q .body > <scratchpad>/<branch>/pr-body.md`),
+     edit that, then `gh pr edit <n> --body-file <that file>`. Never reuse a body
+     file saved earlier.
    - Add the PR URL to every done task's marker. The tasks stay `active`; Triage
      step 3 closes them once Mark merges.
    - Never use `gh pr merge` or `gh stack merge`.
@@ -301,16 +315,23 @@ Reply in the comment's own thread where GitHub allows it:
 ### PR description
 
 Mark should understand every change in a couple of minutes without reading the
-diff. Write it from the summary blocks:
+diff. Each done task's `/implement` wrote its `### <task title>` section to the file
+its summary names under **PR section**. Read each file once, now:
+- **Changes**: paste each file's part above `#### Evidence`, in task order. Add any
+  answers you gave that it doesn't already list to its Product calls line.
+- **Evidence**: for the 2–3 items you picked (step 3), take the caption from that
+  task's `#### Evidence` lines. A `<name>.png` caption goes into the embed
+  `![<caption>](<its pr-evidence URL>)`; an excerpt keeps its code block.
+- **Missing file** (e.g. the scratchpad was cleared): write that task's section
+  and captions from its summary block.
+
+You write only the intro, Check it, Before merging and Follow-ups:
 
 ```
 <2–4 sentences: what this PR does for Mark, in product terms. "Stacked on #N." if stacked>
 
 ## Changes
-### <task title>
-- <what changed for the user, 1–3 bullets>
-- Product calls: <defaults /implement took and answers you gave — or omit>
-- Technical calls: <ones worth a second look — or omit>
+<the tasks' sections: ### <task title>, 1–3 bullets, Product calls / Technical calls lines>
 
 ## Evidence
 <2–3 items max: embedded screenshots with a one-line caption, or a short output excerpt in a code block>
