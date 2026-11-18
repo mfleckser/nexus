@@ -57,7 +57,10 @@ async def main() -> int:
             check("create_task fills project", t1["project_id"] == project["id"])
 
             blocked, _ = await call("update_task", task_id=t2["id"], status="blocked")
-            check("update_task blocked", blocked and blocked["status"] == "blocked")
+            check(
+                "update_task ack",
+                blocked and set(blocked) == {"id", "status", "updated_at"} and blocked["status"] == "blocked",
+            )
             listed, _ = await call("list_tasks", feature_id=fid, status=["blocked"])
             check("list_tasks filter", [t["id"] for t in listed] == [t2["id"]])
             one, _ = await call("get_task", task_id=t1["id"])
@@ -65,8 +68,9 @@ async def main() -> int:
 
             await call("append_feature_notes", feature_id=fid, text="## Decisions\n- smoke")
             noted, _ = await call("append_feature_notes", feature_id=fid, text="Result: ok")
-            check("append_feature_notes", noted["notes"] == "## Decisions\n- smoke\n\nResult: ok")
+            check("append_feature_notes ack", noted and set(noted) == {"id", "notes_updated_at"})
             full, _ = await call("get_feature", feature_id=fid)
+            check("append_feature_notes", full["notes"] == "## Decisions\n- smoke\n\nResult: ok")
             check("get_feature tasks", sorted(t["id"] for t in full["tasks"]) == sorted(task_ids))
             features, _ = await call("list_features", project_id=project["id"])
             check("list_features", [f["name"] for f in features] == ["ZZ smoke feature"])
