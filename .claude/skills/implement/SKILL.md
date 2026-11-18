@@ -243,6 +243,24 @@ didn't write, stop and return `blocked`; don't guess at resolutions.
 
 ## 7. Return the summary
 
+**PR section.** For `done` or `partial`, first write your task's part of the PR
+description to `<scratchpad>/<branch>/pr-section-<task-slug>.md` (`<task-slug>`: the
+task title in kebab-case; several tasks can share a branch). If it already exists
+(a resumed partial task), update it to cover the whole task. The conductor pastes
+it into the PR as is (see "PR description" in `.claude/skills/conductor/SKILL.md`),
+so write it for Mark, from the same facts as the summary block:
+
+```
+### <task title>
+- <what changed for the user, 1–3 bullets>
+- Product calls: <the Product defaults, plus answers given in decisions: — or omit the line>
+- Technical calls: <ones worth a second look — or omit the line>
+
+#### Evidence
+- `<name>.png`: <one-line caption>  ← per screenshot, by its filename
+- <one-line caption>, then the excerpt in a code block  ← per output excerpt
+```
+
 End with exactly this block, short and factual. It is the whole hand-off to your
 caller, so write it to stand on its own:
 
@@ -254,6 +272,7 @@ Product defaults: <product questions you answered yourself, with the choice made
 Technical decisions: <notable calls a reviewer might want to revisit — or "none">
 Verified: <tests/lint/typecheck/UI checks run and their results; anything skipped and why>
 Evidence: <1–2 items: absolute PNG path + what it shows, or a short output excerpt — or "none">
+PR section: <absolute path of the pr-section file — or "none">
 Migrations: <applied migrations, noting any that changed existing data — or "none">
 Manual steps: <Pi deploy (`git pull && systemctl --user restart nexus-backend`) if backend changed, env changes — or "none">
 Remaining: <for partial: what's left to finish the task — or "none">
