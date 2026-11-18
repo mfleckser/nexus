@@ -4,16 +4,15 @@ import { CalendarEvent, Task } from "@renderer/types";
 import AllDayChip from "@renderer/features/calendar/AllDayChip";
 import MonthEventItem from "@renderer/features/calendar/MonthEventItem";
 import MonthTaskItem from "@renderer/features/calendar/MonthTaskItem";
-import { ALL_DAY_ROW_PX } from "@renderer/features/calendar/constants";
+import { ALL_DAY_ROW_PX, DAY_NAMES } from "@renderer/features/calendar/constants";
 import { addDays, calendarDaysBetween } from "@renderer/lib/time";
 import { overlapsRange } from "@renderer/lib/eventLayout";
 import { isBarItem, layoutMonthWeek } from "@renderer/lib/monthLayout";
 import { tasksForEvent } from "@renderer/lib/timeBlocks";
 
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-// Height (px) of a day cell above its first item slot (date number + padding),
-// and kept free below the last. Must match .month-day-cell / .month-week-items
-// in monthView.css.
+// Height (px) of a day cell above its first item slot, and kept free below
+// the last (passed to CSS as --month-date / --month-bottom-pad). The top must
+// cover .month-day-cell's padding + date number in monthView.css.
 const MONTH_DATE_PX = 28;
 const MONTH_BOTTOM_PAD_PX = 2;
 // Item slots per cell before the cells are measured.
@@ -84,20 +83,27 @@ function MonthView({
 
     const weeks = useMemo(() => {
         const gridStart = cells[0];
-        const shown = events.filter((e) => overlapsRange(e, gridStart, addDays(cells[cells.length - 1], 1)));
-        const bars = shown.filter(isBarItem);
-        // Single-day items bucketed by grid day.
+        const gridEnd = addDays(cells[cells.length - 1], 1);
+        // Bars, and single-day items bucketed by grid day.
+        const bars: CalendarEvent[] = [];
         const byDay: MonthEntry[][] = cells.map(() => []);
         const add = (entry: MonthEntry): void => {
             const i = calendarDaysBetween(gridStart, entry.at);
             if (i >= 0 && i < cells.length) byDay[i].push(entry);
         };
-        for (const event of shown) if (!isBarItem(event)) add({ kind: "event", event, at: event.start_at });
+        for (const event of events) {
+            if (!overlapsRange(event, gridStart, gridEnd)) continue;
+            if (isBarItem(event)) bars.push(event);
+            else add({ kind: "event", event, at: event.start_at });
+        }
         for (const task of dueTasks) add({ kind: "task", task, at: task.due_at });
         return Array.from({ length: weekCount }, (_, w) => {
             const days = cells.slice(7 * w, 7 * w + 7);
+            // A cheap superset (an all-day event's dates are in its own zone);
+            // layoutDayBars places them by date.
+            const weekBars = bars.filter((e) => overlapsRange(e, addDays(days[0], -1), addDays(days[0], 8)));
             const dayItems = byDay.slice(7 * w, 7 * w + 7).map((items) => items.sort(byStart));
-            return { start: days[0], days, layout: layoutMonthWeek(bars, dayItems, days[0], slots) };
+            return { start: days[0], days, layout: layoutMonthWeek(weekBars, dayItems, days[0], slots) };
         });
     }, [cells, weekCount, events, dueTasks, slots]);
 
@@ -110,7 +116,15 @@ function MonthView({
                     </div>
                 ))}
             </div>
-            <div className="month-grid" ref={gridRef} style={{ ["--all-day-row" as string]: `${ALL_DAY_ROW_PX}px` }}>
+            <div
+                className="month-grid"
+                ref={gridRef}
+                style={{
+                    ["--all-day-row" as string]: `${ALL_DAY_ROW_PX}px`,
+                    ["--month-date" as string]: `${MONTH_DATE_PX}px`,
+                    ["--month-bottom-pad" as string]: `${MONTH_BOTTOM_PAD_PX}px`,
+                }}
+            >
                 {weeks.map(({ start, days, layout }) => (
                     <div key={start.getTime()} className="month-week">
                         {days.map((d) => (

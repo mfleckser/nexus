@@ -29,6 +29,7 @@ import { roundUpToQuarterHour, tasksByEventId, tasksForEvent } from "@renderer/l
 import { allDayTimes, dayColumnAt, layoutDayBars } from "@renderer/lib/allDay";
 import {
     ALL_DAY_ROW_PX,
+    DAY_NAMES,
     DEFAULT_EVENT_MINUTES,
     DRAG_THRESHOLD,
     EVENT_HEADER_PX,
@@ -44,7 +45,6 @@ const BUFFER_DAYS = 7;
 // Space (px) below the all-day row's bars: room to click and create.
 const ALL_DAY_PAD_PX = 6;
 const SLOTS_PER_DAY = MINUTES_PER_DAY / SLOT_MINUTES;
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type ViewType = "DAY" | "WEEK" | "MONTH";
 

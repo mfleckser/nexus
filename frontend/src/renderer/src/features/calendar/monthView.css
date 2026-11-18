@@ -19,15 +19,22 @@
     padding: 8px 0;
 }
 
+/* Scrolls once the window is too short for every week's min-height. */
 .month-grid {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
+}
+
+.month-grid::-webkit-scrollbar {
+    display: none;
 }
 
 /* One week: the day cells, with the week's items on a layer over them.
-   --all-day-row (ALL_DAY_ROW_PX) is set inline on .month-grid. */
+   --all-day-row, --month-date and --month-bottom-pad (constants in
+   MonthView.tsx) are set inline on .month-grid. */
 .month-week {
     flex: 1 1 0;
     min-height: 80px;
@@ -41,7 +48,7 @@
     border-bottom: none;
 }
 
-/* Top padding + date number + gap = MONTH_DATE_PX in MonthView.tsx. */
+/* Top padding + date number + gap fit in --month-date. */
 .month-day-cell {
     min-width: 0;
     border-right: 1px solid var(--border-subtle);
@@ -88,10 +95,10 @@
    MonthView. Presses between them fall through to the cells. */
 .month-week-items {
     position: absolute;
-    top: 28px;
+    top: var(--month-date);
     left: 0;
     right: 0;
-    bottom: 2px;
+    bottom: var(--month-bottom-pad);
     pointer-events: none;
 }
 
