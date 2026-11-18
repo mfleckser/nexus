@@ -610,6 +610,44 @@ class EventServiceTest(AppTestCase):
         )
         self.assertEqual(self.starts(start="2026-04-01T00:00:00Z", end="2026-05-01T00:00:00Z"), [])
 
+    def test_month_end_move_keeps_exceptions_in_their_month(self):
+        m = self.create(
+            start_at="2027-01-31T09:00:00Z", end_at="2027-01-31T10:00:00Z", rrule="FREQ=MONTHLY;BYMONTHDAY=31"
+        )
+        self.put_occ(m["id"], "2027-05-31T09:00:00Z", {"scope": "this", "title": "May special"})
+        self.delete_occ(m["id"], "2027-07-31T09:00:00Z", "this")
+        # The 31st -> the 30th: the new rule also hits April, so pairing by
+        # position would put May's override on Apr 30.
+        self.put_occ(
+            m["id"],
+            "2027-01-31T09:00:00Z",
+            {"scope": "all", "start_at": "2027-01-30T09:00:00Z", "end_at": "2027-01-30T10:00:00Z"},
+        )
+        master = self.row(m["id"])
+        self.assertEqual(
+            (master["rrule"], master["exdates"]), ("FREQ=MONTHLY;BYMONTHDAY=30", ["2027-07-30T09:00:00+00:00"])
+        )
+        self.assertEqual(
+            [(o[0], o[3]) for o in self.overrides(m["id"])], [("2027-05-30T09:00:00+00:00", "May special")]
+        )
+
+    def test_equivalent_rule_spelling_is_not_a_new_rule(self):
+        m = self._series_with_exceptions()
+        self.put_occ(
+            m["id"],
+            "2026-10-14T16:00:00Z",
+            {
+                "scope": "all",
+                "rrule": "freq=weekly;interval=1;byday=WE",
+                "start_at": "2026-10-15T16:00:00Z",
+                "end_at": "2026-10-15T17:00:00Z",
+            },
+        )
+        master = self.row(m["id"])
+        # Treated as the series' own rule, so it is re-aimed and keeps its exceptions.
+        self.assertEqual(master["exdates"], ["2026-10-08T16:00:00+00:00"])
+        self.assertEqual(len(self.overrides(m["id"])), 2)
+
     def test_move_shifts_until_so_the_last_occurrence_stays(self):
         m = self.weekly_wed()
         self.put_occ(

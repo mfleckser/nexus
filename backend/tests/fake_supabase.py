@@ -201,7 +201,11 @@ class _Query:
             self._check_values(row, row.keys())
             self.db.check_foreign_keys(self.table, [row])
             rows.append(row)
-            self.db.check_unique(self.table)
+            try:
+                self.db.check_unique(self.table)
+            except PostgrestAPIError:
+                rows.remove(row)  # the statement fails as a whole
+                raise
             return _Result([copy.deepcopy(row)])
         if self.op == "update":
             if not self.payload:
@@ -210,9 +214,16 @@ class _Query:
             self._check_values(values, values.keys())
             now = self.db.tick()
             self.db.check_foreign_keys(self.table, [{**r, **values} for r in match])
+            before = copy.deepcopy(match)
             for r in match:
                 r.update(values, updated_at=now)
-            self.db.check_unique(self.table)
+            try:
+                self.db.check_unique(self.table)
+            except PostgrestAPIError:
+                for r, old in zip(match, before, strict=True):
+                    r.clear()
+                    r.update(old)
+                raise
             return _Result([copy.deepcopy(r) for r in match])
         self.db.delete_rows(self.table, {r["id"] for r in match})
         return _Result([copy.deepcopy(r) for r in match])

@@ -147,7 +147,7 @@ _write_lock = threading.Lock()
 
 def invalidates_events(fn):
     """Serialize a mutation and clear the memoized window fetch after it, even
-    a failed one, so a stale window never outlives a write."""
+    after a failed one."""
 
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -294,33 +294,43 @@ def _delete_overrides_op(master_id: str, from_start: datetime = None, at: dateti
     return {"op": "delete_overrides", "master": master_id, "from": _iso(from_start), "at": _iso(at)}
 
 
-def _carry_exceptions(old: dict, new_id: str, new: dict, slot_map, exdates, overrides, details: dict, clicked):
+def _carry_exceptions(old: dict, new_id: str, new: dict, move: dict):
     """Move a series' exceptions along when the series itself moves, so cancelled
     occurrences stay cancelled and edited ones stay edited.
 
-    old       the master as it was
-    new_id    the series receiving the exceptions (the master, or a split-off series)
-    new       its new columns (rrule/start_at/end_at/timezone); new["exdates"] is set here
-    slot_map  old occurrence start -> its start in the new series, or None when
-              the new series no longer has it (that exception is dropped)
-    details   changed detail fields, set on every carried override
-    clicked   (override id, fields) for the override the edit was made on, or None
+    old     the master as it was
+    new_id  the series receiving the exceptions (the master, or a split-off series)
+    new     its new columns (rrule/start_at/end_at/timezone)
+    move    anchor     (old instant, new instant) of the edited slot
+            explicit   whether the edit set a new rule (else it's re-aimed)
+            exdates    old exdates to carry
+            overrides  old override rows to carry
+            details    changed detail fields, set on every carried override
+            clicked    (override id, fields) for the override edited, or None
+            skip_before  old occurrences before this belong to the other half
 
-    Returns the ops for the overrides (update or delete)."""
+    Returns (exdates for the new series, ops for the overrides)."""
     old_tz, tz = old["timezone"], new["timezone"]
+    overrides = move["overrides"]
+    slot_map = _slot_map(
+        old,
+        new,
+        move,
+        [*move["exdates"], *(parse_instant(o["original_start_at"]) for o in overrides)],
+    )
     old_duration = _wall_duration(old)
     new_duration = rr.wall_delta(parse_instant(new["start_at"]), parse_instant(new["end_at"]), tz)
 
-    moved = (slot_map(x) for x in exdates)
-    new["exdates"] = [_iso(x) for x in sorted({x for x in moved if x})]
+    exdates = sorted({x for x in map(slot_map, move["exdates"]) if x})
 
-    ops = []
+    ops, taken = [], set()
     for ov in overrides:
         slot = parse_instant(ov["original_start_at"])
         new_slot = slot_map(slot)
-        if not new_slot:
+        if not new_slot or new_slot in taken:
             ops.append({"op": "delete", "id": ov["id"]})
             continue
+        taken.add(new_slot)
         # A moved override keeps its offset from its slot; one with the series'
         # length takes the new length, a custom length stays.
         ov_start, ov_end = parse_instant(ov["start_at"]), parse_instant(ov["end_at"])
@@ -333,43 +343,45 @@ def _carry_exceptions(old: dict, new_id: str, new: dict, slot_map, exdates, over
             "original_start_at": _iso(new_slot),
             "start_at": _iso(moved_start),
             "end_at": _iso(moved_end),
-            **details,
+            **move["details"],
         }
         if ov["timezone"] == old_tz:
             fields["timezone"] = tz
-        if clicked and ov["id"] == clicked[0]:
-            fields.update(clicked[1])
+        if move["clicked"] and ov["id"] == move["clicked"][0]:
+            fields.update(move["clicked"][1])
         changed = {k: val for k, val in fields.items() if not _same(k, val, ov[k])}
         if changed:
             ops.append(_update_op(ov["id"], changed))
-    return ops
+    return [_iso(x) for x in exdates], ops
 
 
-def _slot_map(old: dict, new: dict, anchor, explicit: bool, instants, skip_before=None):
-    """How each old occurrence (of `instants`) lands in the new series.
+def _slot_map(old: dict, new: dict, move: dict, instants):
+    """old occurrence start -> its start in the new series, or None if the new
+    series doesn't have it.
 
-    Kept rule (only moved / re-aimed): occurrences pair up by position, which
-    stays right where a fixed shift wouldn't (2nd Tuesday -> 2nd Wednesday,
-    month ends, COUNT continuations). New rule: each instant moves by the
-    anchor's wall-clock shift and stays only if the new rule produces it."""
+    Each instant moves by the edited slot's wall-clock shift if that lands on
+    an occurrence of the new rule. When the rule was only re-aimed and the
+    shift misses (2nd Tuesday -> 2nd Wednesday in a month starting on a
+    Wednesday, month ends, a COUNT continuation), occurrences pair up by
+    position instead."""
     old_tz, tz = old["timezone"], new["timezone"]
     new_start = parse_instant(new["start_at"])
-    if not explicit:
-        pairs = rr.pair_occurrences(
-            (old["rrule"], parse_instant(old["start_at"]), old_tz),
-            (new["rrule"], new_start, tz),
-            instants,
-            skip_before,
-        )
-        return lambda x: pairs.get(x)
-
+    anchor = move["anchor"]
     delta = rr.wall_delta(anchor[0], anchor[1], old_tz, tz)
 
-    def move(x):
+    def shifted(x):
         moved = rr.shift_wall(x, delta, old_tz, tz)
         return moved if rr.is_occurrence(new["rrule"], new_start, tz, moved) else None
 
-    return move
+    if move["explicit"]:
+        return shifted
+    pairs = rr.pair_occurrences(
+        (old["rrule"], parse_instant(old["start_at"]), old_tz),
+        (new["rrule"], new_start, tz),
+        instants,
+        move.get("skip_before"),
+    )
+    return lambda x: shifted(x) or pairs.get(x)
 
 
 def _same(col: str, a, b) -> bool:
@@ -440,9 +452,19 @@ def _requested_rule(master: dict, data: dict):
     if "rrule" not in data:
         return master["rrule"], False
     requested = data["rrule"] or None
-    if requested and rr.parse_rule(requested) == rr.parse_rule(master["rrule"]):
-        return master["rrule"], False
+    if requested:
+        # Compare canonical forms, so an equivalent spelling isn't a new rule.
+        start, tz = parse_instant(master["start_at"]), master["timezone"]
+        if _rule_key(rr.normalize_rrule(requested, start, tz)) == _rule_key(master["rrule"]):
+            return master["rrule"], False
     return requested, True
+
+
+def _rule_key(body: str) -> dict:
+    parts = rr.parse_rule(body)
+    if parts.get("INTERVAL") == "1":
+        del parts["INTERVAL"]  # the default
+    return parts
 
 
 @invalidates_events
@@ -501,16 +523,18 @@ def _update_all(master, original_start, override, data):
     updates = {**details, "timezone": tz}
     if body:
         updates.update(_series_fields(body, series_start, series_end, tz))
-        exdates, overrides = _exdates(master), _overrides(master["id"])
-        slot_map = _slot_map(
+        updates["exdates"], ops = _carry_exceptions(
             master,
+            master["id"],
             updates,
-            (old_start, series_start),
-            explicit,
-            [*exdates, *(parse_instant(o["original_start_at"]) for o in overrides)],
-        )
-        ops = _carry_exceptions(
-            master, master["id"], updates, slot_map, exdates, overrides, details, _clicked(override, data, times)
+            {
+                "anchor": (old_start, series_start),
+                "explicit": explicit,
+                "exdates": _exdates(master),
+                "overrides": _overrides(master["id"]),
+                "details": details,
+                "clicked": _clicked(override, data, times),
+            },
         )
     else:
         # rrule cleared: the series collapses into a plain event.
@@ -553,17 +577,19 @@ def _update_following(master, split_at, override, data):
     new_row.update(details, id=str(uuid.uuid4()), timezone=tz)
     if body:
         new_row.update(_series_fields(body, new_start, new_end, tz))
-        overrides = _overrides(master["id"], split_at)
-        slot_map = _slot_map(
+        new_row["exdates"], moved = _carry_exceptions(
             master,
+            new_row["id"],
             new_row,
-            (split_at, new_start),
-            explicit,
-            [*exdates_after, *(parse_instant(o["original_start_at"]) for o in overrides)],
-            skip_before=split_at,
-        )
-        moved = _carry_exceptions(
-            master, new_row["id"], new_row, slot_map, exdates_after, overrides, details, _clicked(override, data, times)
+            {
+                "anchor": (split_at, new_start),
+                "explicit": explicit,
+                "exdates": exdates_after,
+                "overrides": _overrides(master["id"], split_at),
+                "details": details,
+                "clicked": _clicked(override, data, times),
+                "skip_before": split_at,
+            },
         )
     else:
         new_row.update(start_at=_iso(new_start), end_at=_iso(new_end))
