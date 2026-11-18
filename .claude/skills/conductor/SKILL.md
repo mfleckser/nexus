@@ -25,15 +25,20 @@ whole backlog.
   push to `main`.
 - **Keep your context slim.** Keep only the task list, the file map (Triage step
   6), the lane/branch/PR map, the run's decisions, the filing batch (Filing tasks),
-  and each `/implement` summary block. Don't read code yourself.
-  If a decision needs research, hand it to a subagent and take its conclusion. All state lives in Nexus
-  and GitHub, so a later `/conductor` run with the same arguments picks up where
-  this one stopped.
+  and each `/implement` summary block. Don't read code yourself, with one
+  exception: for a yes/no or one-fact question (a needs-decision or Triage
+  question, e.g. "does `tasks.event_id` have ON DELETE SET NULL?"), you may run one
+  command whose output reads at a glance (`grep -n` on one file,
+  `git show <ref>:<path> | grep`) and keep only the answer. No browsing files, no
+  follow-up commands. Anything that needs reading, comparing or judgement goes to a
+  subagent; take its conclusion. Implementation is never yours. All state lives in
+  Nexus and GitHub, so a later `/conductor` run with the same arguments picks up
+  where this one stopped.
 - **The scratchpad can vanish mid-run.** Write your own files (PR bodies, comment
   replies) under `<scratchpad>/<branch>/`, use them right away, and never rely on
   one later in the run.
 - **Models.** You are `opus`. Never use `fable`. Spawn `/implement` agents on `opus`
-  at `high` effort; lookups go to `haiku` or `sonnet`.
+  at `high` effort; other lookups go to `haiku` or `sonnet`.
 
 ## State markers
 
