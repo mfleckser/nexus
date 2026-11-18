@@ -1,16 +1,18 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Repeat } from "lucide-react";
 import { CalendarEvent, Task } from "@renderer/types";
-import useEventEditor, { timesUpdate } from "@renderer/features/calendar/useEventEditor";
+import useEventEditor, { formTimes, timesUpdate } from "@renderer/features/calendar/useEventEditor";
 import { categoryColor } from "@renderer/features/calendar/categories";
 import { ALL_DAY_ROW_PX, DRAG_THRESHOLD } from "@renderer/features/calendar/constants";
-import { allDayTimes, daySpan, DayBar } from "@renderer/lib/allDay";
-import { addDays } from "@renderer/lib/time";
+import { allDayTimes, daySpan, DayBar, dayColumnAt, layoutDayBars } from "@renderer/lib/allDay";
+import { addDays, browserTimeZone } from "@renderer/lib/time";
 import { describeRrule } from "@renderer/lib/rrule";
 
-// Day column under clientX, unclamped, in a row of `dayCount` columns.
-const columnAt = (clientX: number, rect: DOMRect, dayCount: number): number =>
-    Math.floor((dayCount * (clientX - rect.left)) / rect.width);
+// `event`'s all-day times moved `days` whole days, in the viewer's timezone.
+function shiftedTimes(event: CalendarEvent, days: number): { start_at: Date; end_at: Date } {
+    const { first, last } = daySpan(event);
+    return allDayTimes(addDays(first, days), addDays(last, days));
+}
 
 // Horizontal placement over `span` columns from `startIndex`, inset by the
 // chip's side margins.
@@ -21,7 +23,9 @@ const barBox = (startIndex: number, span: number, dayCount: number): React.CSSPr
 
 type AllDayChipProps = {
     bar: DayBar<CalendarEvent>;
-    // Day columns in the row: 7 in week view, 1 in day view.
+    // Local midnight of the row's first day, and its day columns (7 in week
+    // view, 1 in day view).
+    rangeStart: Date;
     dayCount: number;
     // Tasks this event is a time block for.
     linkedTasks: Task[];
@@ -29,7 +33,7 @@ type AllDayChipProps = {
 
 // An all-day event's bar in the all-day row. Click to edit; drag sideways to
 // move it by whole days.
-function AllDayChip({ bar, dayCount, linkedTasks }: AllDayChipProps): React.JSX.Element {
+function AllDayChip({ bar, rangeStart, dayCount, linkedTasks }: AllDayChipProps): React.JSX.Element {
     const event = bar.item;
     const chipRef = useRef<HTMLDivElement>(null);
     const rowRectRef = useRef<DOMRect | null>(null);
@@ -43,8 +47,18 @@ function AllDayChip({ bar, dayCount, linkedTasks }: AllDayChipProps): React.JSX.
         setShift(0),
     );
 
+    // Moved by the drag: the whole event re-clipped to the row (null once it
+    // leaves the visible days), kept in this bar's stacking row.
+    const shown =
+        shift === 0
+            ? bar
+            : (layoutDayBars(
+                  [{ ...shiftedTimes(event, shift), all_day: true, timezone: browserTimeZone() }],
+                  rangeStart,
+                  dayCount,
+              ).bars[0] ?? null);
     const style: React.CSSProperties = {
-        ...barBox(bar.startIndex + shift, bar.span, dayCount),
+        ...(shown ? barBox(shown.startIndex, shown.span, dayCount) : { visibility: "hidden" }),
         top: bar.row * ALL_DAY_ROW_PX,
         ["--chip-background" as string]: categoryColor(event.category),
     };
@@ -58,27 +72,26 @@ function AllDayChip({ bar, dayCount, linkedTasks }: AllDayChipProps): React.JSX.
         suppressClickRef.current = false;
         const rect = parent.getBoundingClientRect();
         rowRectRef.current = rect;
-        pressRef.current = { x: e.clientX, y: e.clientY, column: columnAt(e.clientX, rect, dayCount) };
+        pressRef.current = { x: e.clientX, y: e.clientY, column: dayColumnAt(e.clientX, rect, dayCount) };
         setDragging(true);
     }
 
     const onDragMove = useEffectEvent((e: MouseEvent) => {
         const rect = rowRectRef.current;
-        if (rect) setShift(columnAt(e.clientX, rect, dayCount) - pressRef.current.column);
+        if (rect) setShift(dayColumnAt(e.clientX, rect, dayCount) - pressRef.current.column);
     });
 
     const onDragEnd = useEffectEvent((e: MouseEvent) => {
         setDragging(false);
         const rect = rowRectRef.current;
         const moved = Math.hypot(e.clientX - pressRef.current.x, e.clientY - pressRef.current.y) > DRAG_THRESHOLD;
-        const days = rect ? columnAt(e.clientX, rect, dayCount) - pressRef.current.column : 0;
+        const days = rect ? dayColumnAt(e.clientX, rect, dayCount) - pressRef.current.column : 0;
         if (moved) suppressClickRef.current = true;
         if (!moved || days === 0) {
             setShift(0);
             return;
         }
-        const { first, last } = daySpan(event);
-        const { start_at, end_at } = allDayTimes(addDays(first, days), addDays(last, days));
+        const { start_at, end_at } = shiftedTimes(event, days);
         // Occurrences keep the shifted preview until the scope prompt settles.
         if (!isOccurrence) setShift(0);
         requestUpdate(timesUpdate(event, start_at, end_at, true));
@@ -101,8 +114,8 @@ function AllDayChip({ bar, dayCount, linkedTasks }: AllDayChipProps): React.JSX.
 
     const className =
         "all-day-chip" +
-        (bar.clippedStart ? " all-day-chip-clipped-start" : "") +
-        (bar.clippedEnd ? " all-day-chip-clipped-end" : "") +
+        (shown?.clippedStart ? " all-day-chip-clipped-start" : "") +
+        (shown?.clippedEnd ? " all-day-chip-clipped-end" : "") +
         (dragging ? " all-day-chip-dragging" : "");
 
     return (
@@ -131,7 +144,7 @@ function AllDayChip({ bar, dayCount, linkedTasks }: AllDayChipProps): React.JSX.
                 <span className="all-day-chip-title">{event.title}</span>
                 {isOccurrence && (
                     <Repeat className="event-chip-repeat" size={10} aria-label="Repeats">
-                        <title>{describeRrule(event.rrule, event.start_at)}</title>
+                        <title>{describeRrule(event.rrule, formTimes(event).start_at)}</title>
                     </Repeat>
                 )}
             </div>

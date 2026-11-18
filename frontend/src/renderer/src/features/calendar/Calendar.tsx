@@ -15,6 +15,7 @@ import {
     addDays,
     atMinutes,
     calendarDaysBetween,
+    browserTimeZone,
     formatMonthSpan,
     minutesIntoDay,
     MINUTES_PER_DAY,
@@ -23,7 +24,7 @@ import {
 } from "@renderer/lib/time";
 import { layoutDaysWithMarkers, overlapsRange } from "@renderer/lib/eventLayout";
 import { roundUpToQuarterHour, tasksByEventId, tasksForEvent } from "@renderer/lib/timeBlocks";
-import { allDayTimes, layoutDayBars } from "@renderer/lib/allDay";
+import { allDayTimes, dayColumnAt, layoutDayBars } from "@renderer/lib/allDay";
 import {
     ALL_DAY_ROW_PX,
     DEFAULT_EVENT_MINUTES,
@@ -76,6 +77,12 @@ function dragMinutes(drag: CreateDrag): { startMin: number; duration: number } {
 
 // In-progress drag-to-create across the all-day row, in day columns.
 type AllDayDrag = { anchorDay: number; pointerDay: number };
+
+// The day columns an all-day drag covers, in either direction.
+const dragDays = (drag: AllDayDrag): { first: number; last: number } => ({
+    first: Math.min(drag.anchorDay, drag.pointerDay),
+    last: Math.max(drag.anchorDay, drag.pointerDay),
+});
 
 // Keys belong to whatever has focus, or to an open dialog/popover.
 function shortcutsBlocked(e: KeyboardEvent): boolean {
@@ -303,7 +310,7 @@ function Calendar(): React.JSX.Element {
     const allDayColumnAt = (clientX: number): number => {
         const rect = allDayRef.current?.getBoundingClientRect();
         if (!rect) return 0;
-        return Math.min(dayCount - 1, Math.max(0, Math.floor((dayCount * (clientX - rect.left)) / rect.width)));
+        return Math.min(dayCount - 1, Math.max(0, dayColumnAt(clientX, rect, dayCount)));
     };
 
     const handleAllDayMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -324,8 +331,7 @@ function Calendar(): React.JSX.Element {
         setAllDayDrag(null);
         const rect = allDayRef.current?.getBoundingClientRect();
         if (!drag || !rect) return;
-        const first = Math.min(drag.anchorDay, drag.pointerDay);
-        const last = Math.max(drag.anchorDay, drag.pointerDay);
+        const { first, last } = dragDays(drag);
         const colWidth = rect.width / dayCount;
         const { start_at, end_at } = allDayTimes(addDays(rangeStart, first), addDays(rangeStart, last));
         openNewEventAt(
@@ -384,8 +390,7 @@ function Calendar(): React.JSX.Element {
             category: "",
         };
     } else if (allDayDrag) {
-        const first = Math.min(allDayDrag.anchorDay, allDayDrag.pointerDay);
-        const last = Math.max(allDayDrag.anchorDay, allDayDrag.pointerDay);
+        const { first, last } = dragDays(allDayDrag);
         previewDraft = {
             title: "",
             description: "",
@@ -395,13 +400,10 @@ function Calendar(): React.JSX.Element {
         };
     }
 
-    // An all-day draft's bar, clipped to the visible days, below the events.
-    let allDayDraftBar: { startIndex: number; span: number } | null = null;
-    if (previewDraft?.all_day) {
-        const from = Math.max(0, calendarDaysBetween(rangeStart, previewDraft.start_at));
-        const to = Math.min(dayCount - 1, calendarDaysBetween(rangeStart, previewDraft.end_at) - 1);
-        if (from <= to) allDayDraftBar = { startIndex: from, span: to - from + 1 };
-    }
+    // An all-day draft's bar (its midnights are local), drawn below the events.
+    const allDayDraftBar = previewDraft?.all_day
+        ? layoutDayBars([{ ...previewDraft, timezone: browserTimeZone() }], rangeStart, dayCount).bars[0]
+        : undefined;
     const allDayRows = Math.max(1, allDayLayout.rows + (allDayDraftBar ? 1 : 0));
 
     // Month view names its month even though the grid shows edge days of others.
@@ -497,6 +499,7 @@ function Calendar(): React.JSX.Element {
                             <AllDayChip
                                 key={bar.item.id}
                                 bar={bar}
+                                rangeStart={rangeStart}
                                 dayCount={dayCount}
                                 linkedTasks={tasksForEvent(linkedTasks, bar.item)}
                             />
@@ -505,7 +508,8 @@ function Calendar(): React.JSX.Element {
                             <AllDayDraftPreview
                                 title={previewDraft.title}
                                 category={previewDraft.category}
-                                {...allDayDraftBar}
+                                startIndex={allDayDraftBar.startIndex}
+                                span={allDayDraftBar.span}
                                 row={allDayLayout.rows}
                                 dayCount={dayCount}
                             />

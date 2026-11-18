@@ -135,12 +135,40 @@ class AllDayTest(AppTestCase):
             {"scope": "following", "start_at": "2026-10-31T17:00:00Z", "end_at": "2026-10-31T18:00:00Z"},
             status=400,
         )
-        # Sending the instance's all_day with it makes the series timed instead.
+        # Sending the instance's all_day with it makes the series timed instead,
+        # at the instance's new time (10-11 AM), not shifted from midnight by
+        # the instance's move.
         self.put(
             occ,
             {"scope": "all", "all_day": False, "start_at": "2026-10-31T17:00:00Z", "end_at": "2026-10-31T18:00:00Z"},
         )
-        self.assertFalse(any(e["all_day"] for e in self.events()))
+        evs = self.events()
+        self.assertFalse(any(e["all_day"] for e in evs))
+        self.assertEqual(
+            [(e["start_at"], e["end_at"]) for e in evs],
+            [
+                ("2026-10-30T17:00:00+00:00", "2026-10-30T18:00:00+00:00"),
+                ("2026-10-31T17:00:00+00:00", "2026-10-31T18:00:00+00:00"),
+                ("2026-11-01T18:00:00+00:00", "2026-11-01T19:00:00+00:00"),
+            ],
+        )
+
+    def test_all_day_override_moves_timed_series_to_all_day(self):
+        m = self.create(start_at="2026-10-30T16:00:00Z", end_at="2026-10-30T17:00:00Z", rrule="FREQ=DAILY;COUNT=3")
+        occ = f"{m['id']}/occurrences/2026-10-31T16:00:00Z"
+        self.put(occ, {"scope": "this", "all_day": True, "start_at": OCT_31, "end_at": NOV_1})
+        # Drag that all-day occurrence a day later for the whole series.
+        self.put(occ, {"scope": "all", "all_day": True, "start_at": NOV_1, "end_at": NOV_2})
+        evs = self.events()
+        self.assertTrue(all(e["all_day"] for e in evs))
+        self.assertEqual(
+            [(e["start_at"], e["end_at"]) for e in evs],
+            [
+                ("2026-10-31T07:00:00+00:00", "2026-11-01T07:00:00+00:00"),
+                ("2026-11-01T07:00:00+00:00", "2026-11-02T08:00:00+00:00"),
+                ("2026-11-02T08:00:00+00:00", "2026-11-03T08:00:00+00:00"),
+            ],
+        )
 
 
 if __name__ == "__main__":

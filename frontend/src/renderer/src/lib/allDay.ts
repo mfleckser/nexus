@@ -22,15 +22,24 @@ export function wallDate(instant: Date, timeZone: string): Date {
     return new Date(part("year"), part("month") - 1, part("day"));
 }
 
+// Last instant of [start, end) (start itself if empty): an end exactly at
+// midnight doesn't reach into that day.
+const lastInstant = (start: Date, end: Date): Date => new Date(Math.max(start.getTime(), end.getTime() - 1));
+
+// First and last (inclusive) local day [start, end) touches, as local midnights.
+export const localDaySpan = (start: Date, end: Date): { first: Date; last: Date } => ({
+    first: startOfDay(start),
+    last: startOfDay(lastInstant(start, end)),
+});
+
 // First and last (inclusive) calendar day an item covers, as local midnights:
 // an all-day event's dates in its own timezone, a timed event's local days.
-// An end exactly at midnight doesn't reach into that day.
 export function daySpan(item: DayItem): { first: Date; last: Date } {
-    const lastInstant = new Date(Math.max(item.start_at.getTime(), item.end_at.getTime() - 1));
-    if (item.all_day) {
-        return { first: wallDate(item.start_at, item.timezone), last: wallDate(lastInstant, item.timezone) };
-    }
-    return { first: startOfDay(item.start_at), last: startOfDay(lastInstant) };
+    if (!item.all_day) return localDaySpan(item.start_at, item.end_at);
+    return {
+        first: wallDate(item.start_at, item.timezone),
+        last: wallDate(lastInstant(item.start_at, item.end_at), item.timezone),
+    };
 }
 
 // Instants of an all-day event over local days first..last (inclusive), in
@@ -39,6 +48,11 @@ export const allDayTimes = (first: Date, last: Date): { start_at: Date; end_at: 
     start_at: startOfDay(first),
     end_at: addDays(last, 1),
 });
+
+// Day column under clientX in a row of `days` equal columns spanning `rect`;
+// unclamped (negative or >= days outside the row).
+export const dayColumnAt = (clientX: number, rect: { left: number; width: number }, days: number): number =>
+    Math.floor((days * (clientX - rect.left)) / rect.width);
 
 // An item drawn as a horizontal bar over whole day columns (all-day row of
 // the week view, a week row of the month view).

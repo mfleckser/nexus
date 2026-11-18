@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allDayTimes, daySpan, DayItem, layoutDayBars, wallDate } from "./allDay";
+import { allDayTimes, dayColumnAt, daySpan, DayItem, layoutDayBars, localDaySpan, wallDate } from "./allDay";
 
 // Tests run in America/Los_Angeles (vitest.config.ts); DST ends 2026-11-01.
 const local = (y: number, mo: number, d: number, h = 0, mi = 0): Date => new Date(y, mo - 1, d, h, mi);
@@ -113,5 +113,25 @@ describe("layoutDayBars", () => {
             ["a", 1, 0, true, true],
             ["b", 1, 1, false, false],
         ]);
+    });
+});
+
+describe("localDaySpan", () => {
+    it("leaves out a day reached only by a midnight end", () => {
+        expect(localDaySpan(local(2026, 11, 1, 9), local(2026, 11, 3))).toEqual({
+            first: local(2026, 11, 1),
+            last: local(2026, 11, 2),
+        });
+    });
+});
+
+describe("dayColumnAt", () => {
+    const rect = { left: 100, width: 700 };
+    it("maps x to columns, unclamped outside the row", () => {
+        expect(dayColumnAt(100, rect, 7)).toBe(0);
+        expect(dayColumnAt(299, rect, 7)).toBe(1);
+        expect(dayColumnAt(799, rect, 7)).toBe(6);
+        expect(dayColumnAt(850, rect, 7)).toBe(7);
+        expect(dayColumnAt(50, rect, 7)).toBe(-1);
     });
 });

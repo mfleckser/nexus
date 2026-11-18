@@ -326,6 +326,12 @@ def _instance_edit(master: dict, original_start: datetime, override, data: dict)
     new_start = parse_instant(data["start_at"]) if data.get("start_at") else cur_start
     new_end = parse_instant(data["end_at"]) if data.get("end_at") else cur_end
     _check_order(new_start, new_end)
+    moved = data.get("start_at") or data.get("end_at")
+    if moved and override and bool(override["all_day"]) != bool(master["all_day"]):
+        # An override of the other kind (all-day vs timed) shares nothing
+        # with the series' shape: measure from where the series puts this
+        # occurrence, so the series lands on the new times.
+        cur_start, cur_end = _current_times(master, original_start, None)
 
     tz = master["timezone"]
     duration = _wall_duration(master) + rr.wall_delta(new_start, new_end, tz) - rr.wall_delta(cur_start, cur_end, tz)
@@ -358,15 +364,6 @@ def update_occurrence(master_id: str, original_start: datetime, data: dict):
     if original_start in _exdates(master):
         raise NotFound("occurrence was cancelled")
     override = _get_override(master_id, original_start)
-    if any(f in data for f in ALL_DAY_INPUTS):
-        cur = override or master
-        cur_start, cur_end = _current_times(master, original_start, override)
-        _check_all_day(
-            data.get("all_day", cur["all_day"]),
-            parse_instant(data["start_at"]) if data.get("start_at") else cur_start,
-            parse_instant(data["end_at"]) if data.get("end_at") else cur_end,
-            data.get("timezone") or cur["timezone"],
-        )
 
     if scope == "this":
         return _update_this(master, original_start, override, data)
@@ -378,10 +375,14 @@ def update_occurrence(master_id: str, original_start: datetime, data: dict):
 def _update_this(master, original_start, override, data):
     updates = v.pick(data, EVENT_FIELDS)  # rrule ignored for "this"
     cur_start, cur_end = _current_times(master, original_start, override)
-    _check_order(
-        parse_instant(updates["start_at"]) if updates.get("start_at") else cur_start,
-        parse_instant(updates["end_at"]) if updates.get("end_at") else cur_end,
-    )
+    new_start = parse_instant(updates["start_at"]) if updates.get("start_at") else cur_start
+    new_end = parse_instant(updates["end_at"]) if updates.get("end_at") else cur_end
+    _check_order(new_start, new_end)
+    if any(f in data for f in ALL_DAY_INPUTS):
+        cur = override or master
+        _check_all_day(
+            updates.get("all_day", cur["all_day"]), new_start, new_end, updates.get("timezone") or cur["timezone"]
+        )
 
     if not updates:
         row = override or _instance(master, cur_start, cur_end)

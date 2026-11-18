@@ -27,9 +27,11 @@ export function formTimes(event: CalendarEvent): { start_at: Date; end_at: Date 
 
 // Update moving `event` to [start_at, end_at), all-day or not. All-day
 // midnights are the viewer's, so the viewer's timezone goes with them.
+// all_day is sent when it changes, and always for an occurrence: a series
+// edited from one takes that occurrence's kind.
 export function timesUpdate(event: CalendarEvent, start_at: Date, end_at: Date, all_day: boolean): EventUpdate {
     const data: EventUpdate = { start_at, end_at };
-    if (all_day !== (event.all_day === true)) data.all_day = all_day;
+    if (all_day !== (event.all_day === true) || event.recurring_event_id !== null) data.all_day = all_day;
     if (all_day) data.timezone = browserTimeZone();
     return data;
 }
@@ -136,10 +138,12 @@ export default function useEventEditor(
         // a different form (e.g. UNTIL after a series split).
         // Send the browser timezone with it: the backend expands BYDAY/monthday
         // in the row's timezone, and older rows were stored as UTC.
-        const rruleChanged = draft.rrule !== undefined && !sameRrule(draft.rrule, event.rrule, event.start_at);
+        // An all-day event's midnights are re-sent for that timezone.
+        const rruleChanged = draft.rrule !== undefined && !sameRrule(draft.rrule, event.rrule, shown.start_at);
         if (rruleChanged) {
             data.rrule = draft.rrule;
             data.timezone = browserTimeZone();
+            if (draft.all_day) data = { ...data, ...timesUpdate(event, draft.start_at, draft.end_at, true) };
         }
 
         if (!Object.keys(data).length) {
