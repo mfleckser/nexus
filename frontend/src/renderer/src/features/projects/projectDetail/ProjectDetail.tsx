@@ -1,4 +1,5 @@
 import { useProjects } from "@renderer/features/projects/useProjects";
+import { useTasks } from "@renderer/features/tasks/useTasks";
 import { ChevronLeft, Ellipsis, FolderX, NotebookPen } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import "./projectDetail.css";
@@ -9,6 +10,17 @@ import KanbanBoard from "./KanbanBoard";
 import NotesPanel from "./NotesPanel";
 import useReportError, { errorMessage } from "@renderer/hooks/useReportError";
 import useDismiss from "@renderer/hooks/useDismiss";
+
+// What else a project delete does: features cascade, tasks (any status) get
+// project_id set null and land in the main task list.
+function deleteDetails(featureCount: number, taskCount: number): string {
+    const parts: string[] = [];
+    if (featureCount > 0)
+        parts.push(`Its ${featureCount} ${featureCount === 1 ? "feature" : "features"} will be deleted too.`);
+    if (taskCount > 0)
+        parts.push(`Its ${taskCount} ${taskCount === 1 ? "task" : "tasks"} will move to your main task list.`);
+    return parts.join(" ");
+}
 
 function ProjectDetail(): React.JSX.Element {
     const [showProjectMenu, setShowProjectMenu] = useState(false);
@@ -22,8 +34,17 @@ function ProjectDetail(): React.JSX.Element {
     const nav = useNavigate();
     const reportError = useReportError();
     const { projectId } = useParams();
-    const { projects, projectsLoaded, updateProject, deleteProject, notesByProjectId, loadNotes, updateNotes } =
-        useProjects();
+    const {
+        projects,
+        projectsLoaded,
+        updateProject,
+        deleteProject,
+        featuresByProjectId,
+        notesByProjectId,
+        loadNotes,
+        updateNotes,
+    } = useProjects();
+    const { tasks } = useTasks();
     const project = projects.find((p) => p.id === projectId);
 
     const projectMenuRef = useRef<HTMLDivElement>(null);
@@ -152,6 +173,10 @@ function ProjectDetail(): React.JSX.Element {
                                         nav("/projects");
                                     }}
                                     itemName="project"
+                                    details={deleteDetails(
+                                        featuresByProjectId[project.id]?.length ?? 0,
+                                        tasks.filter((t) => t.project_id === project.id).length,
+                                    )}
                                 />
                             )}
                         </div>
