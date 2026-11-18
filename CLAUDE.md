@@ -76,16 +76,24 @@
     on the series to the half with its next occurrence from now (none left: the later
     half); tasks on an override stay on it as it is carried. An override the edit
     drops (kind switch, slot gone, rule cleared) hands its tasks to the series if it
-    still occurs that day, else they're unlinked, as for a cancelled occurrence.
+    occurs on the day the edit moves that slot to (`_moved_day`, read in the new
+    zone), else they're unlinked, as for a cancelled occurrence.
   - Moving a series (time, duration, timezone, rule) carries its exdates and overrides
     along by the same wall-clock shift; when a re-aimed monthly/yearly rule misses
-    (2nd Tue → 2nd Wed), the same position in the same month/year. Ones the new
-    series no longer has are dropped. A "following" split makes two independent
+    (2nd Tue → 2nd Wed), the same position in the same month/year (counted from a
+    split); a monthly rule with several ordinals (2TU,4TU) pairs them by token
+    (2TU → 2WE of the same month, `pair_by_token`). Every-n-weeks rules move WKST
+    with the days (written only when MO would regroup them). Ones the new series no
+    longer has are dropped. A "following" split makes two independent
     series; "all" edits only touch one. All-day overrides move by whole days.
-  - Switching a series' kind (all-day ↔ timed) drops its overrides and doesn't shift
-    exdates (only ones still on an occurrence stay). All-day checks run before the RPC.
+  - Switching a series' kind (all-day ↔ timed) drops its overrides; each exdate keeps
+    its local day (moved like a series move, `_slot_map`: 9 AM → that day's midnight),
+    dropped if the new series has no occurrence there. All-day checks run before the RPC.
   - Event writes are serialized by a per-process lock (`_write_lock`), one more
-    reason to keep gunicorn at one worker.
+    reason to keep gunicorn at one worker. Against other writers (Studio), each RPC
+    op on a row the edit was computed from carries the `updated_at` it read
+    (`expect_updated_at`); a changed row fails the call (PT409), the service redoes
+    the edit once from a fresh read, then returns 409.
 
   ## Architecture
 
@@ -106,10 +114,13 @@
   - Backend layout: `app/api` blueprints (thin) → `app/services` (logic, Supabase
     calls). Writes whitelist columns; input checks in `app/validation.py`.
   - Errors: every error is JSON `{"error": "<message>"}` (`app/errors.py`) — 400 bad
-    input, 404 missing id, 500 otherwise. Success bodies are bare JSON.
+    input, 404 missing id, 409 row changed under a recurring edit (`Conflict`), 500
+    otherwise. Success bodies are bare JSON.
   - Caching: Flask-Caching SimpleCache, keys + `get_or_load`/`invalidate` in
     `app/extensions/cache.py`. Standard for every entity: cached reads, and every write
-    invalidates each key it can change, including FK on-delete side effects. Cache is
+    invalidates each key it can change, including FK on-delete side effects; reads
+    keyed by arguments (event windows) use `family_key`. A read that overlapped a
+    write is never cached (per-key write generations). Cache is
     per-process: keep gunicorn at one worker; 60s TTL bounds staleness from external
     writers (Studio).
   - Config: `backend/.env` (`SUPABASE_URL`, `SUPABASE_KEY`, `NEXUS_API_TOKEN`,

@@ -261,7 +261,7 @@ class AllDayRecurringEditTest(AllDayCase):
     def overrides(self):
         return [r for r in self.db.rows if r["recurring_event_id"]]
 
-    def test_kind_change_drops_overrides_without_shifting_exdates(self):
+    def test_kind_change_drops_overrides_and_keeps_cancelled_days(self):
         m = self.timed_daily()
         self.cancel(m["id"], "2026-11-02T17:00:00Z")
         occ = f"{m['id']}/occurrences/2026-10-31T16:00:00Z"
@@ -273,21 +273,106 @@ class AllDayRecurringEditTest(AllDayCase):
             f"{m['id']}/occurrences/2026-10-30T16:00:00Z",
             {"scope": "all", "all_day": True, "start_at": OCT_30, "end_at": OCT_31},
         )
-        # The override is dropped, not shifted onto a midnight; the 9 AM exdate
-        # isn't shifted either and lines up with no all-day occurrence.
+        # The override is dropped, not shifted onto a midnight; the cancelled
+        # Mon Nov 2 stays cancelled, its exdate moved onto that day's midnight.
         self.assertEqual(self.overrides(), [])
-        self.assertEqual(self.db.rows[0]["exdates"], [])
+        self.assertEqual(self.db.rows[0]["exdates"], ["2026-11-02T08:00:00+00:00"])
         evs = self.events()
-        self.assertEqual([e["title"] for e in evs], ["Trip"] * 4)
+        self.assertEqual([e["title"] for e in evs], ["Trip"] * 3)
         self.assertEqual(
             self.spans(evs),
             [
                 ("2026-10-30T07:00:00+00:00", "2026-10-31T07:00:00+00:00", True),
                 ("2026-10-31T07:00:00+00:00", "2026-11-01T07:00:00+00:00", True),
                 ("2026-11-01T07:00:00+00:00", "2026-11-02T08:00:00+00:00", True),
-                ("2026-11-02T08:00:00+00:00", "2026-11-03T08:00:00+00:00", True),
             ],
         )
+
+    def test_kind_change_keeps_cancelled_days(self):
+        # Timed 9 AM -> all-day and all-day -> timed 9-10 AM, for all / following
+        # (split at Sat Oct 31): the cancelled Mon Nov 2 stays cancelled.
+        cases = [
+            # (series, its cancelled Mon, Sat's slot, the edit to Sat, new exdate)
+            (self.timed_daily, "2026-11-02T17:00:00Z", "2026-10-31T16:00:00Z", (True, OCT_31, NOV_1), NOV_2),
+            (
+                lambda: self.all_day_daily(count=4),
+                NOV_2,
+                OCT_31,
+                (False, "2026-10-31T16:00:00Z", "2026-10-31T17:00:00Z"),
+                "2026-11-02T17:00:00Z",
+            ),
+        ]
+        for make, cancelled, slot, (all_day, start, end), exdate in cases:
+            for scope in ("all", "following"):
+                with self.subTest(all_day=all_day, scope=scope):
+                    self.db.tables["events"].clear()
+                    m = make()
+                    self.cancel(m["id"], cancelled)
+                    row = self.put(
+                        f"{m['id']}/occurrences/{slot}",
+                        {"scope": scope, "all_day": all_day, "start_at": start, "end_at": end},
+                    )
+                    self.assertEqual(row["exdates"], [f"{exdate[:-1]}+00:00"])
+                    evs = self.events()
+                    self.assertEqual(len(evs), 3)
+                    # Fri Oct 30 (the old kind for "following"), Sat, Sun; no Mon.
+                    self.assertEqual([bool(e["all_day"]) for e in evs][1:], [all_day] * 2)
+                    self.assertEqual(bool(evs[0]["all_day"]), all_day if scope == "all" else not all_day)
+
+    def test_kind_change_with_day_move_shifts_cancelled_days(self):
+        # Timed 9 AM from Fri Oct 30 -> all-day from Sat Oct 31: every day moves
+        # one later, so the cancelled Sun Nov 1 becomes a cancelled Mon Nov 2.
+        m = self.timed_daily()
+        self.cancel(m["id"], "2026-11-01T17:00:00Z")
+        row = self.put(
+            f"{m['id']}/occurrences/2026-10-30T16:00:00Z",
+            {"scope": "all", "all_day": True, "start_at": OCT_31, "end_at": NOV_1},
+        )
+        self.assertEqual(row["exdates"], ["2026-11-02T08:00:00+00:00"])
+        self.assertEqual(
+            [e["start_at"] for e in self.events()],
+            ["2026-10-31T07:00:00+00:00", "2026-11-01T07:00:00+00:00", "2026-11-03T08:00:00+00:00"],
+        )
+
+    def test_kind_change_with_day_move_keeps_monthly_position(self):
+        # Timed 2nd Tuesdays 9 AM (Jun 9, Jul 14, Aug 11) -> all-day 2nd
+        # Wednesdays. The cancelled July 14 shifts onto Jul 15, a 3rd Wednesday
+        # (July starts on a Wednesday): it goes to July's 2nd one, Jul 8.
+        m = self.create(
+            start_at="2026-06-09T16:00:00Z", end_at="2026-06-09T17:00:00Z", rrule="FREQ=MONTHLY;BYDAY=2TU;COUNT=3"
+        )
+        self.cancel(m["id"], "2026-07-14T16:00:00Z")
+        row = self.put(
+            f"{m['id']}/occurrences/2026-06-09T16:00:00Z",
+            {"scope": "all", "all_day": True, "start_at": "2026-06-10T07:00:00Z", "end_at": "2026-06-11T07:00:00Z"},
+        )
+        self.assertEqual(row["exdates"], ["2026-07-08T07:00:00+00:00"])
+        evs = self.events(start="2026-06-01T00:00:00Z", end="2026-09-01T00:00:00Z")
+        self.assertEqual([e["start_at"] for e in evs], ["2026-06-10T07:00:00+00:00", "2026-08-12T07:00:00+00:00"])
+
+    def test_kind_change_into_another_zone_keeps_cancelled_days(self):
+        # Timed 9 AM in LA -> all-day in New York: the cancelled Mon Nov 2 is
+        # cancelled on New York's Nov 2 (EST by then).
+        m = self.timed_daily()
+        self.cancel(m["id"], "2026-11-02T17:00:00Z")
+        row = self.put(
+            f"{m['id']}/occurrences/2026-10-30T16:00:00Z",
+            {"scope": "all", "all_day": True, "timezone": NY, "start_at": NY_OCT_30, "end_at": NY_OCT_31},
+        )
+        self.assertEqual(row["exdates"], ["2026-11-02T05:00:00+00:00"])
+        self.assertEqual(len(self.events()), 3)
+
+    def test_kind_change_drops_stale_exdates(self):
+        # An exdate matching no occurrence (10 AM on a 9 AM series) doesn't
+        # cancel that day's new all-day occurrence.
+        m = self.timed_daily()
+        self.db.rows[0]["exdates"] = ["2026-11-02T18:00:00+00:00"]
+        row = self.put(
+            f"{m['id']}/occurrences/2026-10-30T16:00:00Z",
+            {"scope": "all", "all_day": True, "start_at": OCT_30, "end_at": OCT_31},
+        )
+        self.assertEqual(row["exdates"], [])
+        self.assertEqual(len(self.events()), 4)
 
     def test_kind_change_on_same_instants_keeps_exdates(self):
         m = self.create(start_at=OCT_30, end_at=OCT_31, rrule="FREQ=DAILY;COUNT=3")
@@ -310,16 +395,18 @@ class AllDayRecurringEditTest(AllDayCase):
             {"scope": "following", "all_day": True, "start_at": OCT_31, "end_at": NOV_1},
         )
         evs = self.events()
-        self.assertEqual([e["title"] for e in evs], ["Early", "Trip", "Trip", "Trip"])
+        self.assertEqual([e["title"] for e in evs], ["Early", "Trip", "Trip"])
         self.assertEqual(
             self.spans(evs),
             [
                 ("2026-10-30T16:00:00+00:00", "2026-10-30T17:00:00+00:00", False),
                 ("2026-10-31T07:00:00+00:00", "2026-11-01T07:00:00+00:00", True),
                 ("2026-11-01T07:00:00+00:00", "2026-11-02T08:00:00+00:00", True),
-                ("2026-11-02T08:00:00+00:00", "2026-11-03T08:00:00+00:00", True),
             ],
         )
+        # The cancelled Mon Nov 2 stays cancelled in the new all-day series.
+        [new] = [r for r in self.db.rows if r["id"] != m["id"] and not r["recurring_event_id"]]
+        self.assertEqual(new["exdates"], ["2026-11-02T08:00:00+00:00"])
         # Only the old series' override is left.
         self.assertEqual([r["title"] for r in self.overrides()], ["Early"])
 

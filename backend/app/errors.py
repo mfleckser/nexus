@@ -29,6 +29,13 @@ class NotFound(AppError, LookupError):
     status = 404
 
 
+class Conflict(AppError):
+    """A row changed (e.g. in Studio) between the service's read and its
+    write, so the write would overwrite that change -> 409."""
+
+    status = 409
+
+
 def first_row(data: list, what: str) -> dict:
     """First row of a PostgREST result, or NotFound when there is none (an
     update/delete/select by id that matched nothing)."""

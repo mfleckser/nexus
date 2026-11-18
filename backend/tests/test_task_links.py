@@ -195,22 +195,48 @@ class TaskLinkTest(AppTestCase):
         self.assertIsNone(self.row(ov["id"]))
         self.assertEqual(self.link(tid), new["id"])
 
-    def test_kind_change_that_also_changes_the_day_unlinks_overrides(self):
+    def test_kind_change_with_a_day_move_hands_links_to_the_moved_day(self):
         m = self.weekly_wed()
         ov = self.override(m["id"], OCT_14, "Moved")
         tid = self.task_on(ov["id"])
-        # All-day Thursdays: no occurrence on Wed Oct 14 any more.
+        # All-day Thursdays: Wed Oct 14's occurrence moves to Thu Oct 15.
         all_day = {"all_day": True, "start_at": "2026-10-01T07:00:00Z", "end_at": "2026-10-02T07:00:00Z"}
         self.put_occ(m["id"], SEP_30, {"scope": "all", **all_day})
-        self.assertIsNone(self.link(tid))
+        self.assertIsNone(self.row(ov["id"]))
+        self.assertEqual(self.link(tid), m["id"])
+        self.assertIn("2026-10-15T07:00:00+00:00", [e["start_at"] for e in self.events()])
+
+    def test_kind_change_into_another_zone_hands_links_to_the_day_there(self):
+        # Wednesdays 23:00 PDT -> all-day Thursdays in Tokyo, where Wed 23:00
+        # LA is already Thursday: Oct 14's occurrence becomes Thu Oct 15 there.
+        m = self.request(
+            "POST",
+            "/api/events",
+            {
+                "title": "Late",
+                "start_at": "2026-10-01T06:00:00Z",
+                "end_at": "2026-10-01T07:00:00Z",
+                "timezone": LA,
+                "rrule": "FREQ=WEEKLY;BYDAY=WE",
+            },
+            status=201,
+        )
+        ov = self.override(m["id"], "2026-10-15T06:00:00Z", "Moved")
+        tid = self.task_on(ov["id"])
+        tokyo = {"timezone": "Asia/Tokyo", "start_at": "2026-09-30T15:00:00Z", "end_at": "2026-10-01T15:00:00Z"}
+        self.put_occ(m["id"], "2026-10-01T06:00:00Z", {"scope": "all", "all_day": True, **tokyo})
+        master = self.row(m["id"])
+        self.assertEqual((master["rrule"], master["timezone"]), ("FREQ=WEEKLY;BYDAY=TH", "Asia/Tokyo"))
+        self.assertEqual(self.link(tid), m["id"])
 
     def test_an_occurrence_only_overlapping_the_overrides_day_doesnt_hold_it(self):
         m = self.weekly_wed()
         ov = self.override(m["id"], OCT_14, "Moved")
         tid = self.task_on(ov["id"])
-        # All-day Tuesday-Wednesday: covers Wed Oct 14 but starts the day before.
-        all_day = {"all_day": True, "start_at": "2026-09-29T07:00:00Z", "end_at": "2026-10-01T07:00:00Z"}
-        self.put_occ(m["id"], SEP_30, {"scope": "all", **all_day})
+        # All-day Tuesday-Wednesday (a new rule): covers Wed Oct 14 but starts the day before.
+        all_day = {"all_day": True, "start_at": "2026-09-30T07:00:00Z", "end_at": "2026-10-02T07:00:00Z"}
+        self.put_occ(m["id"], SEP_30, {"scope": "all", "rrule": "FREQ=WEEKLY;BYDAY=TU", **all_day})
+        self.assertIn("2026-10-13T07:00:00+00:00", [e["start_at"] for e in self.events()])
         self.assertIsNone(self.link(tid))
 
     def test_new_rule_without_the_overrides_day_unlinks_it(self):

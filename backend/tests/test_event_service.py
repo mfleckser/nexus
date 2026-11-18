@@ -13,6 +13,8 @@ LA = "America/Los_Angeles"
 
 
 class EventServiceTest(AppTestCase):
+    AN_HOUR_LATER = {"start_at": "2026-10-14T17:00:00Z", "end_at": "2026-10-14T18:00:00Z"}
+
     # -- helpers --
 
     def create(self, **body):
@@ -66,6 +68,42 @@ class EventServiceTest(AppTestCase):
         self.assertEqual(master["start_at"], "2026-10-01T16:00:00+00:00")
         self.assertEqual(
             self.starts()[:3], ["2026-10-01T16:00:00+00:00", "2026-10-08T16:00:00+00:00", "2026-10-15T16:00:00+00:00"]
+        )
+
+    def test_every_other_week_move_keeps_its_weeks(self):
+        # Every other Mon + Wed 9:00 PDT from Mon Oct 5; Wed Oct 21 cancelled.
+        m = self.create(
+            start_at="2026-10-05T16:00:00Z",
+            end_at="2026-10-05T17:00:00Z",
+            timezone=LA,
+            rrule="FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE",
+        )
+        self.delete_occ(m["id"], "2026-10-21T16:00:00Z", "this")
+        # Mon -> the Sunday before: every occurrence a day earlier, same weeks.
+        self.put_occ(
+            m["id"],
+            "2026-10-05T16:00:00Z",
+            {"scope": "all", "start_at": "2026-10-04T16:00:00Z", "end_at": "2026-10-04T17:00:00Z"},
+        )
+        master = self.row(m["id"])
+        self.assertEqual(
+            (master["rrule"], master["exdates"]),
+            ("FREQ=WEEKLY;INTERVAL=2;BYDAY=SU,TU;WKST=SU", ["2026-10-20T16:00:00+00:00"]),
+        )
+        self.assertEqual(
+            [s[5:10] for s in self.starts(start="2026-10-01T00:00:00Z", end="2026-11-08T00:00:00Z")],
+            ["10-04", "10-06", "10-18", "11-01", "11-03"],
+        )
+        # ... and back, from Sun Nov 1 on: Mondays + Wednesdays of the same weeks.
+        new = self.put_occ(
+            m["id"],
+            "2026-11-01T17:00:00Z",
+            {"scope": "following", "start_at": "2026-11-02T17:00:00Z", "end_at": "2026-11-02T18:00:00Z"},
+        )
+        self.assertEqual(new["rrule"], "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE")
+        self.assertEqual(
+            [s[5:10] for s in self.starts(start="2026-10-25T00:00:00Z", end="2026-11-30T00:00:00Z")],
+            ["11-02", "11-04", "11-16", "11-18"],
         )
 
     def test_following_move_to_other_day_keeps_moved_instance(self):
@@ -398,10 +436,10 @@ class EventServiceTest(AppTestCase):
         self.assertIn("Moved", [e["title"] for e in self.events()])
 
     def test_cache_invalidated_on_validation_error(self):
-        with self.app.app_context(), mock.patch.object(es.cache, "delete_memoized") as invalidate:
+        with self.app.app_context(), mock.patch.object(es, "invalidate") as invalidate:
             with self.assertRaises(ValueError):
                 es.update_occurrence("any", None, {"scope": "bogus"})
-            invalidate.assert_called_once_with(es.get_events)
+            invalidate.assert_called_once_with(es.EVENTS, es.TASKS)
 
     # -- input validation --
 
@@ -602,6 +640,109 @@ class EventServiceTest(AppTestCase):
         self.assertEqual(len(self.db.rows), 1)
         self.assertEqual(self.row(m["id"])["title"], "Standup")
 
+    # -- stale-write guard: another writer between the service's read and write --
+
+    def studio(self, event_id, **fields):
+        """Another writer (Studio, another process) changing a row directly."""
+        self.db.table("events").update(fields).eq("id", event_id).execute()
+
+    def racing(self, change, times=1):
+        """Patch _apply so `change` runs right before each of the first `times`
+        RPCs, i.e. after the service read the rows. Returns (patcher, ops of
+        each RPC call)."""
+        real, calls = es._apply, []
+
+        def apply(ops, result_id=None):
+            calls.append(ops)
+            if len(calls) <= times:
+                change()
+            return real(ops, result_id)
+
+        return mock.patch.object(es, "_apply", side_effect=apply), calls
+
+    def test_stale_master_is_redone_from_a_fresh_read(self):
+        m = self.weekly_wed()
+        patch, calls = self.racing(lambda: self.studio(m["id"], exdates=["2026-10-21T16:00:00Z"]))
+        with patch:
+            self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": "all", **self.AN_HOUR_LATER})
+        self.assertEqual(len(calls), 2)
+        # The retry saw Studio's exdate and moved it along with the series.
+        self.assertEqual(self.row(m["id"])["exdates"], ["2026-10-21T17:00:00+00:00"])
+        self.assertEqual(self.row(m["id"])["start_at"], "2026-09-30T17:00:00+00:00")
+
+    def test_stale_override_is_redone_from_a_fresh_read(self):
+        m = self._series_with_exceptions()
+        ov = next(r for r in self.db.rows if r["original_start_at"] == "2026-10-28T16:00:00+00:00")
+        # After the service read it, Studio moves the override from 11:00 to 13:00 PDT.
+        patch, _ = self.racing(
+            lambda: self.studio(ov["id"], start_at="2026-10-28T20:00:00Z", end_at="2026-10-28T21:00:00Z")
+        )
+        with patch:
+            self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": "all", **self.AN_HOUR_LATER})
+        row = self.row(ov["id"])
+        self.assertEqual((row["start_at"], row["end_at"]), ("2026-10-28T21:00:00+00:00", "2026-10-28T22:00:00+00:00"))
+
+    def test_stale_cancel_keeps_the_other_writers_exdate(self):
+        m = self.weekly_wed()
+        patch, calls = self.racing(lambda: self.studio(m["id"], exdates=["2026-10-21T16:00:00Z"]))
+        with patch:
+            self.delete_occ(m["id"], "2026-10-07T16:00:00Z", "this")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.row(m["id"])["exdates"], ["2026-10-07T16:00:00+00:00", "2026-10-21T16:00:00+00:00"])
+
+    def test_edit_still_stale_after_the_retry_is_409(self):
+        m = self._series_with_exceptions()
+        n = iter(range(100))
+        patch, calls = self.racing(lambda: self.studio(m["id"], title=f"Studio {next(n)}"), times=2)
+        before = len(self.db.rows)
+        with patch:
+            res = self.client.put(
+                f"/api/events/{m['id']}/occurrences/2026-10-14T16:00:00Z",
+                json={"scope": "following", **self.AN_HOUR_LATER},
+            )
+        self.assertEqual(res.status_code, 409)
+        self.assertEqual(res.get_json(), {"error": "This event was changed elsewhere. Try again."})
+        self.assertEqual(len(calls), 2)
+        master = self.row(m["id"])
+        self.assertEqual(
+            (master["title"], master["rrule"], len(self.db.rows)), ("Studio 1", "FREQ=WEEKLY;BYDAY=WE", before)
+        )
+
+    def test_every_row_the_edit_writes_is_guarded(self):
+        all_day = {"all_day": True, "start_at": "2026-10-14T07:00:00Z", "end_at": "2026-10-15T07:00:00Z"}
+        edits = {
+            "all move": {"scope": "all", **self.AN_HOUR_LATER},
+            "following move": {"scope": "following", **self.AN_HOUR_LATER},
+            "kind change": {"scope": "all", **all_day},
+            "following kind change": {"scope": "following", **all_day},
+            "rule cleared": {"scope": "all", "rrule": None},
+        }
+        for name, body in edits.items():
+            with self.subTest(name):
+                m = self._series_with_exceptions()
+                with mock.patch.object(es, "_apply", wraps=es._apply) as spy:
+                    self.put_occ(m["id"], "2026-10-14T16:00:00Z", body)
+                guarded = [op for op in spy.call_args.args[0] if op["op"] in ("update", "delete")]
+                self.assertTrue(guarded)
+                for op in guarded:
+                    self.assertIn("expect_updated_at", op, op)
+
+    def test_rpc_refuses_ops_on_changed_rows(self):
+        m = self.weekly_wed()
+        stamp = self.row(m["id"])["updated_at"]
+        with self.app.app_context():
+            es._apply([es._update_op(m["id"], {"title": "A"}, {"updated_at": stamp})])
+            self.assertEqual(self.row(m["id"])["title"], "A")
+            stale = [
+                [es._update_op(m["id"], {"title": "B"}, {"updated_at": stamp})],
+                [es._delete_op({"id": m["id"], "updated_at": stamp})],
+                [es._delete_op({"id": "00000000-0000-0000-0000-000000000000", "updated_at": stamp})],
+            ]
+            for ops in stale:
+                with self.subTest(ops=ops), self.assertRaises(es.Conflict):
+                    es._apply(ops)
+        self.assertEqual((len(self.db.rows), self.row(m["id"])["title"]), (1, "A"))
+
     # -- exceptions move with the series --
 
     def test_all_shift_keeps_exdates_and_overrides(self):
@@ -712,6 +853,70 @@ class EventServiceTest(AppTestCase):
             (master["rrule"], master["exdates"]), ("FREQ=MONTHLY;BYDAY=2WE", ["2026-04-08T09:00:00+00:00"])
         )
         self.assertEqual(self.starts(start="2026-04-01T00:00:00Z", end="2026-05-01T00:00:00Z"), [])
+
+    def test_single_ordinal_move_keeps_exceptions_on_their_position(self):
+        # 2nd Tuesday -> 2nd Wednesday (ordinal recomputed): the shift still
+        # wins where it lands on the rule, the position in the month elsewhere.
+        m = self.create(start_at="2026-01-13T09:00:00Z", end_at="2026-01-13T10:00:00Z", rrule="FREQ=MONTHLY;BYDAY=2TU")
+        self.put_occ(m["id"], "2026-04-14T09:00:00Z", {"scope": "this", "title": "April"})
+        self.delete_occ(m["id"], "2026-05-12T09:00:00Z", "this")
+        self.put_occ(
+            m["id"],
+            "2026-01-13T09:00:00Z",
+            {"scope": "all", "start_at": "2026-01-14T09:00:00Z", "end_at": "2026-01-14T10:00:00Z"},
+        )
+        master = self.row(m["id"])
+        self.assertEqual(
+            (master["rrule"], master["exdates"]), ("FREQ=MONTHLY;BYDAY=2WE", ["2026-05-13T09:00:00+00:00"])
+        )
+        self.assertEqual([(o[0], o[3]) for o in self.overrides(m["id"])], [("2026-04-08T09:00:00+00:00", "April")])
+
+    def test_several_ordinals_pair_exceptions_by_token(self):
+        # 2nd + 3rd Tuesday -> 2nd + 3rd Wednesday. April 2026 starts on a
+        # Wednesday: Tue 14 + 1 day is the 3rd Wednesday, not the 2nd (Apr 8).
+        m = self.create(
+            start_at="2026-01-13T09:00:00Z", end_at="2026-01-13T10:00:00Z", rrule="FREQ=MONTHLY;BYDAY=2TU,3TU"
+        )
+        self.delete_occ(m["id"], "2026-04-14T09:00:00Z", "this")
+        self.put_occ(m["id"], "2026-04-21T09:00:00Z", {"scope": "this", "title": "3rd of April"})
+        self.delete_occ(m["id"], "2026-05-19T09:00:00Z", "this")
+        self.put_occ(
+            m["id"],
+            "2026-01-13T09:00:00Z",
+            {"scope": "all", "start_at": "2026-01-14T09:00:00Z", "end_at": "2026-01-14T10:00:00Z"},
+        )
+        master = self.row(m["id"])
+        self.assertEqual(
+            (master["rrule"], master["exdates"]),
+            ("FREQ=MONTHLY;BYDAY=2WE,3WE", ["2026-04-08T09:00:00+00:00", "2026-05-20T09:00:00+00:00"]),
+        )
+        self.assertEqual(
+            [o[:2] + o[3:] for o in self.overrides(m["id"])],
+            [("2026-04-15T09:00:00+00:00", "2026-04-15T09:00:00+00:00", "3rd of April")],
+        )
+        self.assertEqual(
+            [e["title"] for e in self.events(start="2026-04-01T00:00:00Z", end="2026-05-01T00:00:00Z")],
+            ["3rd of April"],
+        )
+
+    def test_following_split_mid_month_keeps_cancelled_ordinal(self):
+        # 2nd + 4th Tuesday; Apr 28 (4th) cancelled; Apr 14 (2nd) moved to Wed
+        # Apr 15 for "following": the new 2WE,4WE series starts mid-April, so its
+        # April has only the 4th Wednesday (Apr 22), which stays cancelled.
+        m = self.create(
+            start_at="2026-01-13T09:00:00Z", end_at="2026-01-13T10:00:00Z", rrule="FREQ=MONTHLY;BYDAY=2TU,4TU"
+        )
+        self.delete_occ(m["id"], "2026-04-28T09:00:00Z", "this")
+        new = self.put_occ(
+            m["id"],
+            "2026-04-14T09:00:00Z",
+            {"scope": "following", "start_at": "2026-04-15T09:00:00Z", "end_at": "2026-04-15T10:00:00Z"},
+        )
+        self.assertEqual((new["rrule"], new["exdates"]), ("FREQ=MONTHLY;BYDAY=2WE,4WE", ["2026-04-22T09:00:00+00:00"]))
+        self.assertEqual(
+            self.starts(start="2026-04-01T00:00:00Z", end="2026-06-01T00:00:00Z"),
+            ["2026-05-13T09:00:00+00:00", "2026-05-27T09:00:00+00:00"],
+        )
 
     def test_month_end_move_keeps_exceptions_in_their_month(self):
         m = self.create(

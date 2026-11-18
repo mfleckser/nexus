@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 from datetime import UTC, datetime, timedelta
+from itertools import islice
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -290,6 +291,53 @@ class MoveTest(unittest.TestCase):
         weekly = ("FREQ=WEEKLY", utc(2026, 1, 13, 9), "UTC")
         self.assertEqual(rr.pair_in_period(weekly, weekly, {apr14: apr14}), {})
 
+    def test_pair_in_period_counts_from_since(self):
+        # The 1st + 15th -> the 2nd + 16th, split at Apr 15: the new series'
+        # April is just Apr 16, the old one's from the split just Apr 15.
+        old = ("FREQ=MONTHLY;BYMONTHDAY=1,15", utc(2027, 1, 1, 9), "UTC")
+        new = ("FREQ=MONTHLY;BYMONTHDAY=2,16", utc(2027, 4, 16, 9), "UTC")
+        moves = {utc(2027, 4, 15, 9): utc(2027, 4, 17, 9)}  # a shift that misses
+        self.assertEqual(rr.pair_in_period(old, new, moves), {})
+        self.assertEqual(
+            rr.pair_in_period(old, new, moves, utc(2027, 4, 15)), {utc(2027, 4, 15, 9): utc(2027, 4, 16, 9)}
+        )
+
+    def test_ordinal_weekdays(self):
+        self.assertEqual(rr.ordinal_weekdays("FREQ=MONTHLY;BYDAY=2TU,-1FR"), [(2, 1), (-1, 4)])
+        for body in (
+            "FREQ=MONTHLY;BYDAY=2TU",
+            "FREQ=MONTHLY;BYDAY=2TU,WE",
+            "FREQ=YEARLY;BYDAY=2TU,3TU",
+            "FREQ=MONTHLY",
+        ):
+            with self.subTest(body=body):
+                self.assertIsNone(rr.ordinal_weekdays(body))
+
+    def test_pair_by_token(self):
+        # 2TU,3TU -> 2WE,3WE in April 2026 (starts on a Wednesday).
+        old = ("FREQ=MONTHLY;BYDAY=2TU,3TU", utc(2026, 1, 13, 9), "UTC")
+        new = ("FREQ=MONTHLY;BYDAY=2WE,3WE", utc(2026, 1, 14, 9), "UTC")
+        apr14, apr21 = utc(2026, 4, 14, 9), utc(2026, 4, 21, 9)
+        self.assertEqual(
+            rr.pair_by_token(old, new, [apr14, apr21], old[1]), {apr14: utc(2026, 4, 8, 9), apr21: utc(2026, 4, 15, 9)}
+        )
+        # Not an occurrence of the old rule: no counterpart.
+        self.assertEqual(rr.pair_by_token(old, new, [utc(2026, 4, 7, 9)], old[1]), {})
+        # 4th + last Tuesday -> 4th + last Wednesday: Mar 2026 has five Tuesdays
+        # but four Wednesdays, so both tokens name Mar 25; the earlier one has it.
+        old = ("FREQ=MONTHLY;BYDAY=4TU,-1TU", utc(2026, 1, 27, 9), "UTC")
+        new = ("FREQ=MONTHLY;BYDAY=4WE,-1WE", utc(2026, 1, 28, 9), "UTC")
+        mar24, mar31 = utc(2026, 3, 24, 9), utc(2026, 3, 31, 9)
+        self.assertEqual(rr.pair_by_token(old, new, [mar31], old[1]), {})
+        self.assertEqual(rr.pair_by_token(old, new, [mar24, mar31], old[1]), {mar24: utc(2026, 3, 25, 9)})
+
+    def test_pair_by_token_after_a_split(self):
+        # 2TU,4TU split at Apr 14 -> 2WE,4WE from Apr 15 (first: Apr 22).
+        old = ("FREQ=MONTHLY;BYDAY=2TU,4TU", utc(2026, 1, 13, 9), "UTC")
+        new = ("FREQ=MONTHLY;BYDAY=2WE,4WE", utc(2026, 4, 15, 9), "UTC")
+        apr14, apr28 = utc(2026, 4, 14, 9), utc(2026, 4, 28, 9)
+        self.assertEqual(rr.pair_by_token(old, new, [apr14, apr28], apr14), {apr28: utc(2026, 4, 22, 9)})
+
     def test_occurrences_between(self):
         got = rr.occurrences_between("FREQ=DAILY", utc(2026, 1, 1, 9), "UTC", [utc(2026, 1, 3, 9), utc(2026, 1, 5, 9)])
         self.assertEqual(got, {utc(2026, 1, d, 9) for d in (3, 4, 5)})
@@ -303,6 +351,35 @@ class MoveTest(unittest.TestCase):
         self.assertEqual(
             rr.shift_rule_days("FREQ=WEEKLY;BYDAY=WE", wed, wed + timedelta(hours=3), LA), "FREQ=WEEKLY;BYDAY=WE"
         )
+
+    def test_shift_every_n_weeks_moves_each_occurrence_by_the_day_delta(self):
+        # Mon 2026-10-05 9:00 PDT is the first occurrence of each rule below.
+        start = utc(2026, 10, 5, 16)
+        rules = (
+            "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE",
+            "FREQ=WEEKLY;INTERVAL=3;BYDAY=MO,TH,SA",
+            "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO",
+            "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,SU;WKST=SU",
+        )
+        for body in rules:
+            old = [rr.to_utc(o) for o in islice(rr.build_rule(body, start, LA), 40)]
+            for days in (-1, 1, -3, 4, 6, 9, -8):
+                with self.subTest(body=body, days=days):
+                    moved = rr.shift_wall(start, timedelta(days=days), LA)
+                    new_body = rr.shift_rule_days(body, start, moved, LA)
+                    new = [rr.to_utc(o) for o in islice(rr.build_rule(new_body, moved, LA), 40)]
+                    self.assertEqual(new, [rr.shift_wall(o, timedelta(days=days), LA) for o in old])
+
+    def test_shift_every_n_weeks_writes_wkst_only_when_needed(self):
+        mon, sun, tue = utc(2026, 10, 5, 16), utc(2026, 10, 4, 16), utc(2026, 10, 6, 16)
+        biweekly = "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE"
+        # Sunday + Tuesday straddle Monday: the week has to start on Sunday.
+        self.assertEqual(rr.shift_rule_days(biweekly, mon, sun, LA), "FREQ=WEEKLY;INTERVAL=2;BYDAY=SU,TU;WKST=SU")
+        # ... and back (Sun -> Mon) needs no WKST any more.
+        self.assertEqual(rr.shift_rule_days("FREQ=WEEKLY;INTERVAL=2;BYDAY=SU,TU;WKST=SU", sun, mon, LA), biweekly)
+        # Tuesday + Thursday group the same under the default.
+        self.assertEqual(rr.shift_rule_days(biweekly, mon, tue, LA), "FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH")
+        self.assertEqual(rr.shift_rule_days("FREQ=WEEKLY;BYDAY=MO,WE", mon, sun, LA), "FREQ=WEEKLY;BYDAY=SU,TU")
 
     def test_shift_uses_local_day(self):
         # 16:00Z Wed -> 06:00Z Thu is still Wed 23:00 in LA: no day change.

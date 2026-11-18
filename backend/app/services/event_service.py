@@ -6,8 +6,8 @@ from functools import wraps
 from supabase import PostgrestAPIError
 
 from app import validation as v
-from app.errors import NotFound, ValidationError, first_row
-from app.extensions.cache import TASKS, cache, invalidate
+from app.errors import Conflict, NotFound, ValidationError, first_row
+from app.extensions.cache import EVENTS, TASKS, family_key, get_or_load, invalidate
 from app.extensions.supabase import supabase
 from app.services import recurrence as rr
 from app.validation import parse_instant
@@ -41,11 +41,14 @@ def _validate(data: dict):
 # ---- reads ---------------------------------------------------------------
 
 
-@cache.memoize()
 def get_events(start: str, end: str):
     """Events overlapping the half-open window [start, end): plain rows
     (incl. overrides) plus expanded occurrences of recurring masters.
-    Overlap: start_at < end AND end_at > start."""
+    Overlap: start_at < end AND end_at > start. Cached per window."""
+    return get_or_load(family_key(EVENTS, start, end), lambda: _load_events(start, end), EVENTS)
+
+
+def _load_events(start: str, end: str):
     start_dt, end_dt = parse_instant(start), parse_instant(end)
 
     plain = (
@@ -164,19 +167,23 @@ _write_lock = threading.Lock()
 
 
 def invalidates_events(fn):
-    """Serialize a mutation and clear the memoized window fetch after it, even
-    after a failed one."""
+    """Serialize a mutation and clear the cached event windows after it, even
+    after a failed one. A mutation that hit the stale-write guard (another
+    process changed a row between its read and its write) is redone once from
+    a fresh read before the Conflict reaches the client."""
 
     @wraps(fn)
     def wrapper(*args, **kwargs):
         try:
             with _write_lock:
-                return fn(*args, **kwargs)
+                try:
+                    return fn(*args, **kwargs)
+                except Conflict:
+                    return fn(*args, **kwargs)
         finally:
-            cache.delete_memoized(get_events)
             # Deleting an event row (plain, master or override) nulls
             # tasks.event_id via its FK; many paths delete rows, so always clear.
-            invalidate(TASKS)
+            invalidate(EVENTS, TASKS)
 
     return wrapper
 
@@ -293,6 +300,11 @@ def _delete_master(master_id: str) -> dict:
 # A recurring edit changes a master, its overrides and maybe a split-off
 # series. Its writes are collected as ops and sent in one apply_event_writes
 # RPC call (one transaction), so a failure never leaves half an edit behind.
+# An op on a row the edit was computed from carries the updated_at it was read
+# with (expect_updated_at): if another process changed the row since, the call
+# fails whole (PT409) instead of overwriting that change.
+
+STALE_WRITE = "PT409"
 
 
 def _apply(ops: list, result_id: str = None):
@@ -303,12 +315,26 @@ def _apply(ops: list, result_id: str = None):
     except PostgrestAPIError as e:
         if e.code == "P0002":  # an updated row vanished mid-edit
             raise NotFound(e.message) from None
+        if e.code == STALE_WRITE:
+            raise Conflict("This event was changed elsewhere. Try again.") from None
         raise
     return res.data[0] if res.data else None
 
 
-def _update_op(event_id: str, fields: dict) -> dict:
-    return {"op": "update", "id": event_id, "set": fields}
+def _guard(op: dict, read: dict = None) -> dict:
+    """`op` on a row as it was `read`: the RPC refuses it if the row changed since."""
+    if read and read.get("updated_at"):
+        op["expect_updated_at"] = read["updated_at"]
+    return op
+
+
+def _update_op(event_id: str, fields: dict, read: dict = None) -> dict:
+    return _guard({"op": "update", "id": event_id, "set": fields}, read)
+
+
+def _delete_op(row: dict) -> dict:
+    """Delete a row the edit read (guarded, see _guard)."""
+    return _guard({"op": "delete", "id": row["id"]}, row)
 
 
 def _delete_overrides_op(master_id: str, from_start: datetime = None, at: datetime = None) -> dict:
@@ -320,11 +346,18 @@ def _relink_tasks_op(from_id: str, to_id: str) -> dict:
     return {"op": "relink_tasks", "from": from_id, "to": to_id}
 
 
-def _holds_day(series: dict, override: dict, old_tz: str) -> bool:
+def _moved_day(slot: datetime, slots: dict, anchor, old_tz: str, tz: str):
+    """The local date, in the new series' zone `tz`, an edit takes the old
+    occurrence `slot` to: its new slot's (`slots`, see _slot_map), else that of
+    the edited slot's wall-clock shift (`anchor`: its old and new start)."""
+    moved = slots.get(slot) or rr.shift_wall(slot, rr.wall_delta(anchor[0], anchor[1], old_tz, tz), old_tz, tz)
+    return moved.astimezone(rr.get_zone(tz)).date()
+
+
+def _holds_day(series: dict, day) -> bool:
     """Whether a series (or plain event), given by its new columns (rrule,
     start_at, end_at, timezone, exdates), has an occurrence starting on the
-    local date of `override`'s slot (read in the old series' timezone)."""
-    day = parse_instant(override["original_start_at"]).astimezone(rr.get_zone(old_tz)).date()
+    local date `day` of its timezone (see _moved_day)."""
     tz = series["timezone"]
     zone = rr.get_zone(tz)
     lo = datetime.combine(day, time(0), zone)
@@ -336,12 +369,19 @@ def _holds_day(series: dict, override: dict, old_tz: str) -> bool:
     return any(occ >= lo for occ, _ in rr.expand(series["rrule"], start, end, tz, lo, hi, excluded))
 
 
-def _keep_links(overrides: list, old_tz: str, target_id: str, target: dict) -> list:
-    """Relink ops for overrides an edit drops (to run before they are deleted):
-    tasks time-blocked on one move to the series `target_id` when its new
-    columns `target` still have an occurrence on that override's day; the
-    others are unlinked by the delete (FK), as for a cancelled occurrence."""
-    return [_relink_tasks_op(ov["id"], target_id) for ov in overrides if _holds_day(target, ov, old_tz)]
+def _drop_overrides(overrides: list, day_of, target_id: str, target: dict, sweep: dict) -> list:
+    """Ops dropping the override rows an edit read, then `sweep` (the
+    delete_overrides op for their range, which also takes any added since):
+    tasks time-blocked on one move first to the series `target_id` when its new
+    columns `target` still have an occurrence on the day `day_of(slot)` the
+    edit takes that override's slot to; the others are unlinked by the delete
+    (FK), as for a cancelled occurrence."""
+    relinks = [
+        _relink_tasks_op(ov["id"], target_id)
+        for ov in overrides
+        if _holds_day(target, day_of(parse_instant(ov["original_start_at"])))
+    ]
+    return [*relinks, *(_delete_op(ov) for ov in overrides), sweep]
 
 
 def _carry_exceptions(
@@ -390,9 +430,9 @@ def _carry_exceptions(
         if not new_slot or new_slot in taken:
             # Its slot is gone or another override's: its tasks stay on the
             # series when that still occurs on the day (always so for a taken slot).
-            if new_slot or _holds_day(target, ov, old_tz):
+            if new_slot or _holds_day(target, _moved_day(slot, slots, anchor, old_tz, tz)):
                 ops.append(_relink_tasks_op(ov["id"], new_id))
-            ops.append({"op": "delete", "id": ov["id"]})
+            ops.append(_delete_op(ov))
             continue
         taken.add(new_slot)
         # A moved override keeps its offset from its slot; one with the series'
@@ -429,7 +469,7 @@ def _carry_exceptions(
             _check_all_day(
                 row["all_day"], parse_instant(row["start_at"]), parse_instant(row["end_at"]), row["timezone"]
             )
-            ops.append(_update_op(ov["id"], changed))
+            ops.append(_update_op(ov["id"], changed, ov))
     return [_iso(x) for x in new_exdates], ops
 
 
@@ -441,20 +481,26 @@ def _slot_map(old: dict, new: dict, anchor, explicit: bool, instants) -> dict:
     an occurrence of the new rule. When the rule was only re-aimed, a miss
     (2nd Tuesday -> 2nd Wednesday in a month starting on a Wednesday) takes the
     new occurrence at the same position in the same month / year, if no shift
-    claimed it; else it is dropped (e.g. Apr 30 when the 30th becomes the 31st)."""
+    claimed it; else it is dropped (e.g. Apr 30 when the 30th becomes the 31st).
+    A re-aimed monthly rule with several ordinals pairs by token instead
+    (rr.pair_by_token)."""
     old_tz, tz = old["timezone"], new["timezone"]
     new_start = parse_instant(new["start_at"])
     delta = rr.wall_delta(anchor[0], anchor[1], old_tz, tz)
 
     instants = {rr.to_utc(x) for x in instants}
+    old_rule = (old["rrule"], parse_instant(old["start_at"]), old_tz)
+    if not explicit and rr.ordinal_weekdays(old["rrule"]) and rr.ordinal_weekdays(new["rrule"]):
+        # Several ordinals (2TU,4TU -> 2WE,4WE) are kept as written: the shift
+        # can land on another token (2nd Tue + 1 day = 3rd Wed), so pair by token.
+        return rr.pair_by_token(old_rule, (new["rrule"], new_start, tz), instants, anchor[0])
     moved = {x: rr.shift_wall(x, delta, old_tz, tz) for x in instants}
     occurring = rr.occurrences_between(new["rrule"], new_start, tz, moved.values())
     result = {x: m for x, m in moved.items() if m in occurring}
 
     misses = instants - result.keys()
     if misses and not explicit:
-        old_rule = (old["rrule"], parse_instant(old["start_at"]), old_tz)
-        pairs = rr.pair_in_period(old_rule, (new["rrule"], new_start, tz), {x: moved[x] for x in misses})
+        pairs = rr.pair_in_period(old_rule, (new["rrule"], new_start, tz), {x: moved[x] for x in misses}, anchor[0])
         if not pairs:
             return result
         # A pair may not take a slot some other occurrence (exception or not)
@@ -652,12 +698,14 @@ def _update_all(master, original_start, override, data):
     if body and "all_day" in details:
         updates.update(_series_fields(body, series_start, series_end, tz))
         updates["exdates"], ops = _switch_kind(
-            updates,
-            _exdates(master),
-            old_tz,
+            master,
             master["id"],
-            _overrides(master["id"]),
-            _delete_overrides_op(master["id"]),
+            updates,
+            anchor=(old_start, series_start),
+            explicit=explicit,
+            exdates=_exdates(master),
+            overrides=_overrides(master["id"]),
+            drop_overrides=_delete_overrides_op(master["id"]),
         )
     elif body:
         updates.update(_series_fields(body, series_start, series_end, tz))
@@ -677,23 +725,33 @@ def _update_all(master, original_start, override, data):
         updates.update(
             rrule=None, recurrence_end_at=None, exdates=[], start_at=_iso(series_start), end_at=_iso(series_end)
         )
-        dropped = _keep_links(_overrides(master["id"]), old_tz, master["id"], updates)
-        ops = [*dropped, _delete_overrides_op(master["id"])]
+        ops = _drop_overrides(
+            _overrides(master["id"]),
+            lambda slot: _moved_day(slot, {}, (old_start, series_start), old_tz, tz),
+            master["id"],
+            updates,
+            _delete_overrides_op(master["id"]),
+        )
 
-    return _apply([*ops, _update_op(master["id"], updates)], master["id"])
+    return _apply([*ops, _update_op(master["id"], updates, master)], master["id"])
 
 
-def _switch_kind(new: dict, exdates: list, old_tz: str, new_id: str, overrides: list, drop_overrides: dict):
+def _switch_kind(old: dict, new_id: str, new: dict, *, anchor, explicit: bool, exdates, overrides, drop_overrides):
     """A series switching kind (all-day vs timed): its overrides' times fit the
     old kind only, so they are dropped rather than carried (their tasks move to
-    the series `new_id` where it still occurs on their day); exdates aren't
-    shifted either, only those still on an occurrence of the new series stay
-    (all of them when its instants didn't change).
+    the series `new_id` where it still occurs on their day). Cancelled days stay
+    cancelled: exdates move as for any series move (see _slot_map; the slot's
+    wall-clock shift takes 9 AM to midnight of the same or moved-to day and
+    back), dropped where the new series has no occurrence.
     Returns (exdates for the new series, ops)."""
-    occurring = rr.occurrences_between(new["rrule"], parse_instant(new["start_at"]), new["timezone"], exdates)
-    kept = [_iso(x) for x in sorted({rr.to_utc(x) for x in exdates} & occurring)]
-    relinks = _keep_links(overrides, old_tz, new_id, {**new, "exdates": kept})
-    return kept, [*relinks, drop_overrides]
+    kept = [_iso(x) for x in sorted(set(_slot_map(old, new, anchor, explicit, exdates).values()))]
+    # Mapped on their own, so a dropped override never takes an exdate's slot.
+    slots = _slot_map(old, new, anchor, explicit, [parse_instant(o["original_start_at"]) for o in overrides])
+
+    def day_of(slot):
+        return _moved_day(slot, slots, anchor, old["timezone"], new["timezone"])
+
+    return kept, _drop_overrides(overrides, day_of, new_id, {**new, "exdates": kept}, drop_overrides)
 
 
 def _moved_rule(body: str, anchor, old_tz: str, tz: str) -> str:
@@ -729,12 +787,14 @@ def _update_following(master, split_at, override, data):
     if body and "all_day" in details:
         new_row.update(_series_fields(body, new_start, new_end, tz))
         new_row["exdates"], moved = _switch_kind(
-            new_row,
-            exdates_after,
-            old_tz,
+            master,
             new_row["id"],
-            _overrides(master["id"], split_at),
-            _delete_overrides_op(master["id"], split_at),
+            new_row,
+            anchor=(split_at, new_start),
+            explicit=explicit,
+            exdates=exdates_after,
+            overrides=_overrides(master["id"], split_at),
+            drop_overrides=_delete_overrides_op(master["id"], split_at),
         )
     elif body:
         new_row.update(_series_fields(body, new_start, new_end, tz))
@@ -751,8 +811,13 @@ def _update_following(master, split_at, override, data):
         )
     else:
         new_row.update(start_at=_iso(new_start), end_at=_iso(new_end))
-        dropped = _keep_links(_overrides(master["id"], split_at), old_tz, new_row["id"], new_row)
-        moved = [*dropped, _delete_overrides_op(master["id"], split_at)]
+        moved = _drop_overrides(
+            _overrides(master["id"], split_at),
+            lambda slot: _moved_day(slot, {}, (split_at, new_start), old_tz, tz),
+            new_row["id"],
+            new_row,
+            _delete_overrides_op(master["id"], split_at),
+        )
     # Insert first so the carried overrides can be re-parented onto it, and
     # re-parent before the old master may be deleted (which cascades).
     ops = [{"op": "insert", "row": new_row}, *moved]
@@ -761,7 +826,7 @@ def _update_following(master, split_at, override, data):
         # Everything before the split was cancelled: nothing of the old series is
         # left. Its time-blocked tasks follow the series to the new master, moved
         # before the delete, whose FK would otherwise unlink them.
-        ops += [_relink_tasks_op(master["id"], new_row["id"]), {"op": "delete", "id": master["id"]}]
+        ops += [_relink_tasks_op(master["id"], new_row["id"]), _delete_op(master)]
     else:
         if not _occurs_ahead(master, truncated, exdates_before, split_at):
             # A task time-blocked on the series follows its next occurrence from
@@ -777,6 +842,7 @@ def _update_following(master, split_at, override, data):
                     "recurrence_end_at": _iso(old_end),
                     "exdates": [_iso(x) for x in exdates_before],
                 },
+                master,
             )
         )
 
@@ -836,5 +902,6 @@ def _save_or_drop_master(master: dict, rule: str, exdates, updates: dict, drop_o
     it as it was). Overridden occurrences aren't exdates, so a series with
     overrides always survives."""
     if not rr.has_visible_occurrence(rule, parse_instant(master["start_at"]), master["timezone"], exdates):
-        return _delete_master(master["id"])
-    return _apply([drop_overrides, _update_op(master["id"], updates)], master["id"])
+        _apply([_delete_op(master)])
+        return master
+    return _apply([drop_overrides, _update_op(master["id"], updates, master)], master["id"])
