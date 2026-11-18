@@ -8,6 +8,7 @@ import TaskDetailModal from "./TaskDetailModal";
 import FeatureLabel from "./FeatureLabel";
 import { useProjects } from "../useProjects";
 import useReportError from "@renderer/hooks/useReportError";
+import useDragAutoScroll from "@renderer/hooks/useDragAutoScroll";
 import { toDatetimeLocal } from "@renderer/lib/time";
 import { compareCompleted, fitCount } from "@renderer/lib/kanban";
 
@@ -111,6 +112,16 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
         );
     };
 
+    // Dragging near the board's edges scrolls it. Content moving under a still pointer
+    // may not fire dragover promptly, so re-pick the hovered cell after each scroll step.
+    const boardRef = useRef<HTMLDivElement>(null);
+    useDragAutoScroll(boardRef, draggingId !== null, (x, y) => {
+        const cell = document.elementFromPoint(x, y)?.closest<HTMLElement>(".kb-cell");
+        const { row, status } = cell?.dataset ?? {};
+        if (row && status) hoverCell(status as TaskStatus, row === GENERAL_ROW ? null : row);
+        else setDropTarget(null);
+    });
+
     const statusOf = (t: Task) => {
         return STATUSES.some((s) => s.key === t.status) ? t.status : "todo";
     };
@@ -182,7 +193,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
             <div className="kanban-header">
                 <span className="kanban-title">Tasks</span>
             </div>
-            <div className="kb-board themed-scroll">
+            <div ref={boardRef} className="kb-board themed-scroll">
                 <div ref={gridRef} className="kb-grid" style={{ gridTemplateColumns: gridColumns(editingStatus) }}>
                     <div className="kb-corner" />
                     {STATUSES.map((s) => (
@@ -295,6 +306,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                         <div
                                             key={s.key}
                                             data-row={row.key}
+                                            data-status={s.key}
                                             className={`kb-cell${isComplete ? " kb-cell-complete" : ""}${dropTarget?.feature_id === row.featureId && dropTarget.status === s.key ? " kb-cell-dragover" : ""}`}
                                             onDragOver={(e) => {
                                                 e.preventDefault();
