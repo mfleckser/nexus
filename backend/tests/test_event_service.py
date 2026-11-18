@@ -436,10 +436,10 @@ class EventServiceTest(AppTestCase):
         self.assertIn("Moved", [e["title"] for e in self.events()])
 
     def test_cache_invalidated_on_validation_error(self):
-        with self.app.app_context(), mock.patch.object(es.cache, "delete_memoized") as invalidate:
+        with self.app.app_context(), mock.patch.object(es, "invalidate") as invalidate:
             with self.assertRaises(ValueError):
                 es.update_occurrence("any", None, {"scope": "bogus"})
-            invalidate.assert_called_once_with(es.get_events)
+            invalidate.assert_called_once_with(es.EVENTS, es.TASKS)
 
     # -- input validation --
 

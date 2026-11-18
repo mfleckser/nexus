@@ -7,7 +7,7 @@ from supabase import PostgrestAPIError
 
 from app import validation as v
 from app.errors import Conflict, NotFound, ValidationError, first_row
-from app.extensions.cache import TASKS, cache, invalidate
+from app.extensions.cache import EVENTS, TASKS, family_key, get_or_load, invalidate
 from app.extensions.supabase import supabase
 from app.services import recurrence as rr
 from app.validation import parse_instant
@@ -41,11 +41,14 @@ def _validate(data: dict):
 # ---- reads ---------------------------------------------------------------
 
 
-@cache.memoize()
 def get_events(start: str, end: str):
     """Events overlapping the half-open window [start, end): plain rows
     (incl. overrides) plus expanded occurrences of recurring masters.
-    Overlap: start_at < end AND end_at > start."""
+    Overlap: start_at < end AND end_at > start. Cached per window."""
+    return get_or_load(family_key(EVENTS, start, end), lambda: _load_events(start, end), EVENTS)
+
+
+def _load_events(start: str, end: str):
     start_dt, end_dt = parse_instant(start), parse_instant(end)
 
     plain = (
@@ -164,7 +167,7 @@ _write_lock = threading.Lock()
 
 
 def invalidates_events(fn):
-    """Serialize a mutation and clear the memoized window fetch after it, even
+    """Serialize a mutation and clear the cached event windows after it, even
     after a failed one. A mutation that hit the stale-write guard (another
     process changed a row between its read and its write) is redone once from
     a fresh read before the Conflict reaches the client."""
@@ -178,10 +181,9 @@ def invalidates_events(fn):
                 except Conflict:
                     return fn(*args, **kwargs)
         finally:
-            cache.delete_memoized(get_events)
             # Deleting an event row (plain, master or override) nulls
             # tasks.event_id via its FK; many paths delete rows, so always clear.
-            invalidate(TASKS)
+            invalidate(EVENTS, TASKS)
 
     return wrapper
 

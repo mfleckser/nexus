@@ -115,7 +115,9 @@
     otherwise. Success bodies are bare JSON.
   - Caching: Flask-Caching SimpleCache, keys + `get_or_load`/`invalidate` in
     `app/extensions/cache.py`. Standard for every entity: cached reads, and every write
-    invalidates each key it can change, including FK on-delete side effects. Cache is
+    invalidates each key it can change, including FK on-delete side effects; reads
+    keyed by arguments (event windows) use `family_key`. A read that overlapped a
+    write is never cached (per-key write generations). Cache is
     per-process: keep gunicorn at one worker; 60s TTL bounds staleness from external
     writers (Studio).
   - Config: `backend/.env` (`SUPABASE_URL`, `SUPABASE_KEY`, `NEXUS_API_TOKEN`,

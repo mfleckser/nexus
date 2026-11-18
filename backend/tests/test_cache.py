@@ -2,8 +2,11 @@
 on-delete actions."""
 
 import unittest
+from unittest import mock
 
 from app_case import AppTestCase
+
+from app.services import event_service as es
 
 
 class CacheTest(AppTestCase):
@@ -33,6 +36,36 @@ class CacheTest(AppTestCase):
 
             self.assertEqual(get_or_load(TASKS, loader), ["stale"])
             self.assertIsNone(cache.get(TASKS))
+
+    def test_event_window_read_racing_a_write_is_not_cached(self):
+        body = {"title": "Old", "start_at": "2026-10-01T16:00:00Z", "end_at": "2026-10-01T17:00:00Z"}
+        ev = self.request("POST", "/api/events", body, status=201)
+        path = "/api/events?start=2026-10-01T00:00:00Z&end=2026-10-02T00:00:00Z"
+        load = es._load_events
+
+        def racing(start, end):
+            rows = load(start, end)  # the read finishes its queries...
+            es.update_event(ev["id"], {"title": "New"})  # ...then a write commits and invalidates
+            return rows
+
+        with mock.patch.object(es, "_load_events", side_effect=racing):
+            self.assertEqual([e["title"] for e in self.get(path)], ["Old"])
+        self.assertEqual([e["title"] for e in self.get(path)], ["New"])
+        self.assertEqual(self.queries_for(path), 0)  # and that one is cached
+
+    def test_family_load_racing_an_invalidate_is_not_cached(self):
+        from app.extensions.cache import EVENTS, cache, family_key, get_or_load, invalidate
+
+        with self.app.app_context():
+            key = family_key(EVENTS, "a", "b")
+
+            def loader():
+                invalidate(EVENTS)  # a write lands while this read is in flight
+                return ["stale"]
+
+            self.assertEqual(get_or_load(key, loader, EVENTS), ["stale"])
+            self.assertIsNone(cache.get(key))
+            self.assertNotEqual(family_key(EVENTS, "a", "b"), key)
 
     def test_reads_are_cached(self):
         p = self.project()

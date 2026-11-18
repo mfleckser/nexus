@@ -5,9 +5,9 @@ every write calls invalidate(...) with each key whose data it can change,
 including other entities' keys affected by FK on-delete actions (e.g.
 deleting a project nulls tasks.project_id, so it invalidates TASKS).
 
-Event windows are the one exception: they are keyed by arbitrary
-(start, end) ranges, so event_service memoizes get_events and clears every
-window at once with cache.delete_memoized(get_events)."""
+Reads keyed by arbitrary arguments (event windows: any (start, end) range)
+form a family: each one's key comes from family_key(FAMILY, *args), and
+invalidate(FAMILY) drops every member at once."""
 
 from flask_caching import Cache
 
@@ -15,6 +15,7 @@ cache = Cache()
 
 TASKS = "tasks:all"
 PROJECTS = "projects:all"
+EVENTS = "events:window"  # a family, keyed by (start, end)
 
 
 def project_notes(project_id: str) -> str:
@@ -25,18 +26,27 @@ def project_features(project_id: str) -> str:
     return f"projects:{project_id}:features"
 
 
-# Per-key write generation. A load that started before an invalidate must not
-# put its (pre-write) rows back into the cache once the write has cleared it.
+# Per-key (or per-family) write generation. A load that started before an
+# invalidate must not put its (pre-write) rows back into the cache once the
+# write has cleared it.
 _generations: dict[str, int] = {}
 
 
-def get_or_load(key: str, loader):
-    """Cached value for key, calling loader() to fill it on a miss."""
+def family_key(family: str, *args) -> str:
+    """Key of one member of a family of reads. It embeds the family's current
+    generation, so invalidate(family) leaves every older member unreachable
+    (they expire with the TTL) without having to know their keys."""
+    return f"{family}@{_generations.get(family, 0)}:" + ":".join(map(str, args))
+
+
+def get_or_load(key: str, loader, family: str = None):
+    """Cached value for key, calling loader() to fill it on a miss. Pass the
+    `family` a family_key belongs to."""
     value = cache.get(key)
     if value is None:
-        generation = _generations.get(key, 0)
+        generation = _generations.get(family or key, 0)
         value = loader()
-        if _generations.get(key, 0) == generation:
+        if _generations.get(family or key, 0) == generation:
             cache.set(key, value)
     return value
 
