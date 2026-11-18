@@ -62,6 +62,8 @@ export type Feature = {
     project_id: string;
     name: string;
     notes_updated_at: Date | null;
+    // Whether the notes text is non-blank (the text itself isn't kept in lists).
+    has_notes: boolean;
 };
 
 export const PROJECT_STATUSES = ["planning", "active", "paused", "complete", "archived"] as const;

@@ -3,6 +3,7 @@ import {
     addDays,
     atMinutes,
     calendarDaysBetween,
+    formatRelativeTime,
     formatTime,
     minutesIntoDay,
     parseDateTimeInputs,
@@ -125,5 +126,27 @@ describe("parseDateTimeInputs", () => {
         expect(parseDateTimeInputs("2026-02-30", "09:30")).toBeNull();
         expect(parseDateTimeInputs("2026-11-01", "24:00")).toBeNull();
         expect(parseDateTimeInputs("2026-13-01", "09:30")).toBeNull();
+    });
+});
+
+describe("formatRelativeTime", () => {
+    const now = local(2026, 11, 17, 15, 0);
+    const ago = (minutes: number) => new Date(now.getTime() - minutes * 60000);
+
+    it("uses minutes and hours within a day", () => {
+        expect(formatRelativeTime(ago(0), now)).toBe("just now");
+        // Clock skew: a timestamp slightly in the future.
+        expect(formatRelativeTime(ago(-2), now)).toBe("just now");
+        expect(formatRelativeTime(ago(5), now)).toBe("5 min ago");
+        expect(formatRelativeTime(ago(59), now)).toBe("59 min ago");
+        expect(formatRelativeTime(ago(60), now)).toBe("1 hour ago");
+        expect(formatRelativeTime(ago(23 * 60 + 59), now)).toBe("23 hours ago");
+    });
+
+    it("counts calendar days past a day, then shows the date", () => {
+        expect(formatRelativeTime(local(2026, 11, 16, 9, 0), now)).toBe("yesterday");
+        expect(formatRelativeTime(local(2026, 11, 14, 22, 0), now)).toBe("3 days ago");
+        expect(formatRelativeTime(local(2026, 11, 11, 15, 0), now)).toBe("6 days ago");
+        expect(formatRelativeTime(local(2026, 11, 10, 15, 0), now)).toBe("Nov 10, 2026");
     });
 });

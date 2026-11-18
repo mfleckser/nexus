@@ -6,6 +6,8 @@ import { Feature, Project, Task, TaskStatus } from "@renderer/types";
 import TaskCard from "./TaskCard";
 import TaskDetailModal from "./TaskDetailModal";
 import FeatureLabel from "./FeatureLabel";
+import FeatureNotesDrawer from "./FeatureNotesDrawer";
+import { discardedNotes, unsavedNotes } from "./notesDrafts";
 import { useProjects } from "../useProjects";
 import useReportError from "@renderer/hooks/useReportError";
 import useDragAutoScroll from "@renderer/hooks/useDragAutoScroll";
@@ -97,6 +99,8 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
     const [formRow, setFormRow] = useState<string | null>(null);
     const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
     const [viewingTaskId, setViewingTaskId] = useState<string | null>(null);
+    // The feature whose notes drawer is open; one at a time.
+    const [notesFeatureId, setNotesFeatureId] = useState<string | null>(null);
 
     const [featureInput, setFeatureInput] = useState<string>("");
     const [showFeatureInput, setShowFeatureInput] = useState<boolean>(false);
@@ -106,14 +110,16 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
     const reportError = useReportError();
     const projectTasks = tasks.filter((t) => t.project_id === project.id);
     const features = featuresByProjectId[project.id] ?? NO_FEATURES;
+    const notesFeature = features.find((f) => f.id === notesFeatureId);
+    const closeNotes = useCallback(() => setNotesFeatureId(null), []);
 
     useEffect(() => {
         loadFeatures(project.id).catch((err) => reportError("Couldn't load features", err));
     }, [project.id, loadFeatures, reportError]);
 
     const rows = [
-        { key: GENERAL_ROW, name: "General", featureId: null as string | null },
-        ...features.map((f) => ({ key: f.id, name: f.name, featureId: f.id as string | null })),
+        { key: GENERAL_ROW, name: "General", featureId: null as string | null, hasNotes: false },
+        ...features.map((f) => ({ key: f.id, name: f.name, featureId: f.id as string | null, hasNotes: f.has_notes })),
     ];
 
     const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -225,6 +231,10 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                         name={row.name}
                                         featureId={row.featureId}
                                         onLayoutChange={remeasure}
+                                        hasNotes={row.hasNotes}
+                                        notesOpen={row.featureId !== null && row.featureId === notesFeatureId}
+                                        onOpenNotes={() => setNotesFeatureId(row.featureId)}
+                                        onCloseNotes={closeNotes}
                                         onEdit={(name) => {
                                             if (!row.featureId || name === row.name) return;
                                             renameFeature(row.featureId, name).catch((err) =>
@@ -232,10 +242,17 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                                             );
                                         }}
                                         onDelete={() => {
-                                            if (!row.featureId) return;
-                                            deleteFeature(row.featureId).catch((err) =>
-                                                reportError("Couldn't delete feature", err),
-                                            );
+                                            const id = row.featureId;
+                                            if (!id) return;
+                                            // Drop its notes edits rather than saving them to a
+                                            // deleted feature; a failed delete re-enables saving.
+                                            discardedNotes.add(id);
+                                            unsavedNotes.delete(id);
+                                            if (notesFeatureId === id) closeNotes();
+                                            deleteFeature(id).catch((err) => {
+                                                discardedNotes.delete(id);
+                                                reportError("Couldn't delete feature", err);
+                                            });
                                         }}
                                     />
                                     {formRow === row.key ? (
@@ -424,6 +441,7 @@ function KanbanBoard({ project }: { project: Project }): React.JSX.Element {
                     </button>
                 )}
             </div>
+            {notesFeature && <FeatureNotesDrawer key={notesFeature.id} feature={notesFeature} onClose={closeNotes} />}
             {viewingTask && (
                 <TaskDetailModal
                     task={viewingTask}

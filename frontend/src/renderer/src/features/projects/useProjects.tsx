@@ -26,6 +26,10 @@ type ProjectsContextValue = {
     renameFeature: (feature_id: string, name: string) => Promise<void>;
     // Optimistic; rolls back and rethrows on failure.
     deleteFeature: (feature_id: string) => Promise<void>;
+    // Feature notes text isn't kept here (the notes drawer owns it); these keep the
+    // loaded feature's notes_updated_at / has_notes current.
+    loadFeatureNotes: (feature_id: string) => Promise<string>;
+    updateFeatureNotes: (feature_id: string, notes: string) => Promise<void>;
 };
 
 const ProjectsContext = createContext<ProjectsContextValue | null>(null);
@@ -110,10 +114,10 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
         [loadFeatures],
     );
 
-    const renameFeature = useCallback(async (feature_id: string, name: string) => {
-        // Replace the feature wherever it's loaded; `when` guards against
-        // clobbering a newer value (a later rename or a refetch).
-        const patch = (next: (f: Feature) => Feature, when: (f: Feature) => boolean = () => true) =>
+    // Replace a feature wherever it's loaded; `when` guards against clobbering a
+    // newer value (a later rename or a refetch).
+    const patchFeature = useCallback(
+        (feature_id: string, next: (f: Feature) => Feature, when: (f: Feature) => boolean = () => true) =>
             setFeaturesByProjectId((prev) => {
                 const out = { ...prev };
                 for (const [project_id, list] of Object.entries(prev)) {
@@ -122,23 +126,56 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
                     }
                 }
                 return out;
-            });
-        const before = Object.values(featuresRef.current)
-            .flat()
-            .find((f) => f.id === feature_id);
-        patch((f) => ({ ...f, name }));
-        try {
-            const saved = await projectsApi.updateFeature(feature_id, { name });
-            patch(() => saved);
-        } catch (err) {
-            if (before)
-                patch(
-                    () => before,
-                    (f) => f.name === name,
-                );
-            throw err;
-        }
-    }, []);
+            }),
+        [],
+    );
+
+    const renameFeature = useCallback(
+        async (feature_id: string, name: string) => {
+            const patch = (next: (f: Feature) => Feature, when?: (f: Feature) => boolean) =>
+                patchFeature(feature_id, next, when);
+            const before = Object.values(featuresRef.current)
+                .flat()
+                .find((f) => f.id === feature_id);
+            patch((f) => ({ ...f, name }));
+            try {
+                const saved = await projectsApi.updateFeature(feature_id, { name });
+                patch(() => saved);
+            } catch (err) {
+                // Only the name: a notes save may have landed meanwhile.
+                if (before)
+                    patch(
+                        (f) => ({ ...f, name: before.name }),
+                        (f) => f.name === name,
+                    );
+                throw err;
+            }
+        },
+        [patchFeature],
+    );
+
+    // Only the notes fields are patched, so an in-flight rename isn't undone.
+    const patchNotesFields = useCallback(
+        ({ id, notes_updated_at, has_notes }: Feature) =>
+            patchFeature(id, (f) => ({ ...f, notes_updated_at, has_notes })),
+        [patchFeature],
+    );
+
+    const loadFeatureNotes = useCallback(
+        async (feature_id: string) => {
+            const { feature, notes } = await projectsApi.getFeature(feature_id);
+            patchNotesFields(feature);
+            return notes;
+        },
+        [patchNotesFields],
+    );
+
+    const updateFeatureNotes = useCallback(
+        async (feature_id: string, notes: string) => {
+            patchNotesFields(await projectsApi.updateFeature(feature_id, { notes }));
+        },
+        [patchNotesFields],
+    );
 
     const deleteFeature = useCallback(async (feature_id: string) => {
         const snapshot = featuresRef.current;
@@ -182,6 +219,8 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
             addFeature,
             renameFeature,
             deleteFeature,
+            loadFeatureNotes,
+            updateFeatureNotes,
         }),
         [
             projects,
@@ -197,6 +236,8 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
             addFeature,
             renameFeature,
             deleteFeature,
+            loadFeatureNotes,
+            updateFeatureNotes,
         ],
     );
 
