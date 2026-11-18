@@ -14,6 +14,7 @@ import {
     addDays,
     atMinutes,
     calendarDaysBetween,
+    formatMonthSpan,
     minutesIntoDay,
     MINUTES_PER_DAY,
     startOfDay,
@@ -25,17 +26,28 @@ import {
     DEFAULT_EVENT_MINUTES,
     DRAG_THRESHOLD,
     POPOVER_GAP,
+    PX_PER_HOUR,
     PX_PER_MIN,
     SLOT_MINUTES,
     TASK_PIN_HEIGHT,
 } from "@renderer/features/calendar/constants";
+import { isDismissableOpen } from "@renderer/hooks/useDismiss";
 
 const BUFFER_DAYS = 7;
 const SLOTS_PER_DAY = MINUTES_PER_DAY / SLOT_MINUTES;
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type ViewType = "DAY" | "WEEK" | "MONTH";
+
+// The time grid opens at 8 AM, nudged up so the "8 AM" label isn't clipped.
+const INITIAL_SCROLL_HOUR = 8;
+const INITIAL_SCROLL_MARGIN = 8;
+
+// Stable ref callback, so it runs only when the grid mounts (first render, or
+// switching back from month view), not on every render.
+function scrollToInitialHour(el: HTMLDivElement | null): void {
+    if (el) el.scrollTop = INITIAL_SCROLL_HOUR * PX_PER_HOUR - INITIAL_SCROLL_MARGIN;
+}
 
 // In-progress drag-to-create, in grid slots of SLOT_MINUTES.
 type CreateDrag = {
@@ -219,6 +231,8 @@ function Calendar(): React.JSX.Element {
     const handleSlotMouseDown = (day: number) => (e: React.MouseEvent<HTMLDivElement>) => {
         if (e.button !== 0) return;
         e.preventDefault(); // no text selection while dragging
+        // This press is closing an open popover; the next one creates.
+        if (isDismissableOpen()) return;
         const slot = slotAt(e.clientY);
         setCreateDrag({
             dayIndex: day,
@@ -304,6 +318,12 @@ function Calendar(): React.JSX.Element {
         };
     }
 
+    // Month view names its month even though the grid shows edge days of others.
+    const monthLabel =
+        viewType === "MONTH"
+            ? formatMonthSpan(focusedDay, focusedDay)
+            : formatMonthSpan(rangeStart, addDays(rangeStart, dayCount - 1));
+
     const nowDayIndex = calendarDaysBetween(rangeStart, now);
     const nowLineStyle: React.CSSProperties = {
         left: `${(nowDayIndex * 100) / dayCount}%`,
@@ -328,9 +348,7 @@ function Calendar(): React.JSX.Element {
                             ›
                         </button>
                     </div>
-                    <span className="month-year-label">
-                        {MONTH_NAMES[month]} {year}
-                    </span>
+                    <span className="month-year-label">{monthLabel}</span>
                 </div>
                 <div className="select-wrapper">
                     <select
@@ -385,7 +403,7 @@ function Calendar(): React.JSX.Element {
                             <div key={d.getTime()} className="all-day-cell" />
                         ))}
                     </div>
-                    <div className="day-events-scroll">
+                    <div className="day-events-scroll" ref={scrollToInitialHour}>
                         <div className="day-events">
                             {[...Array(24).keys()].map((hour) => (
                                 <Fragment key={hour}>

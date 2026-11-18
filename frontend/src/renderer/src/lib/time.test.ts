@@ -3,6 +3,7 @@ import {
     addDays,
     atMinutes,
     calendarDaysBetween,
+    formatMonthSpan,
     formatRelativeTime,
     formatTime,
     minutesIntoDay,
@@ -148,5 +149,20 @@ describe("formatRelativeTime", () => {
         expect(formatRelativeTime(local(2026, 11, 14, 22, 0), now)).toBe("3 days ago");
         expect(formatRelativeTime(local(2026, 11, 11, 15, 0), now)).toBe("6 days ago");
         expect(formatRelativeTime(local(2026, 11, 10, 15, 0), now)).toBe("Nov 10, 2026");
+    });
+});
+
+describe("formatMonthSpan", () => {
+    it("shows one month when the span stays inside it", () => {
+        expect(formatMonthSpan(local(2026, 11, 15), local(2026, 11, 21))).toBe("Nov 2026");
+        expect(formatMonthSpan(local(2026, 11, 17), local(2026, 11, 17))).toBe("Nov 2026");
+    });
+
+    it("shows both months for a week spanning two", () => {
+        expect(formatMonthSpan(local(2026, 9, 27), local(2026, 10, 3))).toBe("Sep – Oct 2026");
+    });
+
+    it("shows both years for a week spanning New Year", () => {
+        expect(formatMonthSpan(local(2026, 12, 27), local(2027, 1, 2))).toBe("Dec 2026 – Jan 2027");
     });
 });
