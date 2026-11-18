@@ -58,6 +58,7 @@ FOREIGN_KEYS = [
     ("tasks", "feature_id", "features", "set null"),
     ("features", "project_id", "projects", "cascade"),
 ]
+CHECKED_FOREIGN_KEYS = {("events", "recurring_event_id"), ("tasks", "event_id")}
 
 
 def _pg_error(code, message):
@@ -277,6 +278,10 @@ class _Rpc:
             if op.get("at"):
                 q = q.eq("original_start_at", op["at"])
             q.execute()
+        elif kind == "relink_tasks":
+            if not op.get("from") or not op.get("to"):
+                raise _pg_error("22023", "relink_tasks needs from and to")
+            _Query(self.db, "tasks").update({"event_id": op["to"]}).eq("event_id", op["from"]).execute()
         else:
             raise _pg_error("22023", f"unknown op {kind!r}")
 
@@ -320,9 +325,10 @@ class FakeSupabase:
         return _Rpc(self, params["ops"], params.get("result_id"))
 
     def check_foreign_keys(self, table, rows):
-        """Only events.recurring_event_id is checked (other tests use made-up ids)."""
+        """Only events.recurring_event_id and tasks.event_id are checked (other
+        tests use made-up ids)."""
         for child, col, parent, _ in FOREIGN_KEYS:
-            if (child, col) != ("events", "recurring_event_id") or child != table:
+            if (child, col) not in CHECKED_FOREIGN_KEYS or child != table:
                 continue
             ids = {r["id"] for r in self.tables[parent]}
             for r in rows:

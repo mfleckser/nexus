@@ -71,6 +71,8 @@
     `/events/<master>/occurrences/<original_start>` with scope `this|following|all`.
   - Multi-row edits are atomic: the service computes every row change and sends them
     as ops to the `apply_event_writes` RPC (one transaction; mirrored in the fake).
+    Its `relink_tasks` op moves time-blocked tasks to another event, e.g. onto the new
+    series when a "following" split deletes the old master.
   - Moving a series (time, duration, timezone, rule) carries its exdates and overrides
     along by the same wall-clock shift; when a re-aimed monthly/yearly rule misses
     (2nd Tue → 2nd Wed), the same position in the same month/year. Ones the new

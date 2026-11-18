@@ -4,6 +4,7 @@ import unittest
 from unittest import mock
 
 from app_case import AppTestCase
+from supabase import PostgrestAPIError
 
 from app.services import event_service as es
 
@@ -232,17 +233,103 @@ class EventServiceTest(AppTestCase):
         self.delete_occ(m["id"], "2026-10-07T16:00:00Z", "this")
         self.assertEqual(self.db.rows, [])
 
-    def test_following_split_that_drops_the_master_keeps_task_links(self):
+    # -- time-blocked tasks follow a split that drops the old master --
+
+    SPLIT = {"scope": "following", "start_at": "2026-10-07T17:00:00Z", "end_at": "2026-10-07T18:00:00Z"}
+
+    def _droppable_series(self):
+        """Weekly Wed with its first occurrence cancelled, so a "following" split at
+        the second leaves nothing before it; plus tasks on it, on another event,
+        and on none."""
         m = self.weekly_wed()
         self.delete_occ(m["id"], "2026-09-30T16:00:00Z", "this")
-        task = self.client.post("/api/tasks", json={"title": "T", "event_id": m["id"]}).get_json()
-        new = self.put_occ(
-            m["id"],
-            "2026-10-07T16:00:00Z",
-            {"scope": "following", "start_at": "2026-10-07T17:00:00Z", "end_at": "2026-10-07T18:00:00Z"},
-        )
+        other = self.create(title="Other", start_at="2026-10-01T16:00:00Z", end_at="2026-10-01T17:00:00Z")
+        tasks = {
+            name: self.client.post("/api/tasks", json={"title": name, "event_id": ev}).get_json()["id"]
+            for name, ev in (("a", m["id"]), ("b", m["id"]), ("other", other["id"]), ("none", None))
+        }
+        return m, other, tasks
+
+    def task_links(self, tasks):
+        return {name: self.client.get(f"/api/tasks/{tid}").get_json()["event_id"] for name, tid in tasks.items()}
+
+    def split_ops(self, m):
+        """The ops the split sends, in order (spied, still applied)."""
+        with mock.patch.object(es, "_apply", wraps=es._apply) as spy:
+            new = self.put_occ(m["id"], "2026-10-07T16:00:00Z", self.SPLIT)
+        spy.assert_called_once()  # one RPC, one transaction
+        return new, spy.call_args.args[0]
+
+    def test_following_split_that_drops_the_master_keeps_task_links(self):
+        m, other, tasks = self._droppable_series()
+        self.assertEqual(len(self.client.get("/api/tasks").get_json()), 4)  # warm the tasks cache
+        new, ops = self.split_ops(m)
         self.assertIsNone(self.row(m["id"]))
-        self.assertEqual(self.client.get(f"/api/tasks/{task['id']}").get_json()["event_id"], new["id"])
+        expected = {"a": new["id"], "b": new["id"], "other": other["id"], "none": None}
+        # The cached list was cleared by the edit, not served stale.
+        self.assertEqual({t["title"]: t["event_id"] for t in self.client.get("/api/tasks").get_json()}, expected)
+        self.assertEqual(self.task_links(tasks), expected)
+        # One transaction: insert the new master, relink, then delete the old one.
+        kinds = [op["op"] for op in ops]
+        self.assertEqual((kinds[0], kinds[-2:]), ("insert", ["relink_tasks", "delete"]))
+        self.assertEqual(ops[-2], {"op": "relink_tasks", "from": m["id"], "to": new["id"]})
+
+    def test_following_split_that_keeps_the_master_leaves_task_links(self):
+        m = self.weekly_wed()
+        tid = self.client.post("/api/tasks", json={"title": "T", "event_id": m["id"]}).get_json()["id"]
+        _, ops = self.split_ops(m)
+        self.assertNotIn("relink_tasks", [op["op"] for op in ops])
+        self.assertEqual(self.task_links({"t": tid}), {"t": m["id"]})
+
+    def test_failure_after_relink_rolls_back_the_task_links(self):
+        m, other, tasks = self._droppable_series()
+        before_events = [dict(r) for r in self.db.rows]
+        before_tasks = [dict(r) for r in self.db.tables["tasks"]]
+        real_apply = es._apply
+
+        def fail_after_relink(ops, result_id=None):
+            self.db.fail_after_ops = [op["op"] for op in ops].index("relink_tasks") + 1
+            return real_apply(ops, result_id)
+
+        self.quiet_errors()
+        with mock.patch.object(es, "_apply", side_effect=fail_after_relink):
+            res = self.client.put(f"/api/events/{m['id']}/occurrences/2026-10-07T16:00:00Z", json=self.SPLIT)
+        self.db.fail_after_ops = None
+        self.assertEqual(res.status_code, 500)
+        self.assertEqual(self.db.rows, before_events)
+        self.assertEqual(self.db.tables["tasks"], before_tasks)
+        self.assertEqual(self.task_links(tasks), {"a": m["id"], "b": m["id"], "other": other["id"], "none": None})
+
+    def apply(self, ops):
+        """_apply as a service write runs it: under the lock, clearing the caches."""
+        return es.invalidates_events(es._apply)(ops)
+
+    def insert_op(self, m):
+        new_id = "00000000-0000-0000-0000-0000000000aa"
+        return new_id, {
+            "op": "insert",
+            "row": {"id": new_id, "title": "New", **{k: m[k] for k in ("start_at", "end_at")}},
+        }
+
+    def test_relink_tasks_op_needs_the_target_inserted_and_the_source_not_yet_deleted(self):
+        m, other, tasks = self._droppable_series()
+        new_id, insert = self.insert_op(m)
+        relink = es._relink_tasks_op(m["id"], new_id)
+        delete = {"op": "delete", "id": m["id"]}
+        with self.app.app_context():
+            with self.subTest(order="relink before insert"), self.assertRaises(PostgrestAPIError):
+                self.apply([relink, insert, delete])  # FK: no such event yet
+            self.assertEqual(self.task_links(tasks)["a"], m["id"])
+            with self.subTest(order="delete before relink"):
+                self.apply([insert, delete, relink])  # FK already unlinked them
+                self.assertEqual(self.task_links(tasks), {"a": None, "b": None, "other": other["id"], "none": None})
+
+    def test_relink_tasks_op_in_order(self):
+        m, other, tasks = self._droppable_series()
+        new_id, insert = self.insert_op(m)
+        with self.app.app_context():
+            self.apply([insert, es._relink_tasks_op(m["id"], new_id), {"op": "delete", "id": m["id"]}])
+        self.assertEqual(self.task_links(tasks), {"a": new_id, "b": new_id, "other": other["id"], "none": None})
 
     def test_delete_following_leaving_only_exdates_deletes_master(self):
         m = self.create(start_at="2026-09-30T16:00:00Z", end_at="2026-09-30T17:00:00Z", rrule="FREQ=WEEKLY;COUNT=3")

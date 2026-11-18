@@ -311,6 +311,11 @@ def _delete_overrides_op(master_id: str, from_start: datetime = None, at: dateti
     return {"op": "delete_overrides", "master": master_id, "from": _iso(from_start), "at": _iso(at)}
 
 
+def _relink_tasks_op(from_id: str, to_id: str) -> dict:
+    """Tasks time-blocked on event `from_id` move to `to_id` (both must exist)."""
+    return {"op": "relink_tasks", "from": from_id, "to": to_id}
+
+
 def _carry_exceptions(
     old: dict,
     new_id: str,
@@ -701,15 +706,11 @@ def _update_following(master, split_at, override, data):
     # re-parent before the old master may be deleted (which cascades).
     ops = [{"op": "insert", "row": new_row}, *moved]
 
-    blocked_tasks = []
     if truncated is None or not rr.has_visible_occurrence(truncated, old_start, old_tz, exdates_before):
-        # Everything before the split was cancelled: nothing of the old series is left.
-        ops.append({"op": "delete", "id": master["id"]})
-        # Its time-blocked tasks follow the series to the new master instead of
-        # staying unlinked by the FK; relinked after the RPC, once that master exists.
-        blocked_tasks = [
-            t["id"] for t in supabase.table("tasks").select("id").eq("event_id", master["id"]).execute().data
-        ]
+        # Everything before the split was cancelled: nothing of the old series is
+        # left. Its time-blocked tasks follow the series to the new master, moved
+        # before the delete, whose FK would otherwise unlink them.
+        ops += [_relink_tasks_op(master["id"], new_row["id"]), {"op": "delete", "id": master["id"]}]
     else:
         old_end = rr.recurrence_end(truncated, old_start, parse_instant(master["end_at"]), old_tz)
         ops.append(
@@ -723,12 +724,7 @@ def _update_following(master, split_at, override, data):
             )
         )
 
-    row = _apply(ops, new_row["id"])
-    if blocked_tasks:
-        # Only those the FK unlinked: one relinked meanwhile keeps its new event.
-        tasks = supabase.table("tasks").update({"event_id": row["id"]})
-        tasks.in_("id", blocked_tasks).is_("event_id", "null").execute()
-    return row
+    return _apply(ops, new_row["id"])
 
 
 @invalidates_events
