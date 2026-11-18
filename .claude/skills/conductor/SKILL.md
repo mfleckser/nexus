@@ -39,6 +39,14 @@ whole backlog.
   one later in the run.
 - **Models.** You are `opus`. Never use `fable`. Spawn `/implement` agents on `opus`
   at `high` effort; other lookups go to `haiku` or `sonnet`.
+- **Improve the workflow.** When the run gives you feedback on a skill in this
+  workflow (conductor, implement, add-task, or the nexus MCP tools they use):
+  friction, wasted tokens, a wrong or unclear instruction, a missing rule, or
+  something that worked well and should become a rule, add a task for the Nexus
+  project's "Conductor" feature to the filing batch (see Filing tasks). File only
+  concrete observations from this run (what happened, rough cost, which skill and
+  section), not speculation, one task per distinct change. Not every run needs one.
+  These tasks join the work set only if the arguments target the Conductor feature.
 
 ## State markers
 
@@ -288,10 +296,11 @@ Within a lane, groups run in order in the lane's slot. For each group:
 
    After each task, check the summary's **Follow-ups**. Suggested new tasks and bugs
    found outside the task's scope go in the filing batch, for the backlog (see
-   Filing tasks); file one now only if the request needs it. Leave out review nits
-   that don't deserve a task; those go in the PR's Follow-ups. If the task has a
-   feature, append a short entry to its feature notes: branch, result, decisions
-   made.
+   Filing tasks); file one now only if the request needs it. `workflow:` items go
+   in the batch for the Conductor feature (see Improve the workflow). Leave out
+   review nits that don't deserve a task; those go in the PR's Follow-ups. If the
+   task has a feature, append a short entry to its feature notes: branch, result,
+   decisions made.
 3. **Evidence.** Pick 2–3 items from the summary blocks' **Evidence**, at most, that
    best show what the PR does. Screenshots of visible changes come first.
    - Screenshots are stored on the `pr-evidence` branch, which is never merged. If
@@ -334,12 +343,14 @@ block said), then its source, then `unattended`.
 
 - **Source.** `source: verified` when its facts come from an `/implement` summary
   block, `source: unverified` for anything else (a review comment, a finding you
-  haven't confirmed). `add-task` checks the code only for unverified sources.
+  haven't confirmed). Workflow feedback on something that happened in this run is
+  `verified`. `add-task` checks the code only for unverified sources.
 - **File now**, invoking `add-task` yourself, the tasks that join the work set right
   away: missing work the request needs (Triage step 2) and review-comment tasks
   (Triage step 3).
-- **Batch** every other task, the ones bound for the backlog (follow-ups, making
-  two lanes' answers match). Keep the batch in your context, not the scratchpad.
+- **Batch** every other task, the ones bound for the backlog (follow-ups, workflow
+  feedback, making two lanes' answers match). Keep the batch in your context, not
+  the scratchpad.
 - **Flush the batch** at every natural pause (whenever you're otherwise waiting,
   e.g. after a lane finishes) and before the final report, so little is lost if
   you're cut off. Spawn one `general-purpose` agent (`sonnet`, `medium`) in the
@@ -413,8 +424,9 @@ End it with the PR attribution line from your current instructions.
 
 Stop when every lane has finished and nothing workable is left in the work set:
 every task is waiting in a PR, blocked, or waiting on a blocked dependency. Check
-every slot is clean and detached, flush the filing batch (Filing tasks), then
-report:
+every slot is clean and detached. Consider whether the run surfaced workflow
+feedback (see Improve the workflow) and add it to the batch. Then flush the filing
+batch (Filing tasks) and report:
 
 ```
 ## Conductor run — <arguments or "whole backlog">
@@ -424,7 +436,7 @@ Completed (merged since last run): <tasks — or "none">
 Cancelled (PR closed unmerged): <tasks; migrations left live — or "none">
 Blocked: <task — reason> per line, or "none"
 Waiting: <task — needs <blocked task>> per line, or "none"
-Filed: <new tasks from review comments and follow-ups — or "none">
+Filed: <new tasks from review comments, follow-ups and workflow feedback — or "none">
 Manual steps: <Pi deploy, migrations to know about — or "none">
 ```
 
