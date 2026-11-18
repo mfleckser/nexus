@@ -24,8 +24,8 @@ whole backlog.
 - **Only Mark reviews and merges.** Never merge, approve, or close a PR, and never
   push to `main`.
 - **Keep your context slim.** Keep only the task list, the file map (Triage step
-  6), the lane/branch/PR map, the run's decisions, and each `/implement` summary
-  block. Don't read code yourself.
+  6), the lane/branch/PR map, the run's decisions, the filing batch (Filing tasks),
+  and each `/implement` summary block. Don't read code yourself.
   If a decision needs research, hand it to a subagent and take its conclusion. All state lives in Nexus
   and GitHub, so a later `/conductor` run with the same arguments picks up where
   this one stopped.
@@ -281,9 +281,9 @@ Within a lane, groups run in order in the lane's slot. For each group:
    - **`blocked`**: set the task to `blocked` with the reason. Keep going with the
      rest of the group, unless they depend on it.
 
-   After each task, check the summary's **Follow-ups**. File suggested new tasks and
-   bugs found outside the task's scope (see Filing tasks). They go to the backlog,
-   not this run's work set, unless the request needs them. Leave out review nits
+   After each task, check the summary's **Follow-ups**. Suggested new tasks and bugs
+   found outside the task's scope go in the filing batch, for the backlog (see
+   Filing tasks); file one now only if the request needs it. Leave out review nits
    that don't deserve a task; those go in the PR's Follow-ups. If the task has a
    feature, append a short entry to its feature notes: branch, result, decisions
    made.
@@ -325,10 +325,33 @@ Within a lane, groups run in order in the lane's slot. For each group:
 Create every new task through the `add-task` skill, one invocation per task. Never
 call `create_task` directly. Arguments: a description of the work, with whatever
 context you have (where it came from: task title, branch, PR, and what the summary
-block said), followed by `unattended`.
+block said), then its source, then `unattended`.
 
-You answer its questions yourself, as its unattended mode describes. Put each
-`add-task:` result line under **Filed** in the run report.
+- **Source.** `source: verified` when its facts come from an `/implement` summary
+  block, `source: unverified` for anything else (a review comment, a finding you
+  haven't confirmed). `add-task` checks the code only for unverified sources.
+- **File now**, invoking `add-task` yourself, the tasks that join the work set right
+  away: missing work the request needs (Triage step 2) and review-comment tasks
+  (Triage step 3).
+- **Batch** every other task, the ones bound for the backlog (follow-ups, making
+  two lanes' answers match). Keep the batch in your context, not the scratchpad.
+- **Flush the batch** at every natural pause (whenever you're otherwise waiting,
+  e.g. after a lane finishes) and before the final report, so little is lost if
+  you're cut off. Spawn one `general-purpose` agent (`sonnet`, `medium`) in the
+  foreground, so its writes don't race yours:
+
+  ```
+  Invoke the `add-task` skill once per task below, in order, with that task's text
+  as the arguments. Reply with only the `add-task:` result lines, one per task.
+
+  1. <description and context> source: <verified | unverified> unattended
+  2. …
+  ```
+
+  Then clear the batch.
+
+You (or the filing agent) answer its questions as its unattended mode describes.
+Put each `add-task:` result line under **Filed** in the run report.
 
 ### Replying to review comments
 
@@ -385,7 +408,8 @@ End it with the PR attribution line from your current instructions.
 
 Stop when every lane has finished and nothing workable is left in the work set:
 every task is waiting in a PR, blocked, or waiting on a blocked dependency. Check
-every slot is clean and detached, then report:
+every slot is clean and detached, flush the filing batch (Filing tasks), then
+report:
 
 ```
 ## Conductor run — <arguments or "whole backlog">
@@ -401,5 +425,5 @@ Manual steps: <Pi deploy, migrations to know about — or "none">
 
 If the run stopped early (a usage limit or wrap-up, an error you couldn't route
 around), say where each lane stopped and what each wrapped-up task has left. After
-a wrap-up, stop once every running agent has returned and its PR step is done. The
-markers already let the next run resume.
+a wrap-up, stop once every running agent has returned and its PR step is done, and
+flush the batch before reporting. The markers already let the next run resume.
