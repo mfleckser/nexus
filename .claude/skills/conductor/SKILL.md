@@ -223,10 +223,13 @@ Within a lane, groups run in order in the lane's slot. For each group:
    <task title>
    <task description, verbatim, minus the Conductor: line>
    (Nexus feature: <feature name>)  ← only if it has one
-   branch=<branch> port=<slot port> unattended decisions: <the run's answers so far, or omit>
+   branch=<branch> base=<parent branch> port=<slot port> unattended decisions: <the run's answers so far, or omit>
 
    When it finishes, reply with only its final summary block.
    ```
+
+   Pass `base=` only when the branch is stacked (for review fixes, the PR's base if
+   it isn't `main`). `/implement` reviews the diff against it.
 
    Ignore everything but the summary block. For a `done` or `partial` result,
    confirm the reported commit is on `origin/<branch>` (`git fetch` and

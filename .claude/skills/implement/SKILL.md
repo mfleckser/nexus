@@ -1,7 +1,7 @@
 ---
 name: implement
-description: "Take one Nexus feature, fix, or chore and implement it end to end without needing Mark: plans, builds, tests, reviews, commits and pushes to a branch, with effort scaled to the task's size, then returns a summary. Invoked with /implement <task> [branch=<name>] [port=<n>] [unattended] [decisions: ...]."
-argument-hint: "<task description> [branch=<name>] [port=<n>] [unattended] [decisions: ...]"
+description: "Take one Nexus feature, fix, or chore and implement it end to end without needing Mark: plans, builds, tests, reviews, commits and pushes to a branch, with effort scaled to the task's size, then returns a summary. Invoked with /implement <task> [branch=<name>] [base=<branch>] [port=<n>] [unattended] [decisions: ...]."
+argument-hint: "<task description> [branch=<name>] [base=<branch>] [port=<n>] [unattended] [decisions: ...]"
 ---
 
 # Implement
@@ -15,6 +15,8 @@ Arguments: `$ARGUMENTS`
   from any source; don't go looking for it in a backlog file, and don't edit planning
   files. Whoever invoked you tracks the task.
 - **`branch=<name>`** (optional): the branch to commit to. If omitted, see step 6.
+- **`base=<branch>`** (optional): the branch this one is stacked on. Reviews diff
+  against it (step 5). Default `main`.
 - **`port=<n>`** (optional): the local backend port for UI checks. Default `5055`.
   Other agents may run in parallel on other ports, so use only this one.
 - **`decisions:`** (optional, always last): product answers already made. They are
@@ -171,14 +173,27 @@ repeat until green.
 
 ## 5. Review (scaled to tier)
 
-- **S**: read `git diff` start to finish for leftovers, debug output, and convention
+Every review covers this branch's changes against its base, nothing else:
+- First confirm `git rev-parse --show-toplevel` and `git branch --show-current` are
+  the worktree and branch you're building, and run the review from there.
+- The diff is `git diff <mb>`, where `<mb>` is `git merge-base origin/<base> HEAD`:
+  commits plus uncommitted work. Its files are `git diff --name-only <mb>` plus
+  untracked files in `git status --short`.
+
+- **S**: read that diff start to finish for leftovers, debug output, and convention
   breaks.
-- **M**: invoke the `code-review` skill at `medium` on the diff. Fix the findings that
-  hold up after you check them, rerun verification, done.
+- **M**: invoke the `code-review` skill at `medium` with an explicit target: the
+  branch against its base (`origin/<base>...HEAD`, plus uncommitted changes), never
+  the implicit "current diff". Fix the findings that hold up after you check them,
+  rerun verification, done.
 - `code-review` runs in the background. Wait for its result before committing, and
-  give every finding a verdict (fixed, or why not) in your summary.
-- **L**: `code-review` at `high` after each major unit lands, then once more over the
-  full diff. If the change added a lot of code, run `simplify` too. Loop
+  give every finding a verdict (fixed, or why not) in your summary. When it arrives,
+  before acting on any finding, check that the files it reviewed match the diff's
+  files. If not, discard it and re-run with the explicit target. If it still doesn't
+  match, review the diff by hand and say so under **Verified**.
+- **L**: `code-review` at `high` after each major unit lands (target that unit's
+  commits or files within the same base), then once more over the full diff. If the
+  change added a lot of code, run `simplify` too. Loop
   fix → verify → re-review until a pass turns up nothing significant (at most 3
   rounds; anything left over goes under **Follow-ups**).
 - Never use the `max` or `ultra` review levels.
@@ -192,7 +207,8 @@ doc you edit.
 
 **Choose the branch:**
 - `branch=` given: use it. If it exists locally or on `origin`, check it out and
-  `git pull --ff-only`. If it doesn't exist, create it from an up-to-date `main`.
+  `git pull --ff-only`. If it doesn't exist, create it from an up-to-date `base`
+  (default `main`).
 - No branch given: commit to `main`.
 
 **Protect work that isn't yours.** Check `git status` before you start building, not
