@@ -19,7 +19,7 @@ function deleteDetails(featureCount: number | undefined, taskCount: number): str
     const parts: string[] = [];
     if (featureCount === undefined) parts.push("Any features it has will be deleted too.");
     else if (featureCount > 0)
-        parts.push(`${featureCount} ${featureCount === 1 ? "feature" : "features"} will be deleted too.`);
+        parts.push(`${featureCount} ${featureCount === 1 ? "feature" : "features"} will be deleted.`);
     if (taskCount > 0)
         parts.push(`${taskCount} ${taskCount === 1 ? "task" : "tasks"} will move to your main task list.`);
     return parts.join(" ");
