@@ -499,25 +499,27 @@ function Calendar(): React.JSX.Element {
                         {gridDays.map((d) => (
                             <div key={d.getTime()} className="all-day-cell" />
                         ))}
-                        {allDayLayout.bars.map((bar) => (
-                            <AllDayChip
-                                key={bar.item.id}
-                                bar={bar}
-                                rangeStart={rangeStart}
-                                dayCount={dayCount}
-                                linkedTasks={tasksForEvent(linkedTasks, bar.item)}
-                            />
-                        ))}
-                        {previewDraft && allDayDraftBar && (
-                            <AllDayDraftPreview
-                                title={previewDraft.title}
-                                category={previewDraft.category}
-                                startIndex={allDayDraftBar.startIndex}
-                                span={allDayDraftBar.span}
-                                row={allDayLayout.rows}
-                                dayCount={dayCount}
-                            />
-                        )}
+                        <div className="all-day-bars">
+                            {allDayLayout.bars.map((bar) => (
+                                <AllDayChip
+                                    key={bar.item.id}
+                                    bar={bar}
+                                    rangeStart={rangeStart}
+                                    dayCount={dayCount}
+                                    linkedTasks={tasksForEvent(linkedTasks, bar.item)}
+                                />
+                            ))}
+                            {previewDraft && allDayDraftBar && (
+                                <AllDayDraftPreview
+                                    title={previewDraft.title}
+                                    category={previewDraft.category}
+                                    startIndex={allDayDraftBar.startIndex}
+                                    span={allDayDraftBar.span}
+                                    row={allDayLayout.rows}
+                                    dayCount={dayCount}
+                                />
+                            )}
+                        </div>
                     </div>
                     <div className="day-events-scroll" ref={scrollToInitialHour}>
                         <div className="day-events">

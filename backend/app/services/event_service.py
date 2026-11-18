@@ -124,8 +124,10 @@ ALL_DAY_INPUTS = ("start_at", "end_at", "timezone", "all_day")
 def _check_all_day(all_day, start: datetime, end: datetime, tz: str):
     """An all-day event spans whole local days of its timezone: it starts at
     midnight of its first day and ends (exclusive) at midnight after its last."""
+    if not all_day:
+        return
     zone = rr.get_zone(tz)
-    if all_day and not (start.astimezone(zone).time() == time(0) == end.astimezone(zone).time()):
+    if not (start.astimezone(zone).time() == time(0) == end.astimezone(zone).time()):
         raise ValidationError("an all-day event must start and end at midnight in its timezone")
 
 
@@ -295,8 +297,10 @@ def _exdates(master: dict) -> list:
 
 def _apply_to_clicked(override, data: dict):
     """Give the clicked (overridden) occurrence every detail field sent, even
-    ones equal to the series value that _changed_details leaves out."""
-    fields = v.pick(data, DETAIL_FIELDS)
+    ones equal to the series value that _changed_details leaves out, and the
+    times sent: with the series unchanged they only differ from the override's
+    own when it switches kind (all-day vs timed) onto the series' times."""
+    fields = v.pick(data, DETAIL_FIELDS + ["start_at", "end_at"])
     if override and fields:
         supabase.table("events").update(fields).eq("id", override["id"]).execute()
 
@@ -436,6 +440,9 @@ def _update_all(master, original_start, override, data):
     if _series_changed(master, updates):
         updates["exdates"] = []
         _delete_overrides(master["id"])
+    elif "all_day" in details:
+        # Same instants, new kind: the overrides' times fit the old kind only.
+        _delete_overrides(master["id"])
     else:
         if details:
             supabase.table("events").update(details).eq("recurring_event_id", master["id"]).execute()
@@ -459,12 +466,17 @@ def _update_following(master, split_at, override, data):
         # Continue the old rule (COUNT -> remaining), re-aimed if moved to another day.
         body = rr.shift_rule_days(rr.continuation_rule(body, remaining), split_at, new_start, master["timezone"])
 
-    # Overrides / exdates only still line up if the series isn't moved or re-ruled.
+    details = _changed_details(master, data)
+    # Overrides / exdates only still line up if the series isn't moved,
+    # re-ruled, or switched kind (all-day vs timed).
     carry_over = (
-        not explicit and shift == timedelta(0) and duration == _wall_duration(master) and tz == master["timezone"]
+        not explicit
+        and shift == timedelta(0)
+        and duration == _wall_duration(master)
+        and tz == master["timezone"]
+        and "all_day" not in details
     )
 
-    details = _changed_details(master, data)
     exdates_before, exdates_after = rr.partition_instants(_exdates(master), split_at)
 
     new_row = {f: master[f] for f in DETAIL_FIELDS}

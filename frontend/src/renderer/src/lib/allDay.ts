@@ -8,25 +8,14 @@ import { addDays, calendarDaysBetween, startOfDay } from "./time";
 
 export type DayItem = { start_at: Date; end_at: Date; all_day: boolean | null; timezone: string };
 
-const dateFormats = new Map<string, Intl.DateTimeFormat>();
+const wallFormats = new Map<string, Intl.DateTimeFormat>();
 
-// Local midnight of the calendar date `instant` falls on in `timeZone`.
-export function wallDate(instant: Date, timeZone: string): Date {
-    let fmt = dateFormats.get(timeZone);
-    if (!fmt) {
-        fmt = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "numeric", day: "numeric" });
-        dateFormats.set(timeZone, fmt);
-    }
-    const parts = fmt.formatToParts(instant);
-    const part = (type: string): number => Number(parts.find((p) => p.type === type)?.value);
-    return new Date(part("year"), part("month") - 1, part("day"));
-}
-
-const offsetFormats = new Map<string, Intl.DateTimeFormat>();
-
-// How far `timeZone`'s wall clock is ahead of UTC at `instant`, in ms.
-function zoneOffset(instant: Date, timeZone: string): number {
-    let fmt = offsetFormats.get(timeZone);
+// `instant`'s wall-clock fields in `timeZone`.
+function wallParts(
+    instant: Date,
+    timeZone: string,
+): Record<"year" | "month" | "day" | "hour" | "minute" | "second", number> {
+    let fmt = wallFormats.get(timeZone);
     if (!fmt) {
         fmt = new Intl.DateTimeFormat("en-US", {
             timeZone,
@@ -38,11 +27,30 @@ function zoneOffset(instant: Date, timeZone: string): number {
             minute: "numeric",
             second: "numeric",
         });
-        offsetFormats.set(timeZone, fmt);
+        wallFormats.set(timeZone, fmt);
     }
     const parts = fmt.formatToParts(instant);
     const part = (type: string): number => Number(parts.find((p) => p.type === type)?.value);
-    const wall = Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"), part("second"));
+    return {
+        year: part("year"),
+        month: part("month"),
+        day: part("day"),
+        hour: part("hour"),
+        minute: part("minute"),
+        second: part("second"),
+    };
+}
+
+// Local midnight of the calendar date `instant` falls on in `timeZone`.
+export function wallDate(instant: Date, timeZone: string): Date {
+    const { year, month, day } = wallParts(instant, timeZone);
+    return new Date(year, month - 1, day);
+}
+
+// How far `timeZone`'s wall clock is ahead of UTC at `instant`, in ms.
+function zoneOffset(instant: Date, timeZone: string): number {
+    const p = wallParts(instant, timeZone);
+    const wall = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
     return wall - Math.floor(instant.getTime() / 1000) * 1000;
 }
 

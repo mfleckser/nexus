@@ -193,6 +193,42 @@ class AllDayTest(AppTestCase):
         self.assertEqual([e["title"] for e in evs], ["Renamed"] * 3)
         self.assertEqual([bool(e["all_day"]) for e in evs], [False, True, False])
 
+    def test_all_day_override_back_to_series_times(self):
+        m = self.create(start_at="2026-10-30T16:00:00Z", end_at="2026-10-30T17:00:00Z", rrule="FREQ=DAILY;COUNT=3")
+        occ = f"{m['id']}/occurrences/2026-10-31T16:00:00Z"
+        self.put(occ, {"scope": "this", "all_day": True, "start_at": OCT_31, "end_at": NOV_1})
+        # Back to timed at the series' own 9-10 AM, for all / following.
+        for scope in ("all", "following"):
+            with self.subTest(scope=scope):
+                self.put(occ, {"scope": "this", "all_day": True, "start_at": OCT_31, "end_at": NOV_1})
+                self.put(
+                    occ,
+                    {
+                        "scope": scope,
+                        "all_day": False,
+                        "start_at": "2026-10-31T16:00:00Z",
+                        "end_at": "2026-10-31T17:00:00Z",
+                    },
+                )
+                evs = self.events()
+                self.assertEqual([bool(e["all_day"]) for e in evs], [False] * 3)
+                self.assertEqual(evs[1]["start_at"], "2026-10-31T16:00:00+00:00")
+                self.assertEqual(evs[1]["end_at"], "2026-10-31T17:00:00+00:00")
+
+    def test_kind_change_on_same_instants_drops_overrides(self):
+        # A legacy timed midnight-to-midnight series with a moved occurrence.
+        m = self.create(start_at=OCT_30, end_at=OCT_31, rrule="FREQ=DAILY;COUNT=3")
+        self.put(
+            f"{m['id']}/occurrences/{OCT_31}",
+            {"scope": "this", "start_at": "2026-10-31T17:00:00Z", "end_at": "2026-10-31T19:00:00Z"},
+        )
+        # Made all-day from another occurrence without moving it: the moved
+        # 10 AM override can't become an all-day row off midnight.
+        self.put(f"{m['id']}/occurrences/{OCT_30}", {"scope": "all", "all_day": True})
+        evs = self.events()
+        self.assertTrue(all(e["all_day"] for e in evs))
+        self.assertEqual([e["start_at"] for e in evs], [f"{d[:-1]}+00:00" for d in (OCT_30, OCT_31, NOV_1)])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -260,6 +260,14 @@
     cursor: pointer;
 }
 
+/* Bars sit on their own layer, out of the cells' grid; clicks between them
+   fall through to the cells (drag-to-create). */
+.all-day-bars {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
 /* One all-day event; --all-day-row (ALL_DAY_ROW_PX) is set on the container. */
 .all-day-chip {
     position: absolute;
@@ -278,6 +286,7 @@
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
+    pointer-events: auto;
     transition: background-color 0.1s;
 }
 
