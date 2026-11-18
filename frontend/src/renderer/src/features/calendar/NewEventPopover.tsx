@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import "./newEventPopover.css";
 import categoryData from "./categories.json";
@@ -111,6 +111,9 @@ export type NewEventPopoverProps = {
     onSave: (draft: NewEventDraft) => void;
     onClose: () => void;
     onDelete?: () => void;
+    // Extra rows below the description (e.g. the event's linked tasks); they
+    // act on their own, outside the form's Save.
+    extraFields?: ReactNode;
     // Live form values, for a preview on the grid; not called while the
     // date/time/duration fields are invalid.
     onDraftChange?: (draft: NewEventDraft) => void;
@@ -127,6 +130,7 @@ function NewEventPopover({
     onSave,
     onClose,
     onDelete,
+    extraFields,
     onDraftChange,
 }: NewEventPopoverProps): React.JSX.Element {
     const rootRef = useRef<HTMLDivElement>(null);
@@ -268,6 +272,8 @@ function NewEventPopover({
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                 />
+
+                {extraFields}
 
                 <div className="nep-field-row">
                     <span className="nep-label" id={`${ids}-category`}>

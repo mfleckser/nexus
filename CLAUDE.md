@@ -38,8 +38,10 @@
     and multi-day creation (`all_day` column exists, unused)
   - Day / week / month views — done: day, week; open: month (no events)
   - Task CRUD w/ due dates, optional time-block on calendar — done: CRUD, due dates,
-    due-task pins on the week view; open: time-blocking
-  - Tasks ↔ events linkable — open (`tasks.event_id` column exists, not in API)
+    due-task pins on the week view, time-blocking ("Block time" on a task creates a
+    linked event)
+  - Tasks ↔ events linkable — done: `tasks.event_id` (one block per task; deleting
+    the event clears it), linked tasks shown on event chips and the event popover
   - Search across both — open
   - No GCal sync. No notifications (defer to mobile phase).
 

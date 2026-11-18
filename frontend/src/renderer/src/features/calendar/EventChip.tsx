@@ -1,8 +1,10 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { Repeat } from "lucide-react";
+import { CircleCheck, Repeat } from "lucide-react";
 import { useEvents } from "@renderer/features/calendar/useEvents";
+import { useTasks } from "@renderer/features/tasks/useTasks";
+import LinkedTasks from "@renderer/features/calendar/LinkedTasks";
 import { EventUpdate } from "@renderer/features/calendar/events.api";
-import { CalendarEvent, NewEventDraft, RecurrenceScope } from "@renderer/types";
+import { CalendarEvent, NewEventDraft, RecurrenceScope, Task } from "@renderer/types";
 import NewEventPopover from "@renderer/features/calendar/NewEventPopover";
 import ConfirmDelete from "@renderer/components/ConfirmDelete";
 import RecurrenceScopePrompt from "@renderer/components/RecurrenceScopePrompt";
@@ -61,9 +63,11 @@ type EventChipProps = {
     segment: DaySegment<CalendarEvent>;
     // Day columns in the grid: 7 in week view, 1 in day view.
     dayCount: number;
+    // Tasks this event is a time block for.
+    linkedTasks: Task[];
 };
 
-function EventChip({ segment, dayCount }: EventChipProps): React.JSX.Element {
+function EventChip({ segment, dayCount, linkedTasks }: EventChipProps): React.JSX.Element {
     const event = segment.item;
     const chipRef = useRef<HTMLDivElement>(null);
     const parentRectRef = useRef<DOMRect | null>(null);
@@ -87,7 +91,23 @@ function EventChip({ segment, dayCount }: EventChipProps): React.JSX.Element {
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
     const { updateEvent, deleteEvent } = useEvents();
+    const { refreshTasks } = useTasks();
     const reportError = useReportError();
+
+    // Deleting event rows (the event itself, or overrides/masters an edit of
+    // a series drops) clears tasks' event_id server-side (FK on delete set
+    // null), possibly for tasks linked to other rows: refetch tasks after
+    // every successful event change.
+    function afterEventChange(pending: Promise<void>, failure: string): void {
+        pending.then(
+            () => refreshTasks().catch((err) => reportError("Couldn't refresh tasks", err)),
+            (err) => reportError(failure, err),
+        );
+    }
+
+    function removeEvent(scope?: RecurrenceScope): void {
+        afterEventChange(deleteEvent(event, scope), "Couldn't delete event");
+    }
 
     const isOccurrence = event.recurring_event_id !== null;
     const eventMinutes = (event.end_at.getTime() - event.start_at.getTime()) / 60000;
@@ -111,11 +131,19 @@ function EventChip({ segment, dayCount }: EventChipProps): React.JSX.Element {
     if (dragging && dragPos)
         Object.assign(style, { left: dragPos.left, top: dragPos.top, width: `${100 / dayCount}%` });
     const compact = (box.endMin - box.startMin) * PX_PER_MIN < COMPACT_CHIP_PX;
+    // Task names worth a line of their own: not just the event's title again
+    // (a time block is titled after its task by default).
+    const taskLine = linkedTasks
+        .filter((t) => t.title !== event.title)
+        .map((t) => t.title)
+        .join(", ");
+    const allTasksDone =
+        linkedTasks.length > 0 && linkedTasks.every((t) => t.status === "complete" || t.status === "cancelled");
 
     // Plain events commit straight away; occurrences wait for a scope.
     function requestUpdate(data: EventUpdate, scopes?: RecurrenceScope[]): void {
         if (!isOccurrence) {
-            updateEvent(event, data).catch((err) => reportError("Couldn't save event", err));
+            afterEventChange(updateEvent(event, data), "Couldn't save event");
             return;
         }
         setPendingScope({ action: "edit", data, scopes });
@@ -142,9 +170,9 @@ function EventChip({ segment, dayCount }: EventChipProps): React.JSX.Element {
         setPreview(null);
         setPopoverAnchor(null);
         if (pending.action === "delete") {
-            deleteEvent(event, scope).catch((err) => reportError("Couldn't delete event", err));
+            removeEvent(scope);
         } else {
-            updateEvent(event, pending.data, scope).catch((err) => reportError("Couldn't save event", err));
+            afterEventChange(updateEvent(event, pending.data, scope), "Couldn't save event");
         }
     }
 
@@ -360,10 +388,18 @@ function EventChip({ segment, dayCount }: EventChipProps): React.JSX.Element {
                             <title>{describeRrule(event.rrule, event.start_at)}</title>
                         </Repeat>
                     )}
+                    {linkedTasks.length > 0 && (
+                        <CircleCheck className="event-chip-task-icon" size={10} aria-label="Time block for a task">
+                            <title>{linkedTasks.map((t) => t.title).join("\n")}</title>
+                        </CircleCheck>
+                    )}
                 </div>
                 <div className="event-chip-time">
                     {fmtTime(shownStart)} – {fmtTime(shownEnd)}
                 </div>
+                {taskLine && !compact && (
+                    <div className={`event-chip-task${allTasksDone ? " done" : ""}`}>{taskLine}</div>
+                )}
                 {!segment.clippedEnd && (
                     <div className="event-chip-duration-adjuster" onMouseDown={resizeMouseDown}></div>
                 )}
@@ -380,6 +416,7 @@ function EventChip({ segment, dayCount }: EventChipProps): React.JSX.Element {
                         initialDescription={event.description || ""}
                         initialCategory={event.category || ""}
                         initialRrule={event.rrule}
+                        extraFields={<LinkedTasks tasks={linkedTasks} />}
                         onSave={handlePopoverSave}
                         onClose={() => setPopoverAnchor(null)}
                         onDelete={handlePopoverDelete}
@@ -390,7 +427,7 @@ function EventChip({ segment, dayCount }: EventChipProps): React.JSX.Element {
                 <ConfirmDelete
                     onClose={() => setShowConfirmDelete(false)}
                     onDelete={() => {
-                        deleteEvent(event).catch((err) => reportError("Couldn't delete event", err));
+                        removeEvent();
                         setShowConfirmDelete(false);
                     }}
                     itemName="event"

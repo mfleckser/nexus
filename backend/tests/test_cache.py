@@ -108,8 +108,7 @@ class CacheTest(AppTestCase):
     def test_event_delete_clears_tasks(self):
         body = {"title": "E", "start_at": "2026-10-01T16:00:00Z", "end_at": "2026-10-01T17:00:00Z"}
         ev = self.request("POST", "/api/events", body, status=201)
-        # The API doesn't link tasks to events yet; link one directly.
-        self.db.table("tasks").insert({"title": "T", "event_id": ev["id"]}).execute()
+        self.task(event_id=ev["id"])
         self.assertEqual(self.get("/api/tasks")[0]["event_id"], ev["id"])
         self.request("DELETE", f"/api/events/{ev['id']}")
         self.assertIsNone(self.get("/api/tasks")[0]["event_id"])

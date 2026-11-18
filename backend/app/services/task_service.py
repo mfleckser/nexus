@@ -7,7 +7,7 @@ from app.extensions.supabase import supabase
 
 # Matches the tasks.status_check constraint.
 TASK_STATUSES = ("todo", "active", "blocked", "complete", "cancelled")
-CREATE_FIELDS = ("title", "description", "due_at", "project_id", "feature_id")
+CREATE_FIELDS = ("title", "description", "due_at", "project_id", "feature_id", "event_id")
 UPDATE_FIELDS = (*CREATE_FIELDS, "status")
 
 
@@ -19,6 +19,9 @@ def _validate(fields: dict):
     # Malformed ids are rejected by Postgres (22P02 -> 400).
     v.check_text(fields, "project_id")
     v.check_text(fields, "feature_id")
+    # An event row id (plain event, series master or override), not a virtual
+    # occurrence id. Deleting the event nulls it (FK on delete set null).
+    v.check_text(fields, "event_id")
 
 
 def get_all_tasks():

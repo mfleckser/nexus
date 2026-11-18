@@ -10,7 +10,8 @@ type EventsContextValue = {
     events: CalendarEvent[];
     range: DateRange | null;
     setRange: (next: DateRange) => void;
-    addEvent: (draft: NewEventDraft) => Promise<void>;
+    // Resolves to the created row.
+    addEvent: (draft: NewEventDraft) => Promise<CalendarEvent>;
     // Optimistic; roll back and rethrow on failure. `scope` is required for
     // occurrences of a series (recurring_event_id set).
     updateEvent: (event: CalendarEvent, data: EventUpdate, scope?: RecurrenceScope) => Promise<void>;
@@ -93,7 +94,7 @@ export function EventsProvider({ children }: { children: ReactNode }) {
 
     const addEvent = useCallback(
         async (draft: NewEventDraft) => {
-            await eventsApi.addEvent(
+            const created = await eventsApi.addEvent(
                 draft.title,
                 draft.description,
                 draft.start_at,
@@ -101,9 +102,13 @@ export function EventsProvider({ children }: { children: ReactNode }) {
                 draft.category,
                 draft.rrule ?? null,
             );
-            await refetch();
+            // Not awaited: callers get the row as soon as it exists (a time
+            // block links its task right away). A failed refresh is reported,
+            // not thrown; the poll picks the event up later.
+            refetch().catch((err) => reportError("Couldn't refresh the calendar", err));
+            return created;
         },
-        [refetch],
+        [refetch, reportError],
     );
 
     // One edit can reshape many instances, so always resync the window

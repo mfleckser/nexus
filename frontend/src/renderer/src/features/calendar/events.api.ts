@@ -36,15 +36,16 @@ async function getEvents(start: Date, end: Date): Promise<CalendarEvent[]> {
     return raw.map(parseEvent);
 }
 
-function addEvent(
+// Resolves to the created row (a series master when rrule is set).
+async function addEvent(
     title: string,
     description: string | null,
     start_at: Date,
     end_at: Date,
     category: string,
     rrule: string | null = null,
-): Promise<unknown> {
-    return api.post("/events", {
+): Promise<CalendarEvent> {
+    const created = await api.post<Wire<CalendarEvent>>("/events", {
         title: title,
         description: description,
         start_at: start_at,
@@ -53,6 +54,7 @@ function addEvent(
         timezone: browserTimeZone(),
         ...(rrule ? { rrule } : {}),
     });
+    return parseEvent(created);
 }
 
 function updateEvent(id: string, data: EventUpdate): Promise<unknown> {

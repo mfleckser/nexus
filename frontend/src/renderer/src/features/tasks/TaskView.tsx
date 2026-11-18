@@ -2,12 +2,17 @@ import "./taskView.css";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import { useProjects } from "@renderer/features/projects/useProjects";
 import { useTaskFeatureName } from "@renderer/features/projects/useTaskFeatures";
+import { useEvents } from "@renderer/features/calendar/useEvents";
+import BlockTimePopover from "@renderer/features/calendar/BlockTimePopover";
+import { POPOVER_GAP } from "@renderer/features/calendar/constants";
+import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Task, TaskStatus } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";
 import TaskForm from "@renderer/components/TaskForm";
 import { calendarDaysBetween, formatDueDisplay, toDatetimeLocal } from "@renderer/lib/time";
+import { timeBlockSummary } from "@renderer/lib/timeBlocks";
 import useReportError from "@renderer/hooks/useReportError";
 
 type TaskRowProps = {
@@ -77,9 +82,22 @@ function TaskRowContents({
     featureName,
 }: Pick<TaskRowProps, "task" | "onStatusChange" | "onSave" | "onDelete"> & { featureName: string | null }) {
     const { projects } = useProjects();
+    const { events } = useEvents();
     const project = task.project_id ? projects.find((p) => p.id === task.project_id) : undefined;
     const [editing, setEditing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    // Block-time popover anchor; null = closed.
+    const [blockAnchor, setBlockAnchor] = useState<PopoverAnchor | null>(null);
+    const timeBlock = timeBlockSummary(task, events);
+    const canBlockTime = !timeBlock && task.status !== "complete" && task.status !== "cancelled";
+
+    // Beside the task panel: right of the row if there's room, else left of it.
+    const openBlockTime = (e: React.MouseEvent<HTMLButtonElement>) => {
+        const row = e.currentTarget.closest(".task-row") ?? e.currentTarget;
+        const rect = row.getBoundingClientRect();
+        const top = e.currentTarget.getBoundingClientRect().top;
+        setBlockAnchor({ x: rect.right + POPOVER_GAP, y: top, flipX: rect.left - POPOVER_GAP });
+    };
 
     const handleStartEdit = () => {
         setEditing(true);
@@ -137,6 +155,23 @@ function TaskRowContents({
                             {formatDueDisplay(task.due_at)}
                         </p>
                     </div>
+                    {(timeBlock || canBlockTime) && (
+                        <div className="task-detail-field">
+                            <span className="task-detail-label">Time block</span>
+                            {timeBlock ? (
+                                <p className="task-detail-value">{timeBlock}</p>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className="task-block-time"
+                                    aria-expanded={blockAnchor !== null}
+                                    onClick={openBlockTime}
+                                >
+                                    + Block time
+                                </button>
+                            )}
+                        </div>
+                    )}
                     <div className="task-row-actions">
                         <button
                             type="button"
@@ -165,6 +200,7 @@ function TaskRowContents({
                     </div>
                 </div>
             )}
+            {blockAnchor && <BlockTimePopover task={task} anchor={blockAnchor} onClose={() => setBlockAnchor(null)} />}
         </div>
     );
 }

@@ -221,6 +221,23 @@
     font-style: italic;
 }
 
+.task-block-time {
+    align-self: flex-start;
+    padding: 0;
+    border: none;
+    background: none;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--accent);
+    cursor: pointer;
+}
+
+.task-block-time:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
 .task-row-actions {
     display: flex;
     justify-content: flex-end;

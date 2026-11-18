@@ -451,7 +451,10 @@ def _update_following(master, split_at, override, data):
         _delete_overrides(master["id"], split_at)
 
     if truncated is None or not rr.has_visible_occurrence(truncated, old_start, master["timezone"], exdates_before):
-        # Everything before the split was cancelled: nothing of the old series is left.
+        # Everything before the split was cancelled: nothing of the old series is
+        # left. Its time-blocked tasks follow the series to the new master
+        # instead of being unlinked by the FK.
+        supabase.table("tasks").update({"event_id": new_master["id"]}).eq("event_id", master["id"]).execute()
         _delete_master(master["id"])
     else:
         supabase.table("events").update(
