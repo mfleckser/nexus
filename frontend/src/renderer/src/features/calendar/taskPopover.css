@@ -103,14 +103,32 @@
     color: var(--text-muted);
 }
 
+.tp-context {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
 .tp-project {
-    align-self: flex-start;
     padding: 2px 8px;
     border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--pillar-project) 15%, transparent);
     color: var(--pillar-project);
     font-size: 11px;
     font-weight: 500;
+    text-decoration: none;
+    transition: background-color 0.1s;
+}
+
+.tp-project:hover {
+    background: color-mix(in srgb, var(--pillar-project) 28%, transparent);
+}
+
+.tp-feature {
+    word-break: break-word;
 }
 
 .tp-description {

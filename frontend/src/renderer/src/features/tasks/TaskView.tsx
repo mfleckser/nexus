@@ -1,7 +1,9 @@
 import "./taskView.css";
 import { useTasks } from "@renderer/features/tasks/useTasks";
 import { useProjects } from "@renderer/features/projects/useProjects";
+import { useTaskFeatureName } from "@renderer/features/projects/useTaskFeatures";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Task, TaskStatus } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";
 import TaskForm from "@renderer/components/TaskForm";
@@ -21,6 +23,7 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
     // Derived, not cached: the calendar can toggle the same task.
     const complete = task.status === "complete";
     const blocked = task.status === "blocked";
+    const featureName = useTaskFeatureName(task);
 
     return (
         <div className={`task-row${complete ? " done" : ""}${blocked ? " blocked" : ""}${expanded ? " expanded" : ""}`}>
@@ -46,12 +49,21 @@ function TaskRow({ task, expanded, onToggle, onStatusChange, onSave, onDelete }:
                         onStatusChange(complete ? "todo" : "complete");
                     }}
                 />
-                <span className="task-label">{task.title}</span>
+                <span className="task-label">
+                    {task.title}
+                    {featureName && <span className="task-feature">{featureName}</span>}
+                </span>
                 {blocked && <span className="task-blocked-badge">Blocked</span>}
             </div>
             {/* Mounted only while expanded, so edit/confirm state resets on collapse. */}
             {expanded && (
-                <TaskRowContents task={task} onStatusChange={onStatusChange} onSave={onSave} onDelete={onDelete} />
+                <TaskRowContents
+                    task={task}
+                    featureName={featureName}
+                    onStatusChange={onStatusChange}
+                    onSave={onSave}
+                    onDelete={onDelete}
+                />
             )}
         </div>
     );
@@ -62,7 +74,10 @@ function TaskRowContents({
     onStatusChange,
     onSave,
     onDelete,
-}: Pick<TaskRowProps, "task" | "onStatusChange" | "onSave" | "onDelete">) {
+    featureName,
+}: Pick<TaskRowProps, "task" | "onStatusChange" | "onSave" | "onDelete"> & { featureName: string | null }) {
+    const { projects } = useProjects();
+    const project = task.project_id ? projects.find((p) => p.id === task.project_id) : undefined;
     const [editing, setEditing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -95,6 +110,21 @@ function TaskRowContents({
                 />
             ) : (
                 <div className="task-row-details">
+                    {project && (
+                        <div className="task-detail-field">
+                            <span className="task-detail-label">Project</span>
+                            <p className="task-detail-value">
+                                <Link
+                                    className="task-project-link"
+                                    to={`/projects/${project.id}`}
+                                    title="Open project board"
+                                >
+                                    {project.title}
+                                </Link>
+                                {featureName && <span className="task-detail-feature">{featureName}</span>}
+                            </p>
+                        </div>
+                    )}
                     <div className="task-detail-field">
                         <span className="task-detail-label">Description</span>
                         <p className={`task-detail-value${task.description ? "" : " muted"}`}>
