@@ -77,9 +77,18 @@ is then part of the task text.
 
 ## 2. Triage
 
-1. List `todo` and `active` tasks in the Nexus project
-   (`b8e217f4-c03d-4f5c-8d3a-fddfecc29ad8`). Also list its features, so you can map
-   names to ids.
+1. List the features of the Nexus project
+   (`b8e217f4-c03d-4f5c-8d3a-fddfecc29ad8`), so you can map names to ids. Then list
+   tasks:
+   - **A feature name** that matches exactly one feature's name (case-insensitive):
+     `list_tasks(feature_id=<id>, status=[todo, active])`, plus
+     `list_tasks(project_id=<project>, status=[active])` for step 3. Look up each
+     `Needs first:` title in those descriptions among the listed tasks (it may be
+     outside the feature). If one isn't there, do one
+     `list_tasks(project_id=<project>, status=[todo, active, blocked])` to resolve
+     it. Don't guess.
+   - **A goal, no arguments, or a name matching no feature or several:** list
+     `todo` and `active` tasks in the project.
 2. **Choose the work set.**
    - A feature name: that feature's tasks.
    - A goal: the tasks that serve it.
@@ -88,14 +97,16 @@ is then part of the task text.
    Use both `todo` and `active` tasks, and add any prerequisites the set depends
    on. If a goal isn't covered by existing tasks, file the missing work (see Filing
    tasks) and add the new `todo` tasks to the work set.
-3. **Check the active tasks' PRs first.** For each `active` task in the work set
-   whose marker has a PR:
+3. **Check the active tasks' PRs first.** For each `active` task in the project
+   whose marker has a PR, whatever the arguments, so merged PRs outside the work set
+   still get closed:
    `gh pr view <url> --json number,state,headRefName,baseRefName,mergeable,comments,reviews`.
    Inline review comments come from `gh api repos/mfleckser/nexus/pulls/<n>/comments`.
    - **`MERGED`**: set the task to `complete`.
    - **`CLOSED`** (not merged): set it to `cancelled`. If its PR applied migrations,
      note under **Cancelled** in the report that they're still live.
-   - **`OPEN`**:
+   - **`OPEN`**: only for work-set tasks. Leave one outside the work set alone: no
+     comments, no restack, and it doesn't join the work set.
      - **New comments from Mark.** That means comments, review bodies and inline
        comments by `mfleckser` made after the marker's `comments through` time, or
        all of them if there's no such time. Your own replies post from the same
@@ -119,8 +130,8 @@ is then part of the task text.
        the reason.
      - The original task stays `active`, waiting on Mark.
 
-   An `active` task with a branch but no PR was interrupted. It's workable again,
-   on that branch.
+   An `active` work-set task with a branch but no PR was interrupted. It's workable
+   again, on that branch.
 4. **Sort each `todo` task.** Block it when it needs Mark:
    - work outside the repo: hardware, accounts, credentials, money, anything
      physical
