@@ -15,6 +15,9 @@ from app.validation import parse_instant
 EVENT_FIELDS = ["title", "description", "start_at", "end_at", "all_day", "category", "timezone"]
 # Non-time fields a master shares with its overrides / split-off series.
 DETAIL_FIELDS = ["title", "description", "category", "all_day"]
+# Copied from the master onto rows an edit inserts (overrides, split-off
+# series), never taken from a request body.
+SERIES_FIELDS = ["created_via"]
 SCOPES = ("this", "following", "all")
 
 
@@ -198,6 +201,7 @@ def create_event(data: dict):
 
     # timezone is omitted (-> column default UTC) when the client didn't send one.
     row = v.pick(data, EVENT_FIELDS)
+    row["created_via"] = v.created_via()
 
     if data.get("rrule"):
         row.update(
@@ -667,7 +671,7 @@ def _update_this(master, original_start, override, data):
     elif override:
         row = supabase.table("events").update(updates).eq("id", override["id"]).execute().data[0]
     else:
-        new_row = {f: master[f] for f in DETAIL_FIELDS + ["timezone"]}
+        new_row = {f: master[f] for f in DETAIL_FIELDS + SERIES_FIELDS + ["timezone"]}
         new_row.update(
             start_at=_iso(cur_start),
             end_at=_iso(cur_end),
@@ -782,7 +786,7 @@ def _update_following(master, split_at, override, data):
     details = _changed_details(master, data)
     exdates_before, exdates_after = rr.partition_instants(_exdates(master), split_at)
 
-    new_row = {f: master[f] for f in DETAIL_FIELDS}
+    new_row = {f: master[f] for f in DETAIL_FIELDS + SERIES_FIELDS}
     new_row.update(details, id=str(uuid.uuid4()), timezone=tz)
     if body and "all_day" in details:
         new_row.update(_series_fields(body, new_start, new_end, tz))

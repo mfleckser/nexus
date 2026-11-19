@@ -2,8 +2,9 @@
 what the services use. Timestamps are stored the way PostgREST returns them
 (UTC ISO with +00:00) and compared as instants. A few Postgres behaviors are
 mimicked because the API maps them to status codes: NOT NULL (23502), CHECK
-(23514), UNIQUE (23505), FK to a missing master (23503), invalid uuid /
-timestamp text (22P02 / 22007), and FK on-delete cascade / set null.
+(23514: allowed values, non-blank titles, events end after start), UNIQUE
+(23505), FK to a missing master (23503), invalid uuid / timestamp text
+(22P02 / 22007), and FK on-delete cascade / set null.
 `rpc("apply_event_writes")` mirrors the SQL function of that name,
 all-or-nothing like a Postgres transaction, incl. its stale-write guard (PT409)."""
 
@@ -19,34 +20,49 @@ TIMESTAMP_COLS = {
     "due_at", "completed_at", "created_at", "updated_at",
 }  # fmt: skip
 
+CREATED_VIA = {None, "desktop", "mobile", "agent"}
+
 TABLES = {
     "events": {
         "defaults": {
             "title": None, "description": None, "category": None, "all_day": None, "timezone": "UTC",
             "rrule": None, "recurrence_end_at": None, "exdates": [], "recurring_event_id": None,
-            "original_start_at": None,
+            "original_start_at": None, "created_via": None,
         },
         "not_null": {"title", "start_at", "end_at", "timezone", "exdates"},
+        "nonblank": {"title"},
+        "checks": {"created_via": CREATED_VIA},
         "unique": ("recurring_event_id", "original_start_at"),  # deferrable in SQL
     },
     "tasks": {
         "defaults": {
             "title": None, "description": None, "status": "todo", "due_at": None, "completed_at": None,
-            "project_id": None, "feature_id": None, "event_id": None,
+            "project_id": None, "feature_id": None, "event_id": None, "created_via": None,
         },
-        "not_null": {"title"},
-        "checks": {"status": {None, "todo", "active", "blocked", "complete", "cancelled"}},
+        "not_null": {"title", "status"},
+        "nonblank": {"title"},
+        "checks": {"status": {"todo", "active", "blocked", "complete", "cancelled"}, "created_via": CREATED_VIA},
     },
     "projects": {
         "defaults": {
             "title": None, "description": None, "type": None, "status": "active", "notes": None,
-            "notes_updated_at": None, "show_tasks_in_main_view": True,
+            "notes_updated_at": None, "show_tasks_in_main_view": True, "created_via": None,
         },
         "not_null": {"title", "description", "show_tasks_in_main_view"},
+        "nonblank": {"title"},
+        "checks": {
+            "type": {None, "coding", "learning", "fitness", "other"},
+            "status": {None, "planning", "active", "paused", "complete", "archived"},
+            "created_via": CREATED_VIA,
+        },
     },
     "features": {
-        "defaults": {"project_id": None, "name": None, "notes": None, "notes_updated_at": None},
+        "defaults": {
+            "project_id": None, "name": None, "notes": None, "notes_updated_at": None, "created_via": None,
+        },
         "not_null": {"project_id", "name"},
+        "nonblank": {"name"},
+        "checks": {"created_via": CREATED_VIA},
     },
 }  # fmt: skip
 
@@ -180,8 +196,14 @@ class _Query:
             if c in schema["not_null"] and row.get(c) is None:
                 raise _pg_error("23502", f'null value in column "{c}" of relation "{self.table}"')
             allowed = schema.get("checks", {}).get(c)
-            if allowed is not None and row.get(c) not in allowed:
+            blank = c in schema.get("nonblank", ()) and isinstance(row.get(c), str) and not row[c].strip()
+            if (allowed is not None and row.get(c) not in allowed) or blank:
                 raise _pg_error("23514", f'new row for relation "{self.table}" violates check constraint')
+
+    def _check_row(self, row):
+        """Multi-column checks, on the row as it would be stored."""
+        if self.table == "events" and _instant(row["end_at"]) <= _instant(row["start_at"]):
+            raise _pg_error("23514", 'new row for relation "events" violates check constraint')
 
     def execute(self):
         if self.db.fail_on == self.op:
@@ -200,6 +222,7 @@ class _Query:
             row.update(copy.deepcopy(TABLES[self.table]["defaults"]))
             row.update({k: _store(k, v) for k, v in self.payload.items()})
             self._check_values(row, row.keys())
+            self._check_row(row)
             self.db.check_foreign_keys(self.table, [row])
             rows.append(row)
             try:
@@ -213,6 +236,8 @@ class _Query:
                 raise RuntimeError("empty update")  # PostgREST rejects these too
             values = {k: _store(k, v) for k, v in self.payload.items()}
             self._check_values(values, values.keys())
+            for r in match:
+                self._check_row({**r, **values})
             now = self.db.tick()
             self.db.check_foreign_keys(self.table, [{**r, **values} for r in match])
             before = copy.deepcopy(match)

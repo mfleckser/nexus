@@ -3,8 +3,9 @@ from app.errors import first_row
 from app.extensions import cache as c
 from app.extensions.supabase import supabase
 
-# The choices ProjectModal offers. The DB column is free text; "" from the
-# form means "none" and is stored as null.
+# The choices ProjectModal offers; match the projects_type_check /
+# projects_status_check constraints. "" from the form means "none" and is
+# stored as null.
 PROJECT_TYPES = ("coding", "learning", "fitness", "other")
 PROJECT_STATUSES = ("planning", "active", "paused", "complete", "archived")
 CREATE_FIELDS = ("title", "description", "type")
@@ -51,6 +52,7 @@ def create_project(data: dict):
     v.require(data, "title")
     row = {"description": "", **v.pick(data, CREATE_FIELDS)}
     _validate(row)
+    row["created_via"] = v.created_via()
 
     res = supabase.table("projects").insert(row).execute()
 
@@ -99,7 +101,8 @@ def create_feature(project_id: str, data: dict):
     v.require(data, "name")
     v.check_title(data, "name")
 
-    res = supabase.table("features").insert({"name": data["name"], "project_id": project_id}).execute()
+    row = {"name": data["name"], "project_id": project_id, "created_via": v.created_via()}
+    res = supabase.table("features").insert(row).execute()
 
     c.invalidate(c.project_features(project_id))
 

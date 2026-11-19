@@ -20,6 +20,17 @@ def json_body() -> dict:
     return data
 
 
+# Matches the <table>_created_via_check constraints.
+CLIENTS = ("desktop", "mobile", "agent")
+
+
+def created_via():
+    """The calling client, from the X-Nexus-Client header, for a new row's
+    created_via. Missing or unknown -> None, so such a writer still succeeds."""
+    client = request.headers.get("X-Nexus-Client")
+    return client if client in CLIENTS else None
+
+
 def parse_instant(value: str) -> datetime:
     """Parse an ISO-8601 instant and normalize to UTC, so that two spellings of
     the same moment share one cache entry. Raises ValidationError if unparseable."""
