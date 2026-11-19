@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "nexus": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "cd \"$(dirname \"$(git rev-parse --path-format=absolute --git-common-dir)\")\" && exec tools/nexus-mcp/venv/bin/python tools/nexus-mcp/server.py"
+      ]
+    }
+  }
+}

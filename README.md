@@ -92,7 +92,9 @@ npm run typecheck && npm run lint && npm test
 ## Agent tools (MCP)
 
 `tools/nexus-mcp` is a stdio MCP server that gives Claude Code tools for projects,
-features and tasks (list/get/create/update, append to feature notes; no deletes). It
+features and tasks (list/get/create/update, append to feature notes) and calendar
+events (list a window, create, update; recurring occurrences need an explicit
+`this` / `following` / `all` scope). No deletes. It
 calls the API like any client, using `NEXUS_API_URL` / `NEXUS_API_TOKEN` if set, else
 the URL and token in `frontend/.env`.
 
