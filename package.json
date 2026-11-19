@@ -4,7 +4,8 @@
   "description": "Nexus clients: desktop app (frontend/), mobile (mobile/), shared packages (packages/)",
   "workspaces": [
     "packages/*",
-    "frontend"
+    "frontend",
+    "mobile"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
