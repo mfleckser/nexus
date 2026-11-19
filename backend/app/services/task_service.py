@@ -59,6 +59,7 @@ def create_task(data: dict):
     v.require(data, "title")
     row = v.pick(data, CREATE_FIELDS)
     _validate(row)
+    row["created_via"] = v.created_via()
 
     res = supabase.table("tasks").insert(row).execute()
 

@@ -1,6 +1,5 @@
-// Row types mirror backend/supabase/migrations. created_at / updated_at (and
-// tasks.status) are nullable in the schema but always filled by their
-// defaults/triggers, so they're typed non-null here.
+// Row types mirror backend/supabase/migrations. created_via (which client made
+// the row) is left out; the app doesn't read it.
 
 // "blocked": needs Mark's attention before work can continue.
 export type TaskStatus = "todo" | "active" | "blocked" | "complete" | "cancelled";

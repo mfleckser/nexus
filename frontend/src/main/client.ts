@@ -9,7 +9,11 @@ const BASE_URL = `${ORIGIN}/api`;
 const client = axios.create({
     baseURL: BASE_URL,
     timeout: 5000,
-    headers: { Authorization: `Bearer ${import.meta.env.MAIN_VITE_NEXUS_API_TOKEN ?? ""}` },
+    headers: {
+        Authorization: `Bearer ${import.meta.env.MAIN_VITE_NEXUS_API_TOKEN ?? ""}`,
+        // Stamped on the rows this app creates (created_via).
+        "X-Nexus-Client": "desktop",
+    },
     // Paths always resolve against baseURL; an absolute URL from the renderer
     // must never redirect the request elsewhere.
     allowAbsoluteUrls: false,

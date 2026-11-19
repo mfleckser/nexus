@@ -345,13 +345,15 @@ class ApiClientTest(unittest.TestCase):
 
         def opener(req, timeout):
             seen.update(url=req.full_url, method=req.get_method(), auth=req.get_header("Authorization"),
-                        body=req.data, ctype=req.get_header("Content-type"))  # fmt: skip
+                        body=req.data, ctype=req.get_header("Content-type"),
+                        client=req.get_header("X-nexus-client"))  # fmt: skip
             return FakeResponse(b'[{"id": "t1"}]')
 
         api = NexusApi("http://pi:5001/", "secret-token", opener=opener)
         self.assertEqual(api.get("/tasks", status="todo,blocked", project_id=None), [{"id": "t1"}])
         self.assertEqual(seen["url"], "http://pi:5001/api/tasks?status=todo%2Cblocked")
         self.assertEqual((seen["method"], seen["auth"], seen["body"]), ("GET", "Bearer secret-token", None))
+        self.assertEqual(seen["client"], "agent")
         api.put("/tasks/t1", {"status": "blocked"})
         self.assertEqual((seen["method"], json.loads(seen["body"]), seen["ctype"]),
                          ("PUT", {"status": "blocked"}, "application/json"))  # fmt: skip

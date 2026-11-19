@@ -114,6 +114,7 @@ class NexusApi:
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(url, data=data, method=method)
         req.add_header("Authorization", f"Bearer {self._token}")
+        req.add_header("X-Nexus-Client", "agent")
         if data is not None:
             req.add_header("Content-Type", "application/json")
         try:

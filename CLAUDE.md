@@ -112,7 +112,12 @@
     `useProjects`) with optimistic updates that roll back on failure, `useNow` polling
     plus refetch on window focus. Failures surface via `useReportError()` toasts.
   - Backend layout: `app/api` blueprints (thin) → `app/services` (logic, Supabase
-    calls). Writes whitelist columns; input checks in `app/validation.py`.
+    calls). Writes whitelist columns; input checks in `app/validation.py`, mirrored by
+    DB NOT NULL / CHECK constraints (keep the two in step).
+  - Client identity: clients send `X-Nexus-Client: desktop|mobile|agent` (desktop app,
+    mobile, MCP server); creates stamp it into `created_via` on tasks, events, projects,
+    features (missing/unknown → NULL, never a 400). Rows a recurring edit inserts
+    (overrides, split-off series) copy their master's.
   - Errors: every error is JSON `{"error": "<message>"}` (`app/errors.py`) — 400 bad
     input, 404 missing id, 409 row changed under a recurring edit (`Conflict`), 500
     otherwise. Success bodies are bare JSON.
