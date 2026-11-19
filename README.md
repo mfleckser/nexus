@@ -3,6 +3,10 @@
 Personal life-system desktop app: calendar, tasks, projects (habits, goals and an AI
 coach later). Electron + React frontend, Flask backend, Postgres on Supabase.
 
+The JS side is an npm workspaces monorepo: `frontend/` (desktop app), `packages/shared`
+(`@nexus/shared`: API types, typed client, logic shared by clients) and `mobile/` (not
+started). Install and run JS checks from the repo root.
+
 ## Setup
 
 Backend (Python 3.12, see `backend/.python-version`):
@@ -14,12 +18,11 @@ venv/bin/pip install -r requirements-dev.txt
 cp .env.example .env   # fill in SUPABASE_URL / SUPABASE_KEY / NEXUS_API_TOKEN
 ```
 
-Frontend:
+Frontend (from the repo root; one `node_modules` for every workspace):
 
 ```sh
-cd frontend
 npm install
-cp .env.example .env   # MAIN_VITE_NEXUS_API_TOKEN = backend's NEXUS_API_TOKEN
+cp frontend/.env.example frontend/.env   # MAIN_VITE_NEXUS_API_TOKEN = backend's NEXUS_API_TOKEN
 ```
 
 ## Run
@@ -36,8 +39,9 @@ them. Every route except `/api/v1/health` needs the token. The default port is 5
 AirPlay Receiver holds 5000; set `NEXUS_PORT` (and the frontend URL) to move it.
 
 The API contract is `backend/openapi.json` (OpenAPI 3.1): routes under `/api/v1` (`/api`
-still serves them as an alias), bodies and error codes. Generate TypeScript types from it
-with e.g. `npx openapi-typescript backend/openapi.json -o <out>.d.ts`.
+still serves them as an alias), bodies and error codes. `packages/shared/src/schema.d.ts`
+is generated from it with openapi-typescript: after changing the spec, run
+`npm run generate -w @nexus/shared` (a test fails while the two disagree).
 
 ## Deploy (Raspberry Pi + Tailscale)
 
@@ -89,8 +93,7 @@ cd backend
 venv/bin/python -m unittest discover -s tests
 venv/bin/ruff check . && venv/bin/ruff format --check .
 
-cd frontend
-npm run typecheck && npm run lint && npm test
+npm run typecheck && npm run lint && npm test   # repo root: frontend + packages/shared
 ```
 
 ## Agent tools (MCP)

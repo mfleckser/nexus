@@ -1,5 +1,6 @@
+import type { Task as ApiTask } from "@nexus/shared";
 import { Task, TaskStatus } from "@renderer/types";
-import { api, parseDate, parseNullableDate, Wire } from "@renderer/lib/api";
+import { api, parseDate, parseNullableDate, toWire } from "@renderer/lib/api";
 
 // Fields a PUT may change.
 export type TaskUpdate = Partial<{
@@ -13,7 +14,7 @@ export type TaskUpdate = Partial<{
     event_id: string | null;
 }>;
 
-function parseTask(t: Wire<Task>): Task {
+function parseTask(t: ApiTask): Task {
     return {
         ...t,
         created_at: parseDate(t.created_at),
@@ -24,7 +25,7 @@ function parseTask(t: Wire<Task>): Task {
 }
 
 async function getTasks(): Promise<Task[]> {
-    const raw = await api.get<Wire<Task>[]>("/tasks");
+    const raw = await api.listTasks();
     return raw.map(parseTask);
 }
 
@@ -35,22 +36,16 @@ function addTask(
     project_id?: string,
     feature_id?: string,
 ): Promise<unknown> {
-    return api.post("/tasks", {
-        title: title,
-        description: description,
-        due_at: due_at,
-        project_id: project_id,
-        feature_id: feature_id,
-    });
+    return api.createTask(toWire({ title, description, due_at, project_id, feature_id }));
 }
 
 // Resolves to the updated row.
 async function updateTask(id: string, data: TaskUpdate): Promise<Task> {
-    return parseTask(await api.put<Wire<Task>>(`/tasks/${id}`, data));
+    return parseTask(await api.updateTask(id, toWire(data)));
 }
 
 function deleteTask(id: string): Promise<unknown> {
-    return api.delete(`/tasks/${id}`);
+    return api.deleteTask(id);
 }
 
 export { getTasks, addTask, updateTask, deleteTask };

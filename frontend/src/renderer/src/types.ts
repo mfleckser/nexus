@@ -1,8 +1,9 @@
-// Row types mirror backend/supabase/migrations. created_via (which client made
-// the row) is left out; the app doesn't read it.
+import type { ProjectType, RecurrenceScope, TaskStatus } from "@nexus/shared";
 
-// "blocked": needs Mark's attention before work can continue.
-export type TaskStatus = "todo" | "active" | "blocked" | "complete" | "cancelled";
+// Row types: the API's rows (@nexus/shared) with timestamps parsed to Dates.
+// created_via (which client made the row) is left out; the app doesn't read it.
+
+export type { ProjectType, RecurrenceScope, TaskStatus };
 
 export type Task = {
     id: string;
@@ -37,8 +38,6 @@ export type CalendarEvent = {
     // The occurrence's original (unmodified) start; identifies it to the occurrence endpoints.
     original_start_at: Date | null;
 };
-
-export type RecurrenceScope = "this" | "following" | "all";
 
 export type DateRange = {
     start: Date;
@@ -77,7 +76,7 @@ export type Project = {
     updated_at: Date;
     title: string;
     description: string;
-    type: string | null;
+    type: ProjectType | null;
     status: ProjectStatus | null;
     show_tasks_in_main_view: boolean;
     // null until the notes are first edited.

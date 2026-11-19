@@ -1,0 +1,14 @@
+{
+  "name": "nexus-monorepo",
+  "private": true,
+  "description": "Nexus clients: desktop app (frontend/), mobile (mobile/), shared packages (packages/)",
+  "workspaces": [
+    "packages/*",
+    "frontend"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm test --workspaces --if-present"
+  }
+}

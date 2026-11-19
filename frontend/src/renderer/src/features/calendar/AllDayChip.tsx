@@ -6,7 +6,7 @@ import { categoryColor } from "@renderer/features/calendar/categories";
 import { ALL_DAY_ROW_PX, DRAG_THRESHOLD } from "@renderer/features/calendar/constants";
 import { allDayTimes, daySpan, DayBar, dayColumnAt, layoutDayBars } from "@renderer/lib/allDay";
 import { addDays, browserTimeZone, formatTime, shiftDays } from "@renderer/lib/time";
-import { describeRrule } from "@renderer/lib/rrule";
+import { describeRrule } from "@nexus/shared";
 
 // `event`'s times moved `days` whole days: an all-day event's as the viewer's
 // local midnights, a timed one's (a multi-day bar in month view) at the same

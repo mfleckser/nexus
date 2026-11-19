@@ -1,33 +1,31 @@
-import type { ApiResult } from "../../../shared/ipc";
+import { createNexusClient, Transport } from "@nexus/shared";
 
-// A failed backend call. `status` is the HTTP status, or null when the
-// backend couldn't be reached.
-export class ApiError extends Error {
-    readonly status: number | null;
-
-    constructor(message: string, status: number | null) {
-        super(message);
-        this.name = "ApiError";
-        this.status = status;
+// Requests go through the main process (window.api), which adds the backend
+// origin, token and client name.
+const ipcTransport: Transport = ({ method, path, body }) => {
+    switch (method) {
+        case "GET":
+            return window.api.apiGet(path);
+        case "POST":
+            return window.api.apiPost(path, body);
+        case "PUT":
+            return window.api.apiPut(path, body);
+        case "DELETE":
+            return window.api.apiDelete(path);
     }
-}
-
-async function unwrap<T>(pending: Promise<ApiResult>): Promise<T> {
-    const result = await pending;
-    if (!result.ok) throw new ApiError(result.message, result.status);
-    // The backend's JSON is trusted to match the declared shape.
-    return result.data as T;
-}
-
-export const api = {
-    get: <T>(path: string): Promise<T> => unwrap<T>(window.api.apiGet(path)),
-    post: <T>(path: string, body: unknown): Promise<T> => unwrap<T>(window.api.apiPost(path, body)),
-    put: <T>(path: string, body: unknown): Promise<T> => unwrap<T>(window.api.apiPut(path, body)),
-    delete: <T>(path: string): Promise<T> => unwrap<T>(window.api.apiDelete(path)),
 };
 
-// JSON wire form of a row type: Date fields arrive as ISO strings.
-export type Wire<T> = { [K in keyof T]: T[K] extends Date ? string : T[K] extends Date | null ? string | null : T[K] };
+export const api = createNexusClient(ipcTransport);
+
+// JSON wire form of a value: Date fields travel as ISO strings.
+type WireValue<V> = V extends Date ? string : V;
+type Wire<T> = { [K in keyof T]: WireValue<T[K]> };
+
+export function toWire<T extends object>(data: T): Wire<T> {
+    return Object.fromEntries(
+        Object.entries(data).map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value]),
+    ) as Wire<T>;
+}
 
 export const parseDate = (value: string): Date => new Date(value);
 export const parseNullableDate = (value: string | null | undefined): Date | null => (value ? new Date(value) : null);

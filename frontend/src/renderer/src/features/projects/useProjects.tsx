@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import * as projectsApi from "@renderer/features/projects/projects.api";
-import { Feature, Project } from "@renderer/types";
+import { Feature, Project, ProjectType } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";
 import useReportError from "@renderer/hooks/useReportError";
 import { sameSet } from "@renderer/lib/collections";
@@ -10,7 +10,7 @@ type ProjectsContextValue = {
     // False until the first project fetch has settled.
     projectsLoaded: boolean;
     // Resolves to the created project.
-    addProject: (title: string, description: string, type: string | null) => Promise<Project>;
+    addProject: (title: string, description: string, type: ProjectType | null) => Promise<Project>;
     updateProject: (id: string, data: projectsApi.ProjectUpdate) => Promise<void>;
     // Optimistic; rolls back and rethrows on failure.
     deleteProject: (id: string) => Promise<void>;
@@ -61,7 +61,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
         setProjects((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
     }, []);
 
-    const addProject = useCallback(async (title: string, description: string, type: string | null) => {
+    const addProject = useCallback(async (title: string, description: string, type: ProjectType | null) => {
         const created = await projectsApi.addProject(title, description, type);
         setProjects(await projectsApi.getProjects());
         return created;

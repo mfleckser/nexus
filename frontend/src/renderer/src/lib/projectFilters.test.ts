@@ -54,7 +54,7 @@ describe("filterAndSortProjects: type and status", () => {
         project({ id: "code", type: "coding", status: "active" }),
         project({ id: "fit", type: "fitness", status: "archived" }),
         project({ id: "none", type: null, status: null }),
-        project({ id: "empty", type: "", status: "paused" }),
+        project({ id: "empty", type: "" as unknown as null, status: "paused" }),
     ];
 
     it("hides archived by default", () => {
@@ -85,7 +85,7 @@ describe("filterAndSortProjects: type and status", () => {
     });
 
     it("keeps a real type named 'untyped' out of the Untyped filter", () => {
-        const literal = project({ id: "lit", type: "untyped" });
+        const literal = project({ id: "lit", type: "untyped" as unknown as null });
         expect(filterAndSortProjects([literal], view({ type: UNTYPED }), "")).toEqual([]);
         expect(projectTypeOptions([literal, project({ id: "n" })])).toEqual(["untyped", UNTYPED]);
     });

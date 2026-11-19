@@ -83,8 +83,10 @@ is then part of the task text.
 
    For each slot that doesn't exist yet: `git fetch origin`,
    `git worktree add --detach .claude/worktrees/conductor-<n> origin/main`. Then
-   symlink `frontend/node_modules`, `backend/venv`, `tools/nexus-mcp/venv`,
-   `frontend/.env` and `backend/.env` into it from the main checkout.
+   symlink `backend/venv`, `tools/nexus-mcp/venv`, `frontend/.env` and `backend/.env`
+   into it from the main checkout, and run `npm ci` at its root (a symlinked
+   `node_modules` would resolve `@nexus/shared` to the main checkout's copy). After
+   checking out a branch whose `package-lock.json` differs, run `npm ci` again.
    Leave any other worktree alone, including an old single-lane
    `.claude/worktrees/conductor`; Mark removes those.
 
