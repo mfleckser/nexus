@@ -1,6 +1,6 @@
-import { calendarDaysBetween } from "@nexus/shared";
+import { addDays, calendarDaysBetween, startOfDay } from "@nexus/shared";
 
-export { calendarDaysBetween };
+export { addDays, calendarDaysBetween, startOfDay };
 
 export const browserTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -9,11 +9,6 @@ export const browserTimeZone = (): string => Intl.DateTimeFormat().resolvedOptio
 // the same wall-clock time) across DST transitions, when a day is 23 or 25 h.
 
 export const MINUTES_PER_DAY = 24 * 60;
-
-export const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
-// Midnight `n` calendar days after d's day.
-export const addDays = (d: Date, n: number): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 
 // Same wall-clock time, `n` calendar days later.
 export const shiftDays = (d: Date, n: number): Date =>
