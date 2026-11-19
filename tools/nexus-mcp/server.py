@@ -108,7 +108,7 @@ class NexusApi:
     def request(self, method: str, path: str, body: dict | None = None, query: dict | None = None) -> Any:
         if not self._token:
             raise NexusError("No Nexus API token: set NEXUS_API_TOKEN, or MAIN_VITE_NEXUS_API_TOKEN in frontend/.env.")
-        url = f"{self.base_url}/api{path}"
+        url = f"{self.base_url}/api/v1{path}"
         if query:
             url += "?" + urllib.parse.urlencode({k: v for k, v in query.items() if v is not None})
         data = json.dumps(body).encode() if body is not None else None

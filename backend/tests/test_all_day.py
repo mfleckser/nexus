@@ -25,17 +25,17 @@ class AllDayCase(AppTestCase):
     def create(self, status=201, **body):
         body.setdefault("title", "Trip")
         body.setdefault("timezone", LA)
-        res = self.client.post("/api/events", json=body)
+        res = self.client.post("/api/v1/events", json=body)
         self.assertEqual(res.status_code, status, res.get_json())
         return res.get_json()
 
     def put(self, path, body, status=200):
-        res = self.client.put(f"/api/events/{path}", json=body)
+        res = self.client.put(f"/api/v1/events/{path}", json=body)
         self.assertEqual(res.status_code, status, res.get_json())
         return res.get_json()
 
     def events(self, start="2026-10-28T00:00:00Z", end="2026-11-10T00:00:00Z"):
-        res = self.client.get(f"/api/events?start={start}&end={end}")
+        res = self.client.get(f"/api/v1/events?start={start}&end={end}")
         self.assertEqual(res.status_code, 200)
         return res.get_json()
 
@@ -252,7 +252,7 @@ class AllDayRecurringEditTest(AllDayCase):
         return self.create(all_day=True, start_at=OCT_30, end_at=OCT_31, rrule=f"FREQ=DAILY;COUNT={count}")
 
     def cancel(self, master_id, start):
-        res = self.client.delete(f"/api/events/{master_id}/occurrences/{start}?scope=this")
+        res = self.client.delete(f"/api/v1/events/{master_id}/occurrences/{start}?scope=this")
         self.assertEqual(res.status_code, 200, res.get_json())
 
     def spans(self, evs=None):

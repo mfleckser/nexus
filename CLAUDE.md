@@ -98,13 +98,19 @@
   ## Architecture
 
   - Request path: renderer → preload IPC (`window.api`) → main-process axios
-    (`frontend/src/main/client.ts`) → Flask at `MAIN_VITE_NEXUS_API_URL` + `/api`
+    (`frontend/src/main/client.ts`) → Flask at `MAIN_VITE_NEXUS_API_URL` + `/api/v1`
     (`frontend/.env`, default `127.0.0.1:5001`). Renderer is sandboxed with no direct
     network or Node access.
+  - API contract: `backend/openapi.json` (OpenAPI 3.1) documents every route, body
+    and error; it's the source for clients' generated types. Change it with the API:
+    `tests/test_openapi.py` fails when routes or response shapes drift from it. Routes
+    are served under `/api/v1` and, as an alias for older clients, `/api` (one parent
+    blueprint registered twice in `create_app`). Ordinary edits are last-write-wins by
+    design (no `updated_at` preconditions); only recurring edits can 409.
   - Hosting: always-on backend on a Raspberry Pi — gunicorn (`backend/serve`, 1 worker
     × 8 threads, binds 127.0.0.1) behind `tailscale serve` HTTPS; systemd user unit in
     `backend/deploy/`. Steps in `README.md`. `backend/start` stays the dev server.
-  - Auth: static bearer token. Every route except `/api/health` needs
+  - Auth: static bearer token. Every route except `/api/v1/health` needs
     `Authorization: Bearer <NEXUS_API_TOKEN>` (`app/auth.py`); desktop sends
     `MAIN_VITE_NEXUS_API_TOKEN`. Supabase RLS is on with no policies; backend uses the
     secret key, clients only ever talk to the Flask API.

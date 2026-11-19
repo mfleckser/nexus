@@ -134,4 +134,4 @@ def delete_feature(feature_id: str):
     feature = first_row(res.data, f"feature {feature_id}")
     # tasks.feature_id is set null.
     c.invalidate(c.project_features(feature["project_id"]), c.TASKS)
-    return feature
+    return _with_has_notes(feature)

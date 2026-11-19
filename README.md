@@ -32,8 +32,12 @@ cd frontend && npm run dev
 The frontend's main process calls the backend at `MAIN_VITE_NEXUS_API_URL` from
 `frontend/.env` (default `http://127.0.0.1:5001`) with the bearer token
 `MAIN_VITE_NEXUS_API_TOKEN`; both are baked in at build time, so rebuild after changing
-them. Every route except `/api/health` needs the token. The default port is 5001 because macOS
+them. Every route except `/api/v1/health` needs the token. The default port is 5001 because macOS
 AirPlay Receiver holds 5000; set `NEXUS_PORT` (and the frontend URL) to move it.
+
+The API contract is `backend/openapi.json` (OpenAPI 3.1): routes under `/api/v1` (`/api`
+still serves them as an alias), bodies and error codes. Generate TypeScript types from it
+with e.g. `npx openapi-typescript backend/openapi.json -o <out>.d.ts`.
 
 ## Deploy (Raspberry Pi + Tailscale)
 
@@ -59,7 +63,7 @@ sudo loginctl enable-linger "$USER"
 
 # HTTPS on the tailnet -> 127.0.0.1:5001 (persists across reboots)
 sudo tailscale serve --bg 5001
-curl https://<pi-name>.<tailnet>.ts.net/api/health
+curl https://<pi-name>.<tailnet>.ts.net/api/v1/health
 ```
 
 Then set `MAIN_VITE_NEXUS_API_URL=https://<pi-name>.<tailnet>.ts.net` in

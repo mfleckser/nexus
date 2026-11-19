@@ -19,7 +19,7 @@ class EventServiceTest(AppTestCase):
 
     def create(self, **body):
         body.setdefault("title", "Standup")
-        res = self.client.post("/api/events", json=body)
+        res = self.client.post("/api/v1/events", json=body)
         self.assertEqual(res.status_code, 201, res.get_json())
         return res.get_json()
 
@@ -34,7 +34,7 @@ class EventServiceTest(AppTestCase):
         )
 
     def events(self, start="2026-09-28T00:00:00Z", end="2026-10-31T00:00:00Z"):
-        res = self.client.get(f"/api/events?start={start}&end={end}")
+        res = self.client.get(f"/api/v1/events?start={start}&end={end}")
         self.assertEqual(res.status_code, 200)
         return res.get_json()
 
@@ -42,12 +42,12 @@ class EventServiceTest(AppTestCase):
         return [e["start_at"] for e in self.events(**kw)]
 
     def put_occ(self, master_id, original_start, body, status=200):
-        res = self.client.put(f"/api/events/{master_id}/occurrences/{original_start}", json=body)
+        res = self.client.put(f"/api/v1/events/{master_id}/occurrences/{original_start}", json=body)
         self.assertEqual(res.status_code, status, res.get_json())
         return res.get_json()
 
     def delete_occ(self, master_id, original_start, scope, status=200):
-        res = self.client.delete(f"/api/events/{master_id}/occurrences/{original_start}?scope={scope}")
+        res = self.client.delete(f"/api/v1/events/{master_id}/occurrences/{original_start}?scope={scope}")
         self.assertEqual(res.status_code, status, res.get_json())
         return res.get_json()
 
@@ -224,7 +224,7 @@ class EventServiceTest(AppTestCase):
         ]:
             with self.subTest(rule=rule):
                 res = self.client.post(
-                    "/api/events",
+                    "/api/v1/events",
                     json={
                         "title": "x",
                         "start_at": "2026-10-01T16:00:00Z",
@@ -240,7 +240,7 @@ class EventServiceTest(AppTestCase):
     def test_plain_put_on_master_shifts_exceptions(self):
         m = self._moved_override_series()
         res = self.client.put(
-            f"/api/events/{m['id']}", json={"start_at": "2026-09-30T17:00:00Z", "end_at": "2026-09-30T18:00:00Z"}
+            f"/api/v1/events/{m['id']}", json={"start_at": "2026-09-30T17:00:00Z", "end_at": "2026-09-30T18:00:00Z"}
         )
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.get_json()["exdates"], ["2026-10-21T17:00:00+00:00"])
@@ -252,14 +252,14 @@ class EventServiceTest(AppTestCase):
 
     def test_plain_put_removing_rrule_drops_exceptions(self):
         m = self._moved_override_series()
-        res = self.client.put(f"/api/events/{m['id']}", json={"rrule": None})
+        res = self.client.put(f"/api/v1/events/{m['id']}", json={"rrule": None})
         self.assertEqual(res.status_code, 200)
         self.assertEqual((res.get_json()["rrule"], res.get_json()["exdates"]), (None, []))
         self.assertEqual(len(self.db.rows), 1)
 
     def test_plain_put_on_master_title_only_keeps_exceptions(self):
         m = self._moved_override_series()
-        self.client.put(f"/api/events/{m['id']}", json={"title": "Renamed"})
+        self.client.put(f"/api/v1/events/{m['id']}", json={"title": "Renamed"})
         self.assertEqual(self.row(m["id"])["exdates"], ["2026-10-21T16:00:00+00:00"])
         self.assertEqual(len(self.db.rows), 2)
 
@@ -284,13 +284,13 @@ class EventServiceTest(AppTestCase):
         self.delete_occ(m["id"], "2026-09-30T16:00:00Z", "this")
         other = self.create(title="Other", start_at="2026-10-01T16:00:00Z", end_at="2026-10-01T17:00:00Z")
         tasks = {
-            name: self.client.post("/api/tasks", json={"title": name, "event_id": ev}).get_json()["id"]
+            name: self.client.post("/api/v1/tasks", json={"title": name, "event_id": ev}).get_json()["id"]
             for name, ev in (("a", m["id"]), ("b", m["id"]), ("other", other["id"]), ("none", None))
         }
         return m, other, tasks
 
     def task_links(self, tasks):
-        return {name: self.client.get(f"/api/tasks/{tid}").get_json()["event_id"] for name, tid in tasks.items()}
+        return {name: self.client.get(f"/api/v1/tasks/{tid}").get_json()["event_id"] for name, tid in tasks.items()}
 
     def split_ops(self, m):
         """The ops the split sends, in order (spied, still applied)."""
@@ -301,12 +301,12 @@ class EventServiceTest(AppTestCase):
 
     def test_following_split_that_drops_the_master_keeps_task_links(self):
         m, other, tasks = self._droppable_series()
-        self.assertEqual(len(self.client.get("/api/tasks").get_json()), 4)  # warm the tasks cache
+        self.assertEqual(len(self.client.get("/api/v1/tasks").get_json()), 4)  # warm the tasks cache
         new, ops = self.split_ops(m)
         self.assertIsNone(self.row(m["id"]))
         expected = {"a": new["id"], "b": new["id"], "other": other["id"], "none": None}
         # The cached list was cleared by the edit, not served stale.
-        self.assertEqual({t["title"]: t["event_id"] for t in self.client.get("/api/tasks").get_json()}, expected)
+        self.assertEqual({t["title"]: t["event_id"] for t in self.client.get("/api/v1/tasks").get_json()}, expected)
         self.assertEqual(self.task_links(tasks), expected)
         # One transaction: insert the new master, relink, then delete the old one.
         kinds = [op["op"] for op in ops]
@@ -317,7 +317,7 @@ class EventServiceTest(AppTestCase):
         # Before the series starts, so the earlier half holds the next occurrence
         # (test_task_links covers the task following the later half).
         m = self.weekly_wed()
-        tid = self.client.post("/api/tasks", json={"title": "T", "event_id": m["id"]}).get_json()["id"]
+        tid = self.client.post("/api/v1/tasks", json={"title": "T", "event_id": m["id"]}).get_json()["id"]
         with mock.patch.object(es, "_now", return_value=datetime(2026, 9, 1, tzinfo=UTC)):
             _, ops = self.split_ops(m)
         self.assertNotIn("relink_tasks", [op["op"] for op in ops])
@@ -335,7 +335,7 @@ class EventServiceTest(AppTestCase):
 
         self.quiet_errors()
         with mock.patch.object(es, "_apply", side_effect=fail_after_relink):
-            res = self.client.put(f"/api/events/{m['id']}/occurrences/2026-10-07T16:00:00Z", json=self.SPLIT)
+            res = self.client.put(f"/api/v1/events/{m['id']}/occurrences/2026-10-07T16:00:00Z", json=self.SPLIT)
         self.db.fail_after_ops = None
         self.assertEqual(res.status_code, 500)
         self.assertEqual(self.db.rows, before_events)
@@ -399,11 +399,11 @@ class EventServiceTest(AppTestCase):
 
     def test_rejects_end_not_after_start(self):
         bad = {"title": "x", "start_at": "2026-10-01T16:00:00Z", "end_at": "2026-10-01T16:00:00Z"}
-        self.assertEqual(self.client.post("/api/events", json=bad).status_code, 400)
-        self.assertEqual(self.client.post("/api/events", json={**bad, "rrule": "FREQ=DAILY"}).status_code, 400)
+        self.assertEqual(self.client.post("/api/v1/events", json=bad).status_code, 400)
+        self.assertEqual(self.client.post("/api/v1/events", json={**bad, "rrule": "FREQ=DAILY"}).status_code, 400)
 
         plain = self.create(start_at="2026-10-01T16:00:00Z", end_at="2026-10-01T17:00:00Z")
-        res = self.client.put(f"/api/events/{plain['id']}", json={"end_at": "2026-10-01T15:00:00Z"})
+        res = self.client.put(f"/api/v1/events/{plain['id']}", json={"end_at": "2026-10-01T15:00:00Z"})
         self.assertEqual(res.status_code, 400)
 
         m = self.weekly_wed()
@@ -428,7 +428,7 @@ class EventServiceTest(AppTestCase):
         # delete-this removes the override, then fails writing exdates: rolled back.
         self.quiet_errors()  # expected 500
         self.db.fail_on = "update"
-        res = self.client.delete(f"/api/events/{m['id']}/occurrences/2026-10-07T16:00:00Z?scope=this")
+        res = self.client.delete(f"/api/v1/events/{m['id']}/occurrences/2026-10-07T16:00:00Z?scope=this")
         self.assertEqual(res.status_code, 500)
         self.db.fail_on = None
 
@@ -460,7 +460,7 @@ class EventServiceTest(AppTestCase):
         ]
         for body in bad:
             with self.subTest(body=body):
-                self.assertEqual(self.client.post("/api/events", json=body).status_code, 400)
+                self.assertEqual(self.client.post("/api/v1/events", json=body).status_code, 400)
         self.assertEqual(self.db.rows, [])
         self.assertEqual(self.create(**ok)["timezone"], "UTC")
 
@@ -468,7 +468,7 @@ class EventServiceTest(AppTestCase):
         plain = self.create(start_at="2026-10-01T16:00:00Z", end_at="2026-10-01T17:00:00Z")
         for body in [{"timezone": "Mars/Olympus"}, {"timezone": None}, {"title": None}, {"start_at": None}]:
             with self.subTest(body=body):
-                res = self.client.put(f"/api/events/{plain['id']}", json=body)
+                res = self.client.put(f"/api/v1/events/{plain['id']}", json=body)
                 self.assertEqual(res.status_code, 400)
         m = self.weekly_wed()
         for scope in ("this", "following", "all"):
@@ -479,7 +479,7 @@ class EventServiceTest(AppTestCase):
 
     def test_update_without_known_fields_returns_current_row(self):
         plain = self.create(start_at="2026-10-01T16:00:00Z", end_at="2026-10-01T17:00:00Z")
-        res = self.client.put(f"/api/events/{plain['id']}", json={"bogus": True})
+        res = self.client.put(f"/api/v1/events/{plain['id']}", json={"bogus": True})
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.get_json(), plain)
 
@@ -525,7 +525,7 @@ class EventServiceTest(AppTestCase):
     def test_plain_delete_of_override_cancels_the_occurrence(self):
         m = self.weekly_wed()
         override = self.put_occ(m["id"], "2026-10-14T16:00:00Z", {"scope": "this", "title": "Moved"})
-        res = self.client.delete(f"/api/events/{override['id']}")
+        res = self.client.delete(f"/api/v1/events/{override['id']}")
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.get_json()["id"], override["id"])
         self.assertEqual(self.row(m["id"])["exdates"], ["2026-10-14T16:00:00+00:00"])
@@ -536,7 +536,7 @@ class EventServiceTest(AppTestCase):
         m = self.create(start_at="2026-09-30T16:00:00Z", end_at="2026-09-30T17:00:00Z", rrule="FREQ=WEEKLY;COUNT=2")
         override = self.put_occ(m["id"], "2026-09-30T16:00:00Z", {"scope": "this", "title": "Kept"})
         self.delete_occ(m["id"], "2026-10-07T16:00:00Z", "this")
-        self.assertEqual(self.client.delete(f"/api/events/{override['id']}").status_code, 200)
+        self.assertEqual(self.client.delete(f"/api/v1/events/{override['id']}").status_code, 200)
         self.assertEqual(self.db.rows, [])
 
     def test_editing_cancelled_occurrence_is_404(self):
@@ -623,7 +623,7 @@ class EventServiceTest(AppTestCase):
                 with self.subTest(scope=scope, fail_after=after):
                     self.db.fail_after_ops = after
                     res = self.client.put(
-                        f"/api/events/{m['id']}/occurrences/2026-10-14T16:00:00Z", json={**move, "scope": scope}
+                        f"/api/v1/events/{m['id']}/occurrences/2026-10-14T16:00:00Z", json={**move, "scope": scope}
                     )
                     self.assertEqual(res.status_code, 500)
                     self.assertEqual(self.db.rows, before)
@@ -697,7 +697,7 @@ class EventServiceTest(AppTestCase):
         before = len(self.db.rows)
         with patch:
             res = self.client.put(
-                f"/api/events/{m['id']}/occurrences/2026-10-14T16:00:00Z",
+                f"/api/v1/events/{m['id']}/occurrences/2026-10-14T16:00:00Z",
                 json={"scope": "following", **self.AN_HOUR_LATER},
             )
         self.assertEqual(res.status_code, 409)
@@ -1066,7 +1066,7 @@ class EventServiceTest(AppTestCase):
     def test_plain_put_on_master_to_another_day_re_aims_rule(self):
         m = self._series_with_exceptions()
         res = self.client.put(
-            f"/api/events/{m['id']}", json={"start_at": "2026-10-01T16:00:00Z", "end_at": "2026-10-01T17:00:00Z"}
+            f"/api/v1/events/{m['id']}", json={"start_at": "2026-10-01T16:00:00Z", "end_at": "2026-10-01T17:00:00Z"}
         )
         self.assertEqual(res.status_code, 200, res.get_json())
         body = res.get_json()
