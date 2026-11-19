@@ -20,7 +20,7 @@ import {
     MINUTES_PER_DAY,
     shiftDays,
 } from "@renderer/lib/time";
-import { describeRrule } from "@renderer/lib/rrule";
+import { describeRrule } from "@nexus/shared";
 import { DaySegment, daySegment } from "@renderer/lib/eventLayout";
 
 const snap = (minutes: number): number => SLOT_MINUTES * Math.round(minutes / SLOT_MINUTES);

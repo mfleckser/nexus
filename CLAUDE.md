@@ -8,6 +8,8 @@
   ## Stack
 
   - Frontend: Electron + React + Vite + TypeScript
+  - JS monorepo (npm workspaces, one root `node_modules` + lockfile): `frontend/`
+    (desktop), `packages/shared` (`@nexus/shared`), `mobile/` (placeholder, not started)
   - Backend: Python + Flask + Supabase client (PostgREST) — no ORM; schema lives in
     raw SQL migrations under `backend/supabase/migrations`, applied via the Supabase CLI
   - DB: Postgres on Supabase (separate project from Git Gains)
@@ -97,10 +99,19 @@
 
   ## Architecture
 
-  - Request path: renderer → preload IPC (`window.api`) → main-process axios
-    (`frontend/src/main/client.ts`) → Flask at `MAIN_VITE_NEXUS_API_URL` + `/api/v1`
-    (`frontend/.env`, default `127.0.0.1:5001`). Renderer is sandboxed with no direct
-    network or Node access.
+  - Request path: renderer `@nexus/shared` client (`lib/api.ts`, an IPC transport) →
+    preload IPC (`window.api`) → main-process axios (`frontend/src/main/client.ts`) →
+    Flask at `MAIN_VITE_NEXUS_API_URL` + `/api/v1` (`frontend/.env`, default
+    `127.0.0.1:5001`). Renderer is sandboxed with no direct network or Node access.
+  - Shared package `packages/shared` (TS source, no build step; bundled into the desktop
+    app, so it's a devDependency there; must not import Electron): `schema.d.ts`
+    generated from `backend/openapi.json` by openapi-typescript (`npm run generate -w
+    @nexus/shared`; `schema.test.ts` fails when stale — never hand-edit), the typed
+    client `createNexusClient(transport)` (paths/bodies/responses from the schema; the
+    transport owns origin, token and `X-Nexus-Client`; `fetchTransport` for non-Electron
+    clients), and UI logic every client needs: task due-date groups (`taskGroups.ts`),
+    repeat rules (`rrule.ts`), `calendarDaysBetween`. Desktop row types (`types.ts`) are
+    the API's rows with Dates; the `*.api.ts` files parse/serialize at the boundary.
   - API contract: `backend/openapi.json` (OpenAPI 3.1) documents every route, body
     and error; it's the source for clients' generated types. Change it with the API:
     `tests/test_openapi.py` fails when routes or response shapes drift from it. Routes
@@ -152,7 +163,8 @@
     worktrees `.claude/worktrees/conductor-<n>`, backend ports 5055–5057). Only Mark
     merges.
   - Tests: backend `unittest` against an in-memory fake (`tests/fake_supabase.py`);
-    frontend `vitest` for pure helpers in `src/renderer/src/lib`; MCP tools `unittest`
+    frontend `vitest` for pure helpers in `src/renderer/src/lib` and in
+    `packages/shared/src` (root `npm test` runs both); MCP tools `unittest`
     against a fake API plus a live `smoke.py`. Setup and commands in `README.md`.
 
   ## Conventions

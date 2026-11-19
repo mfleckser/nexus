@@ -10,7 +10,7 @@ import RecurrenceScopePrompt from "@renderer/components/RecurrenceScopePrompt";
 import { POPOVER_GAP } from "@renderer/features/calendar/constants";
 import { allDayTimes, daySpan, zonedMidnight } from "@renderer/lib/allDay";
 import { browserTimeZone } from "@renderer/lib/time";
-import { sameRrule } from "@renderer/lib/rrule";
+import { sameRrule } from "@nexus/shared";
 import useReportError from "@renderer/hooks/useReportError";
 import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 

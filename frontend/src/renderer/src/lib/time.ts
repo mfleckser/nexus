@@ -1,3 +1,7 @@
+import { calendarDaysBetween } from "@nexus/shared";
+
+export { calendarDaysBetween };
+
 export const browserTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 // All day arithmetic below builds dates from local y/m/d/h/m fields rather
@@ -25,13 +29,6 @@ export const shiftDays = (d: Date, n: number): Date =>
 
 // Midnight of the Sunday on or before d.
 export const startOfWeek = (d: Date): Date => addDays(d, -d.getDay());
-
-// Whole calendar days from a's day to b's day (negative if b is earlier).
-export const calendarDaysBetween = (a: Date, b: Date): number =>
-    Math.round(
-        (Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) - Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) /
-            86400000,
-    );
 
 export const addMinutes = (d: Date, minutes: number): Date => new Date(d.getTime() + minutes * 60000);
 

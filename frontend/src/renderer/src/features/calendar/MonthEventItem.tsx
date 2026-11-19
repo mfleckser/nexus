@@ -4,7 +4,7 @@ import { CalendarEvent, Task } from "@renderer/types";
 import useEventEditor from "@renderer/features/calendar/useEventEditor";
 import { categoryColor } from "@renderer/features/calendar/categories";
 import { formatTime } from "@renderer/lib/time";
-import { describeRrule } from "@renderer/lib/rrule";
+import { describeRrule } from "@nexus/shared";
 
 type MonthEventItemProps = {
     // A single-day timed event (all-day and multi-day ones are bars).

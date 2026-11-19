@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import "./projectModal.css";
 import Modal from "@renderer/components/Modal";
-import { PROJECT_STATUSES, ProjectStatus } from "@renderer/types";
+import { PROJECT_STATUSES, ProjectStatus, ProjectType } from "@renderer/types";
 
-const PROJECT_TYPES = ["coding", "learning", "fitness", "other"];
+const PROJECT_TYPES: ProjectType[] = ["coding", "learning", "fitness", "other"];
 
 // "" = no type / no status (stored as null).
 export type ProjectFormValues = {
     title: string;
     description: string;
-    type: string;
+    type: ProjectType | "";
     status: ProjectStatus | "";
     show_tasks_in_main_view: boolean;
 };
@@ -25,7 +25,7 @@ type ProjectModalProps = {
 function ProjectModal({ heading, submitLabel, onClose, onSave, initial }: ProjectModalProps): React.JSX.Element {
     const [title, setTitle] = useState(initial?.title ?? "");
     const [description, setDescription] = useState(initial?.description ?? "");
-    const [type, setType] = useState(initial?.type ?? "");
+    const [type, setType] = useState<ProjectType | "">(initial?.type ?? "");
     const [status, setStatus] = useState<ProjectStatus | "">(initial?.status ?? "");
     const [showTasks, setShowTasks] = useState(initial?.show_tasks_in_main_view ?? true);
     const titleRef = useRef<HTMLInputElement>(null);

@@ -7,11 +7,12 @@ import BlockTimePopover from "@renderer/features/calendar/BlockTimePopover";
 import { POPOVER_GAP } from "@renderer/features/calendar/constants";
 import { PopoverAnchor } from "@renderer/hooks/usePopoverPosition";
 import { useState } from "react";
+import { groupTasks, TASK_GROUPS } from "@nexus/shared";
 import { Link } from "react-router-dom";
 import { Task, TaskStatus } from "@renderer/types";
 import useNow from "@renderer/hooks/useNow";
 import TaskForm from "@renderer/components/TaskForm";
-import { calendarDaysBetween, formatDueDisplay, toDatetimeLocal } from "@renderer/lib/time";
+import { formatDueDisplay, toDatetimeLocal } from "@renderer/lib/time";
 import { timeBlockSummary } from "@renderer/lib/timeBlocks";
 import useReportError from "@renderer/hooks/useReportError";
 
@@ -207,24 +208,17 @@ function TaskRowContents({
 
 type TaskGroupProps = {
     name: string;
-    filterFunc: (t: Task) => boolean;
+    // Already filtered and sorted.
+    tasks: Task[];
     expandedId: string | null;
     setExpandedId: (id: string | null) => void;
     startClosed?: boolean;
 };
 
-function TaskGroup({
-    name,
-    filterFunc,
-    expandedId,
-    setExpandedId,
-    startClosed = false,
-}: TaskGroupProps): React.JSX.Element {
-    const { tasks, updateTask, deleteTask } = useTasks();
+function TaskGroup({ name, tasks, expandedId, setExpandedId, startClosed = false }: TaskGroupProps): React.JSX.Element {
+    const { updateTask, deleteTask } = useTasks();
     const reportError = useReportError();
     const [showTasks, setShowTasks] = useState(!startClosed);
-
-    const filtered = tasks.filter(filterFunc).toSorted((a, b) => a.created_at.getTime() - b.created_at.getTime());
 
     return (
         <div className={`task-group${showTasks ? "" : " collapsed"}`}>
@@ -236,11 +230,11 @@ function TaskGroup({
             >
                 <span className="task-group-caret" aria-hidden />
                 <span className="task-group-name">{name}</span>
-                <span className="task-group-count">{filtered.length}</span>
+                <span className="task-group-count">{tasks.length}</span>
             </button>
             {showTasks && (
                 <div className="task-group-list">
-                    {filtered.map((t) => (
+                    {tasks.map((t) => (
                         <TaskRow
                             key={t.id}
                             task={t}
@@ -258,7 +252,7 @@ function TaskGroup({
                             }}
                         />
                     ))}
-                    {filtered.length === 0 && <div className="task-group-empty">No tasks</div>}
+                    {tasks.length === 0 && <div className="task-group-empty">No tasks</div>}
                 </div>
             )}
         </div>
@@ -266,7 +260,7 @@ function TaskGroup({
 }
 
 function TaskView(): React.JSX.Element {
-    const { addTask } = useTasks();
+    const { tasks, addTask } = useTasks();
     const reportError = useReportError();
     const { projects } = useProjects();
     const [showForm, setShowForm] = useState(false);
@@ -274,10 +268,7 @@ function TaskView(): React.JSX.Element {
     const [expandedId, setExpandedId] = useState<string | null>(null);
 
     const hiddenProjectIds = new Set(projects.filter((p) => !p.show_tasks_in_main_view).map((p) => p.id));
-    const visible = (t: Task) => t.project_id === null || !hiddenProjectIds.has(t.project_id);
-
-    // Calendar days from today to the due date (0 = due today, or no due date).
-    const getDaysDiff = (task: Task) => (task.due_at === null ? 0 : calendarDaysBetween(now, task.due_at));
+    const groups = groupTasks(tasks, now, hiddenProjectIds);
 
     return (
         <div id="task-container">
@@ -305,44 +296,16 @@ function TaskView(): React.JSX.Element {
                     />
                 )}
                 <div className="task-list themed-scroll">
-                    <TaskGroup
-                        name="Overdue"
-                        filterFunc={(t) =>
-                            visible(t) && t.due_at !== null && getDaysDiff(t) < 0 && t.status !== "complete"
-                        }
-                        expandedId={expandedId}
-                        setExpandedId={setExpandedId}
-                    />
-                    <TaskGroup
-                        name="Today"
-                        filterFunc={(t) => visible(t) && t.due_at !== null && getDaysDiff(t) === 0}
-                        expandedId={expandedId}
-                        setExpandedId={setExpandedId}
-                    />
-                    <TaskGroup
-                        name="This Week"
-                        filterFunc={(t) => {
-                            if (!visible(t) || t.due_at === null) return false;
-                            const diff = getDaysDiff(t);
-                            return diff >= 1 && diff <= 7;
-                        }}
-                        expandedId={expandedId}
-                        setExpandedId={setExpandedId}
-                        startClosed
-                    />
-                    <TaskGroup
-                        name="Future"
-                        filterFunc={(t) => visible(t) && getDaysDiff(t) > 7}
-                        expandedId={expandedId}
-                        setExpandedId={setExpandedId}
-                        startClosed
-                    />
-                    <TaskGroup
-                        name="No Due Date"
-                        filterFunc={(t) => visible(t) && t.due_at === null && t.status != "complete"}
-                        expandedId={expandedId}
-                        setExpandedId={setExpandedId}
-                    />
+                    {TASK_GROUPS.map(({ key, name }) => (
+                        <TaskGroup
+                            key={key}
+                            name={name}
+                            tasks={groups[key]}
+                            expandedId={expandedId}
+                            setExpandedId={setExpandedId}
+                            startClosed={key === "thisWeek" || key === "future"}
+                        />
+                    ))}
                 </div>
             </div>
         </div>

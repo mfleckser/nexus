@@ -32,7 +32,7 @@ import {
     weekdayShort,
     firstOccurrenceDay,
     maxUntilDate,
-} from "@renderer/lib/rrule";
+} from "@nexus/shared";
 
 const DURATION_PRESETS = [30, 45, 60, 90, 120];
 const REPEAT_PRESETS: RepeatPreset[] = ["none", "daily", "weekdays", "weekly", "monthly", "yearly"];

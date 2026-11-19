@@ -1,0 +1,9 @@
+tabWidth: 4
+singleQuote: false
+semi: true
+printWidth: 120
+trailingComma: all
+overrides:
+  - files: ["*.json", "*.yml", "*.yaml", "*.md"]
+    options:
+      tabWidth: 2

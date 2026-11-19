@@ -146,14 +146,15 @@ repeat until green.
   nullable or defaulted columns, indexes, and constraints every existing row passes.
   If the task needs anything else (drop, rename, type change, rewriting data),
   escalate it in step 2 as `needs-decision` before writing code.
-- **Frontend**: `cd frontend && npm run typecheck && npm run lint && npm test`. Pure
-  helpers in `src/renderer/src/lib` get vitest tests.
+- **Frontend**: from the repo root, `npm run typecheck && npm run lint && npm test`
+  (desktop app and `packages/shared`). Pure helpers in `src/renderer/src/lib` or
+  `packages/shared/src` get vitest tests.
 - **UI behavior (M/L tasks with visible changes)**: drive the real app with
   Playwright `_electron`. Always set `NEXUS_HIDDEN=1` so the window never steals focus.
   - Playwright isn't a project dependency. Install `playwright-core` in
     `<scratchpad>/<branch>/pw` (`npm init -y && npm i playwright-core`) and launch
     with `executablePath` set to the default export of
-    `frontend/node_modules/electron/index.js` and `args: [<frontend dir>]`.
+    `node_modules/electron/index.js` (repo root) and `args: [<frontend dir>]`.
   - If backend code changed, run it locally on your port (`port=`, default 5055):
     `NEXUS_PORT=<port> backend/start`, in the background. Restart it after more
     backend edits (no reloader). Stop it by the PID on that port only
@@ -225,9 +226,10 @@ just at commit time.
 - If there are uncommitted changes you didn't make, never stash, reset, discard, or
   commit them.
 - If you'd have to switch branches under them, build in a worktree at
-  `.claude/worktrees/<branch>` (gitignored). Symlink `frontend/node_modules`,
-  `backend/venv`, `tools/nexus-mcp/venv`, `frontend/.env` and `backend/.env` into it
-  from the main checkout.
+  `.claude/worktrees/<branch>` (gitignored). Symlink `backend/venv`,
+  `tools/nexus-mcp/venv`, `frontend/.env` and `backend/.env` into it from the main
+  checkout, and run `npm ci` at its root. Don't symlink `node_modules`: its
+  `@nexus/shared` link would point at the main checkout's `packages/shared`.
   Remove the worktree after pushing.
 - If you can stay on the current branch, stage only your own files.
 
