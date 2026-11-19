@@ -9,7 +9,8 @@
 
   - Frontend: Electron + React + Vite + TypeScript
   - JS monorepo (npm workspaces, one root `node_modules` + lockfile): `frontend/`
-    (desktop), `packages/shared` (`@nexus/shared`), `mobile/` (placeholder, not started)
+    (desktop), `packages/shared` (`@nexus/shared`), `mobile/` (Expo phone app). One
+    React version across workspaces (Expo pins it; desktop `react`/`react-dom` match)
   - Backend: Python + Flask + Supabase client (PostgREST) — no ORM; schema lives in
     raw SQL migrations under `backend/supabase/migrations`, applied via the Supabase CLI
   - DB: Postgres on Supabase (separate project from Git Gains)
@@ -31,7 +32,7 @@
   2. Project Workshop — partly built (projects, features, kanban, notes) (pursuit-context + execution; rigid templates per type)
   3. Habits / Goals (with cross-feature triggers)
   4. AI coach UI (Claude API; deep integration w/ all features)
-  5. Mobile companion
+  5. Mobile companion — MVP built (agenda, task check-off, quick add, read-only offline)
   6. Integrations (Git Gains API first)
 
   ## MVP Scope — Calendar + Tasks
@@ -110,7 +111,8 @@
     client `createNexusClient(transport)` (paths/bodies/responses from the schema; the
     transport owns origin, token and `X-Nexus-Client`; `fetchTransport` for non-Electron
     clients), and UI logic every client needs: task due-date groups (`taskGroups.ts`),
-    repeat rules (`rrule.ts`), `calendarDaysBetween`. Desktop row types (`types.ts`) are
+    repeat rules (`rrule.ts`), day math (`dates.ts`), all-day day mapping
+    (`allDay.ts`: `daySpan`, `zonedMidnight`). Desktop row types (`types.ts`) are
     the API's rows with Dates; the `*.api.ts` files parse/serialize at the boundary.
   - API contract: `backend/openapi.json` (OpenAPI 3.1) documents every route, body
     and error; it's the source for clients' generated types. Change it with the API:
@@ -128,6 +130,12 @@
   - Frontend data: one React context provider per entity (`useEvents`, `useTasks`,
     `useProjects`) with optimistic updates that roll back on failure, `useNow` polling
     plus refetch on window focus. Failures surface via `useReportError()` toasts.
+  - Mobile (`mobile/`, Expo): one agenda screen fed by `useAgendaData` (tasks, an
+    8-day event window, hidden-project ids) through `fetchTransport` with client
+    `mobile`; URL/token from `EXPO_PUBLIC_NEXUS_API_URL` / `_TOKEN` in `mobile/.env`.
+    Each fetch is stored (AsyncStorage) as the offline copy; unreachable backend →
+    read-only "Offline" banner, writes blocked, never queued. Colors mirror
+    `theme.css` in `mobile/src/theme.ts`.
   - Backend layout: `app/api` blueprints (thin) → `app/services` (logic, Supabase
     calls). Writes whitelist columns; input checks in `app/validation.py`, mirrored by
     DB NOT NULL / CHECK constraints (keep the two in step).
@@ -163,8 +171,8 @@
     worktrees `.claude/worktrees/conductor-<n>`, backend ports 5055–5057). Only Mark
     merges.
   - Tests: backend `unittest` against an in-memory fake (`tests/fake_supabase.py`);
-    frontend `vitest` for pure helpers in `src/renderer/src/lib` and in
-    `packages/shared/src` (root `npm test` runs both); MCP tools `unittest`
+    frontend `vitest` for pure helpers in `src/renderer/src/lib`, `mobile/src/lib` and
+    `packages/shared/src` (root `npm test` runs all three); MCP tools `unittest`
     against a fake API plus a live `smoke.py`. Setup and commands in `README.md`.
 
   ## Conventions

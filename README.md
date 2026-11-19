@@ -4,8 +4,8 @@ Personal life-system desktop app: calendar, tasks, projects (habits, goals and a
 coach later). Electron + React frontend, Flask backend, Postgres on Supabase.
 
 The JS side is an npm workspaces monorepo: `frontend/` (desktop app), `packages/shared`
-(`@nexus/shared`: API types, typed client, logic shared by clients) and `mobile/` (not
-started). Install and run JS checks from the repo root.
+(`@nexus/shared`: API types, typed client, logic shared by clients) and `mobile/` (the
+Expo phone app, see `mobile/README.md`). Install and run JS checks from the repo root.
 
 ## Setup
 
@@ -93,7 +93,7 @@ cd backend
 venv/bin/python -m unittest discover -s tests
 venv/bin/ruff check . && venv/bin/ruff format --check .
 
-npm run typecheck && npm run lint && npm test   # repo root: frontend + packages/shared
+npm run typecheck && npm run lint && npm test   # repo root: frontend, mobile, packages/shared
 ```
 
 ## Agent tools (MCP)
