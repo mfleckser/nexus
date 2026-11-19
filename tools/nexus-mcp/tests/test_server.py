@@ -8,6 +8,7 @@ import json
 import sys
 import unittest
 import urllib.error
+import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -28,6 +29,7 @@ class FakeApi:
         self.notes = {"p1": "project notes"}
         self.features: dict[str, dict] = {}
         self.tasks: dict[str, dict] = {}
+        self.events: dict[str, dict] = {}
         self.calls: list[tuple] = []
 
     def _missing(self, what):
@@ -82,7 +84,42 @@ class FakeApi:
                     raise NexusError("Nexus API 400: status must be one of todo, active, blocked, complete, cancelled")
                 self.tasks[tid].update(body, updated_at=next(self.clock))
                 return dict(self.tasks[tid])
+            case ("GET", ["events"]):
+                return sorted(self.events.values(), key=lambda e: e["start_at"])
+            case ("POST", ["events"]):
+                self._check_all_day(body)
+                e = {"id": next(self.ids), "all_day": False, "description": None, "category": None,
+                     "timezone": "UTC", "rrule": None, "recurring_event_id": None, "original_start_at": None,
+                     "updated_at": next(self.clock), **body}  # fmt: skip
+                self.events[e["id"]] = e
+                return e
+            case ("PUT", ["events", eid]):
+                if eid not in self.events:
+                    self._missing(f"event {eid}")
+                self._check_all_day({**self.events[eid], **body})
+                self.events[eid].update(body, updated_at=next(self.clock))
+                return dict(self.events[eid])
+            case ("PUT", ["events", eid, "occurrences", start]):
+                if body.get("scope") not in ("this", "following", "all"):
+                    raise NexusError("Nexus API 400: scope must be one of this, following, all")
+                if eid == "changed-elsewhere":
+                    raise NexusError("Nexus API 409: This event was changed elsewhere. Try again.")
+                if eid not in self.events:
+                    self._missing(f"event {eid}")
+                fields = {k: v for k, v in body.items() if k != "scope"}
+                if body["scope"] != "this":
+                    self.events[eid].update(fields, updated_at=next(self.clock))
+                    return dict(self.events[eid])
+                o = {**self.events[eid], "id": next(self.ids), "recurring_event_id": eid,
+                     "original_start_at": urllib.parse.unquote(start), "updated_at": next(self.clock),
+                     **fields}  # fmt: skip
+                self.events[o["id"]] = o
+                return o
         raise AssertionError(f"unexpected {method} {path}")
+
+    def _check_all_day(self, event):
+        if event.get("all_day") and not all("T00:00:00" in event[k] for k in ("start_at", "end_at")):
+            raise NexusError("Nexus API 400: an all-day event must start and end at midnight in its timezone")
 
     def get(self, path, **query):
         return self.request("GET", path, query=query or None)
@@ -177,6 +214,117 @@ class ToolsTest(unittest.IsolatedAsyncioTestCase):
             await self.call("update_task", task_id=t["id"])
         with self.assertRaises(ToolError):
             await self.call("update_task", task_id=t["id"], status="done")
+
+    async def test_list_events(self):
+        events = await self.call("list_events", start="2026-11-16T00:00:00-05:00", end="2026-11-23T00:00:00-05:00")
+        self.assertEqual(events, [])
+        self.assertEqual(
+            self.api.calls[-1],
+            ("GET", "/events", None, {"start": "2026-11-16T00:00:00-05:00", "end": "2026-11-23T00:00:00-05:00"}),
+        )
+
+    async def test_create_event(self):
+        e = await self.call(
+            "create_event", title="Dentist", start_at="2026-12-01T09:00:00-05:00", end_at="2026-12-01T10:00:00-05:00"
+        )
+        self.assertEqual(
+            self.api.calls[-1],
+            (
+                "POST",
+                "/events",
+                {"title": "Dentist", "start_at": "2026-12-01T09:00:00-05:00", "end_at": "2026-12-01T10:00:00-05:00"},
+                None,
+            ),  # fmt: skip
+        )
+        self.assertEqual((e["title"], e["all_day"]), ("Dentist", False))
+        weekly = await self.call(
+            "create_event", title="Gym", start_at="2026-12-01T07:00:00-05:00", end_at="2026-12-01T08:00:00-05:00",
+            all_day=False, category="health", timezone="America/New_York", rrule="FREQ=WEEKLY;BYDAY=TU",
+        )  # fmt: skip
+        self.assertEqual(
+            {k: self.api.calls[-1][2][k] for k in ("all_day", "category", "timezone", "rrule")},
+            {"all_day": False, "category": "health", "timezone": "America/New_York", "rrule": "FREQ=WEEKLY;BYDAY=TU"},
+        )
+        self.assertEqual(weekly["rrule"], "FREQ=WEEKLY;BYDAY=TU")
+        with self.assertRaisesRegex(ToolError, "Nexus API 400: an all-day event must start and end at midnight"):
+            await self.call(
+                "create_event", title="Trip", all_day=True,
+                start_at="2026-12-01T09:00:00-05:00", end_at="2026-12-03T00:00:00-05:00",
+            )  # fmt: skip
+
+    async def test_update_plain_event(self):
+        e = await self.call(
+            "create_event", title="Call", start_at="2026-12-01T09:00:00Z", end_at="2026-12-01T10:00:00Z",
+            description="d", category="work",
+        )  # fmt: skip
+        ack = await self.call("update_event", event_id=e["id"], title="Call Bob", clear=["category"])
+        self.assertEqual(ack, {"id": e["id"], "updated_at": "2026-11-18T12:00:01+00:00"})
+        self.assertEqual(self.api.calls[-1][:3], ("PUT", f"/events/{e['id']}", {"title": "Call Bob", "category": None}))
+        self.assertEqual(
+            (self.api.events[e["id"]]["title"], self.api.events[e["id"]]["description"]), ("Call Bob", "d")
+        )
+        await self.call("update_event", event_id=e["id"], rrule="FREQ=DAILY;COUNT=3")
+        self.assertEqual(self.api.calls[-1][2], {"rrule": "FREQ=DAILY;COUNT=3"})
+
+        errors = [
+            ({}, "pass event_id, or recurring_event_id"),
+            ({"event_id": e["id"]}, "nothing to change"),
+            ({"event_id": e["id"], "scope": "all", "title": "x"}, "scope is only for recurring occurrences"),
+            ({"event_id": f"{e['id']}_1764579600", "title": "x"}, "is an occurrence of a series"),
+            ({"event_id": e["id"], "category": "c", "clear": ["category"]}, "category is both set and cleared"),
+            ({"event_id": e["id"], "all_day": True}, "Nexus API 400: an all-day event must start and end at midnight"),
+            ({"event_id": "nope", "title": "x"}, "Nexus API 404: event nope not found"),
+        ]
+        for args, message in errors:
+            calls = len(self.api.calls)
+            with self.subTest(args=args), self.assertRaisesRegex(ToolError, message):
+                await self.call("update_event", **args)
+            if not message.startswith("Nexus API"):
+                self.assertEqual(len(self.api.calls), calls)  # rejected before any request
+
+    async def test_update_recurring_occurrence(self):
+        series = await self.call(
+            "create_event", title="Standup", start_at="2026-12-01T09:00:00-05:00",
+            end_at="2026-12-01T09:15:00-05:00", rrule="FREQ=DAILY",
+        )  # fmt: skip
+        occurrence = {"recurring_event_id": series["id"], "original_start_at": "2026-12-02T09:00:00-05:00"}
+        ack = await self.call("update_event", **occurrence, scope="this", title="Standup (late)",
+                              start_at="2026-12-02T10:00:00-05:00", end_at="2026-12-02T10:15:00-05:00")  # fmt: skip
+        self.assertEqual(set(ack), {"id", "updated_at"})
+        self.assertNotEqual(ack["id"], series["id"])
+        self.assertEqual(
+            self.api.calls[-1],
+            ("PUT", f"/events/{series['id']}/occurrences/2026-12-02T09%3A00%3A00-05%3A00",
+             {"title": "Standup (late)", "start_at": "2026-12-02T10:00:00-05:00",
+              "end_at": "2026-12-02T10:15:00-05:00", "scope": "this"}, None),
+        )  # fmt: skip
+        self.assertEqual(self.api.events[ack["id"]]["original_start_at"], "2026-12-02T09:00:00-05:00")
+
+        ack = await self.call("update_event", **occurrence, scope="all", clear=["description"])
+        self.assertEqual(ack, {"id": series["id"], "updated_at": self.api.events[series["id"]]["updated_at"]})
+        self.assertEqual(self.api.calls[-1][2], {"description": None, "scope": "all"})
+        # An event_id passed along (e.g. the occurrence's own id) is ignored for recurring edits.
+        await self.call("update_event", event_id=f"{series['id']}_1764684000", **occurrence, scope="following",
+                        title="x")  # fmt: skip
+        self.assertEqual(self.api.calls[-1][1], f"/events/{series['id']}/occurrences/2026-12-02T09%3A00%3A00-05%3A00")
+
+        errors = [
+            ({**occurrence, "title": "x"}, "needs scope: this, following or all"),
+            ({"recurring_event_id": series["id"], "scope": "this", "title": "x"}, "needs both recurring_event_id"),
+            ({"original_start_at": occurrence["original_start_at"], "scope": "this", "title": "x"}, "needs both"),
+            ({**occurrence, "scope": "all", "rrule": "FREQ=WEEKLY"}, "rrule can only be changed on a plain event"),
+            ({**occurrence, "scope": "this"}, "nothing to change"),
+        ]
+        for args, message in errors:
+            calls = len(self.api.calls)
+            with self.subTest(args=args), self.assertRaisesRegex(ToolError, message):
+                await self.call("update_event", **args)
+            self.assertEqual(len(self.api.calls), calls)
+        with self.assertRaises(ToolError):  # schema rejects unknown scopes before any request
+            await self.call("update_event", **occurrence, scope="some", title="x")
+        with self.assertRaisesRegex(ToolError, "Nexus API 409: This event was changed elsewhere. Try again."):
+            await self.call("update_event", recurring_event_id="changed-elsewhere",
+                            original_start_at="2026-12-02T09:00:00Z", scope="all", title="x")  # fmt: skip
 
     async def test_api_errors_reach_the_agent(self):
         with self.assertRaisesRegex(ToolError, r"Nexus API 404: task nope not found"):

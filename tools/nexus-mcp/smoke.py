@@ -23,6 +23,7 @@ async def main() -> int:
     api = NexusApi(*load_config())  # setup/cleanup only: the tools have no project create/delete
     project = api.post("/projects", {"title": "ZZ test MCP smoke", "description": "", "type": "coding"})
     task_ids: list[str] = []
+    event_ids: list[str] = []
     failures: list[str] = []
 
     def check(name: str, ok: bool, detail: str = ""):
@@ -44,7 +45,7 @@ async def main() -> int:
                 return (data["result"] if set(data) == {"result"} else data), text
 
             tools = {t.name for t in (await session.list_tools()).tools}
-            check("tools listed", len(tools) == 11, str(sorted(tools)))
+            check("tools listed", len(tools) == 14, str(sorted(tools)))
 
             got, _ = await call("get_project", project_id=project["id"])
             check("get_project", got and got["title"] == "ZZ test MCP smoke")
@@ -79,9 +80,45 @@ async def main() -> int:
             check("API error surfaced", "Nexus API 400" in error, json.dumps(error))
             _, error = await call("get_task", task_id="00000000-0000-0000-0000-000000000000")
             check("404 surfaced", "Nexus API 404" in error, json.dumps(error))
+
+            # Events, far in the future so they stay out of Mark's calendar views.
+            window = {"start": "2031-03-03T00:00:00-05:00", "end": "2031-03-10T00:00:00-05:00"}
+            plain, _ = await call("create_event", title="ZZ test smoke event", timezone="America/New_York",
+                                  start_at="2031-03-04T09:00:00-05:00", end_at="2031-03-04T10:00:00-05:00")  # fmt: skip
+            event_ids.append(plain["id"])
+            listed, _ = await call("list_events", **window)
+            check("list_events", plain["id"] in [e["id"] for e in listed])
+            ack, _ = await call("update_event", event_id=plain["id"], title="ZZ test smoke event 2",
+                                start_at="2031-03-04T11:00:00-05:00", end_at="2031-03-04T12:00:00-05:00")  # fmt: skip
+            check("update_event ack", ack and set(ack) == {"id", "updated_at"} and ack["id"] == plain["id"])
+            got = next(e for e in (await call("list_events", **window))[0] if e["id"] == plain["id"])
+            moved = got["title"] == "ZZ test smoke event 2" and got["start_at"].startswith("2031-03-04T16:00")
+            check("update_event plain", moved, f"{got['title']} {got['start_at']}")
+            _, error = await call("update_event", event_id=plain["id"], all_day=True)
+            check("all-day 400 surfaced", "Nexus API 400" in error and "midnight" in error, json.dumps(error))
+
+            series, _ = await call("create_event", title="ZZ test smoke series", timezone="America/New_York",
+                                   start_at="2031-03-04T08:00:00-05:00", end_at="2031-03-04T08:30:00-05:00",
+                                   rrule="FREQ=DAILY;COUNT=3")  # fmt: skip
+            event_ids.append(series["id"])
+            listed, _ = await call("list_events", **window)
+            occurrences = [e for e in listed if e.get("recurring_event_id") == series["id"]]
+            check("list_events expands series", len(occurrences) == 3, str(len(occurrences)))
+            second = occurrences[1]
+            target = {"recurring_event_id": series["id"], "original_start_at": second["original_start_at"]}
+            _, error = await call("update_event", **target, title="ZZ test smoke moved")
+            check("recurring edit needs scope", "needs scope" in error, json.dumps(error))
+            ack, _ = await call("update_event", **target, scope="this", title="ZZ test smoke moved")
+            check("update_event this ack", ack and set(ack) == {"id", "updated_at"})
+            listed, _ = await call("list_events", **window)
+            titles = [e["title"] for e in listed if e.get("recurring_event_id") == series["id"]]
+            expected = ["ZZ test smoke series", "ZZ test smoke moved", "ZZ test smoke series"]
+            check("update_event this", titles == expected, str(titles))
     finally:
-        # Tasks first: deleting the project only nulls their project_id.
-        for path in [f"/tasks/{task_id}" for task_id in task_ids] + [f"/projects/{project['id']}"]:
+        # Tasks first: deleting the project only nulls their project_id. Deleting a series
+        # master also deletes its overrides.
+        paths = [f"/tasks/{task_id}" for task_id in task_ids] + [f"/projects/{project['id']}"]
+        for path in paths + [f"/events/{event_id}" for event_id in event_ids]:
             try:
                 api.request("DELETE", path)
             except Exception as e:  # keep cleaning up; report what's left behind

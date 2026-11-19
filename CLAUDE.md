@@ -127,10 +127,12 @@
     optional `NEXUS_TRUSTED_HOSTS`, `NEXUS_PORT`; see `.env.example`). `NEXUS_DEBUG=1`
     enables debugger + reloader.
   - Agent tools: stdio MCP server `tools/nexus-mcp/server.py` (registered in `.mcp.json`)
-    exposes projects / features / tasks to Claude Code as a normal API client (same
+    exposes projects / features / tasks / events to Claude Code as a normal API client (same
     backend + token as `frontend/.env`). No delete tools; feature notes are the agents'
-    decision/result log (`append_feature_notes`). `append_feature_notes` and `update_task`
-    return short acks (read back with `get_feature` / `get_task`) to save agent tokens.
+    decision/result log (`append_feature_notes`). `append_feature_notes`, `update_task` and
+    `update_event` return short acks (read back with `get_feature` / `get_task` /
+    `list_events`) to save agent tokens. `update_event` edits a recurring occurrence only
+    via the occurrence endpoint, with the caller's explicit scope (no default).
     New endpoints agents need get a tool there.
   - Agent workflow (`.claude/skills/`): the backlog is the app's "Nexus" project.
     `/add-task` writes a task spec (settles product questions with Mark), `/conductor`

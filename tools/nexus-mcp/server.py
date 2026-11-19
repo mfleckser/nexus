@@ -1,4 +1,4 @@
-"""Nexus MCP server: projects, features and tasks for agents, over the Nexus API.
+"""Nexus MCP server: projects, features, tasks and calendar events for agents, over the Nexus API.
 
 Runs over stdio (registered in the repo's .mcp.json). Every call goes through the
 Flask API with the bearer token, so writes get the API's validation and cache
@@ -11,6 +11,7 @@ backend the desktop app uses), else the local default http://127.0.0.1:5001.
 
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,6 +28,10 @@ TIMEOUT_SECONDS = 15
 
 Status = Literal["todo", "active", "blocked", "complete", "cancelled"]
 ClearableField = Literal["description", "due_at", "feature_id"]
+Scope = Literal["this", "following", "all"]
+ClearableEventField = Literal["description", "category"]
+# Unmodified occurrences of a series come from list_events with id <master id>_<unix start>.
+OCCURRENCE_ID = re.compile(r"_\d+$")
 
 READ = ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=False)
 WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
@@ -46,6 +51,13 @@ Use update_feature(notes=...) only to deliberately rewrite the whole text.
 append_feature_notes and update_task return short acks only (ids and timestamps, plus
 the task's status), not the notes or task body. Call get_feature / get_task when you
 need the full text after a write.
+
+Calendar events: list_events returns a window's events with recurring series expanded.
+An event with recurring_event_id set is one occurrence of a series: to edit it, pass
+update_event its recurring_event_id, original_start_at and a scope (this = only that
+occurrence, following = it and later ones, all = the whole series). Events without
+recurring_event_id are edited by event_id and take no scope. update_event returns only
+{id, updated_at}; re-read with list_events. Events can't be deleted through these tools.
 """
 
 
@@ -255,6 +267,97 @@ def build_server(api: NexusApi) -> MCPServer:
             raise ToolError("nothing to change")
         task = call(api.put, f"/tasks/{task_id}", body)
         return {"id": task["id"], "status": task["status"], "updated_at": task.get("updated_at")}
+
+    @server.tool(annotations=READ)
+    def list_events(start: str, end: str) -> list[dict[str, Any]]:
+        """Calendar events overlapping [start, end), sorted by start. start and end are
+        ISO-8601 timestamps with offset, start before end. Keep windows small (days to a
+        few weeks): recurring series are expanded into one entry per occurrence. An entry
+        with recurring_event_id set is an occurrence of a series (it also carries
+        original_start_at and the series' rrule); edit it with update_event and a scope.
+        All-day events (all_day true) span local midnights of their timezone, end exclusive."""
+        return call(api.get, "/events", start=start, end=end)
+
+    @server.tool(annotations=WRITE)
+    def create_event(
+        title: str,
+        start_at: str,
+        end_at: str,
+        all_day: bool | None = None,
+        description: str | None = None,
+        category: str | None = None,
+        timezone: str | None = None,
+        rrule: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a calendar event. start_at / end_at are ISO-8601 timestamps with offset
+        (end after start). timezone is an IANA zone (default UTC); use Mark's zone. An
+        all-day event must start at midnight of its first day and end at midnight after
+        its last, in its timezone. rrule makes it repeat: an RFC 5545 RRULE body without
+        the "RRULE:" prefix, e.g. "FREQ=WEEKLY;BYDAY=MO,WE;COUNT=10". Returns the new event."""
+        body = {"title": title, "start_at": start_at, "end_at": end_at, "all_day": all_day,
+                "description": description, "category": category, "timezone": timezone, "rrule": rrule}  # fmt: skip
+        return call(api.post, "/events", {k: v for k, v in body.items() if v is not None})
+
+    @server.tool(annotations=WRITE)
+    def update_event(
+        event_id: str | None = None,
+        recurring_event_id: str | None = None,
+        original_start_at: str | None = None,
+        scope: Scope | None = None,
+        title: str | None = None,
+        description: str | None = None,
+        category: str | None = None,
+        start_at: str | None = None,
+        end_at: str | None = None,
+        all_day: bool | None = None,
+        timezone: str | None = None,
+        rrule: str | None = None,
+        clear: list[ClearableEventField] | None = None,
+    ) -> dict[str, Any]:
+        """Change a calendar event; only the fields you pass change. `clear` empties fields
+        (e.g. ["category"]). Timestamps are ISO-8601 with offset.
+
+        A plain event (no recurring_event_id in list_events): pass event_id, no scope. Its
+        rrule may be set to make it a series.
+
+        An occurrence of a series (recurring_event_id set in list_events, edited or not):
+        pass its recurring_event_id and original_start_at, unchanged from list_events, and
+        scope: "this" (only that occurrence), "following" (it and later ones) or "all" (the
+        whole series). There is no default scope. rrule can't be changed here.
+
+        Returns only {id, updated_at}; re-read with list_events."""
+        fields = {"title": title, "description": description, "category": category, "start_at": start_at,
+                  "end_at": end_at, "all_day": all_day, "timezone": timezone, "rrule": rrule}  # fmt: skip
+        body: dict[str, Any] = {k: v for k, v in fields.items() if v is not None}
+        for name in clear or []:
+            if name in body:
+                raise ToolError(f"{name} is both set and cleared")
+            body[name] = None
+
+        if recurring_event_id or original_start_at:
+            if not (recurring_event_id and original_start_at):
+                raise ToolError("a recurring occurrence needs both recurring_event_id and original_start_at")
+            if not scope:
+                raise ToolError("editing a recurring occurrence needs scope: this, following or all")
+            if rrule is not None:
+                raise ToolError("rrule can only be changed on a plain event")
+            if not body:
+                raise ToolError("nothing to change")
+            start = urllib.parse.quote(original_start_at, safe="")
+            event = call(api.put, f"/events/{recurring_event_id}/occurrences/{start}", {**body, "scope": scope})
+        else:
+            if not event_id:
+                raise ToolError("pass event_id, or recurring_event_id + original_start_at + scope")
+            if scope:
+                raise ToolError("scope is only for recurring occurrences (recurring_event_id + original_start_at)")
+            if OCCURRENCE_ID.search(event_id):
+                raise ToolError(
+                    f"{event_id} is an occurrence of a series: pass its recurring_event_id, original_start_at and scope"
+                )
+            if not body:
+                raise ToolError("nothing to change")
+            event = call(api.put, f"/events/{event_id}", body)
+        return {"id": event["id"], "updated_at": event.get("updated_at")}
 
     return server
 
