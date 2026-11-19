@@ -351,7 +351,7 @@ class ApiClientTest(unittest.TestCase):
 
         api = NexusApi("http://pi:5001/", "secret-token", opener=opener)
         self.assertEqual(api.get("/tasks", status="todo,blocked", project_id=None), [{"id": "t1"}])
-        self.assertEqual(seen["url"], "http://pi:5001/api/tasks?status=todo%2Cblocked")
+        self.assertEqual(seen["url"], "http://pi:5001/api/v1/tasks?status=todo%2Cblocked")
         self.assertEqual((seen["method"], seen["auth"], seen["body"]), ("GET", "Bearer secret-token", None))
         self.assertEqual(seen["client"], "agent")
         api.put("/tasks/t1", {"status": "blocked"})

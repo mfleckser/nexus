@@ -9,26 +9,26 @@ from app_case import AppTestCase
 class TasksTest(AppTestCase):
     def create(self, **body):
         body.setdefault("title", "Write tests")
-        return self.request("POST", "/api/tasks", body, status=201)
+        return self.request("POST", "/api/v1/tasks", body, status=201)
 
     def put(self, task_id, body, status=200):
-        return self.request("PUT", f"/api/tasks/{task_id}", body, status=status)
+        return self.request("PUT", f"/api/v1/tasks/{task_id}", body, status=status)
 
     def test_crud_shapes(self):
         t = self.create(description="d", due_at="2026-10-02T17:00:00Z")
         self.assertEqual((t["title"], t["status"], t["due_at"]), ("Write tests", "todo", "2026-10-02T17:00:00+00:00"))
-        self.assertEqual(self.request("GET", "/api/tasks"), [t])
-        self.assertEqual(self.request("GET", f"/api/tasks/{t['id']}"), t)
+        self.assertEqual(self.request("GET", "/api/v1/tasks"), [t])
+        self.assertEqual(self.request("GET", f"/api/v1/tasks/{t['id']}"), t)
         updated = self.put(t["id"], {"title": "Renamed", "status": "active"})
         self.assertEqual((updated["title"], updated["status"]), ("Renamed", "active"))
-        self.assertEqual(self.request("DELETE", f"/api/tasks/{t['id']}")["id"], t["id"])
-        self.assertEqual(self.request("GET", "/api/tasks"), [])
+        self.assertEqual(self.request("DELETE", f"/api/v1/tasks/{t['id']}")["id"], t["id"])
+        self.assertEqual(self.request("GET", "/api/v1/tasks"), [])
 
     def test_list_is_ordered_by_creation(self):
         ids = [self.create(title=str(i))["id"] for i in range(5)]
         # Shuffle storage order; the API must still return oldest first.
         self.db.tables["tasks"].reverse()
-        self.assertEqual([t["id"] for t in self.request("GET", "/api/tasks")], ids)
+        self.assertEqual([t["id"] for t in self.request("GET", "/api/v1/tasks")], ids)
 
     def test_create_validation(self):
         for body in [
@@ -43,7 +43,7 @@ class TasksTest(AppTestCase):
             {"title": "x", "event_id": "not-a-uuid"},
         ]:
             with self.subTest(body=body):
-                self.request("POST", "/api/tasks", body, status=400)
+                self.request("POST", "/api/v1/tasks", body, status=400)
         self.assertEqual(self.db.tables["tasks"], [])
 
     def test_update_validation(self):
@@ -94,7 +94,7 @@ class TasksTest(AppTestCase):
         self.put(c["id"], {"status": "complete"})
 
         def titles(query):
-            return [t["title"] for t in self.request("GET", f"/api/tasks?{query}")]
+            return [t["title"] for t in self.request("GET", f"/api/v1/tasks?{query}")]
 
         self.assertEqual(titles(""), ["a", "b", "c"])
         self.assertEqual(titles(f"project_id={p1}"), ["a", "b"])
@@ -105,11 +105,11 @@ class TasksTest(AppTestCase):
         self.assertEqual(titles("project_id=nope&bogus=1"), [])
         for query in ("status=done", "status=todo,done", "status=", "status=,"):
             with self.subTest(query=query):
-                self.request("GET", f"/api/tasks?{query}", status=400)
+                self.request("GET", f"/api/v1/tasks?{query}", status=400)
 
     def test_event_link(self):
         body = {"title": "Block", "start_at": "2026-10-01T16:00:00Z", "end_at": "2026-10-01T17:00:00Z"}
-        ev = self.request("POST", "/api/events", body, status=201)
+        ev = self.request("POST", "/api/v1/events", body, status=201)
         t = self.create(event_id=ev["id"])
         self.assertEqual(t["event_id"], ev["id"])
         other = self.create(title="later")
@@ -117,8 +117,8 @@ class TasksTest(AppTestCase):
         self.assertIsNone(self.put(other["id"], {"event_id": None})["event_id"])
 
         # Deleting the event clears the link; the task stays.
-        self.request("DELETE", f"/api/events/{ev['id']}")
-        task = self.request("GET", f"/api/tasks/{t['id']}")
+        self.request("DELETE", f"/api/v1/events/{ev['id']}")
+        task = self.request("GET", f"/api/v1/tasks/{t['id']}")
         self.assertIsNone(task["event_id"])
         self.assertEqual(task["title"], "Write tests")
 
@@ -127,7 +127,7 @@ class TasksTest(AppTestCase):
         self.assertEqual(self.put(t["id"], {}), t)
         self.assertEqual(self.put(t["id"], {"bogus": 1, "completed_at": "2026-01-01T00:00:00Z"}), t)
         self.put("00000000-0000-0000-0000-000000000000", {}, status=404)
-        self.request("GET", "/api/tasks/00000000-0000-0000-0000-000000000000", status=404)
+        self.request("GET", "/api/v1/tasks/00000000-0000-0000-0000-000000000000", status=404)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,617 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Nexus API",
+    "version": "1.0.0",
+    "description": "The backend every Nexus client talks to (desktop app, MCP server, later mobile).\n\n**Versioning.** Routes live under `/api/v1`. `/api` serves the same routes as an unversioned alias for older clients; new clients use `/api/v1`. Breaking changes go to a new version.\n\n**Auth.** Every route except `GET /health` needs `Authorization: Bearer <NEXUS_API_TOKEN>`; without it the response is 401.\n\n**Bodies.** Requests with a body send a JSON object (`Content-Type: application/json`); anything else is a 400. Success bodies are bare JSON: the row, list or object itself, with no envelope. Timestamps are ISO-8601 strings; responses give them in UTC with an offset (`2026-10-07T16:00:00+00:00`). A request timestamp without an offset is read as UTC. Write bodies ignore fields an endpoint doesn't list.\n\n**Errors.** Every error, on any route, is a JSON object `{\"error\": \"<message>\"}` with a status: 400 bad input (malformed body or JSON, failed field check, malformed id, constraint violation, unknown Host header), 401 missing or wrong token, 404 unknown id or route, 405 wrong method for a route, 409 a recurring-event row changed under an edit (event write routes only, see below), 500 anything else (no details).\n\n**Concurrent edits.** Ordinary edits are last-write-wins, on purpose: a `PUT` sets the fields it sends, whatever the row holds now, and takes no `updated_at` precondition. The one exception is a recurring-event edit, which reads a series and rewrites several rows in one transaction: if another writer changed one of those rows between the read and the write, the server retries once from a fresh read, then answers 409 and writes nothing. The client should refetch and let the user redo the edit.\n\n**created_via.** Each task, event, project and feature records the client that created it, from the `X-Nexus-Client` request header on the create (`desktop`, `mobile` or `agent`). A missing or unrecognized header stores `null` and never fails the request. It can't be set from a body and never changes on update; rows a recurring edit inserts (an occurrence override, a split-off series) copy their series'.\n\n**Freshness.** Reads are cached in the server for up to 60 seconds; the server's own writes invalidate what they change, so only writes made outside the API (e.g. Supabase Studio) can show up late.",
+    "contact": { "name": "Mark Fleckser" }
+  },
+  "servers": [
+    {
+      "url": "{origin}/api/v1",
+      "variables": { "origin": { "default": "http://127.0.0.1:5001", "description": "Backend origin, e.g. the Pi's Tailscale HTTPS name." } }
+    }
+  ],
+  "security": [{ "bearer": [] }],
+  "tags": [
+    { "name": "health", "description": "Uptime check; the only route without auth." },
+    { "name": "tasks", "description": "Tasks, optionally in a project and one of its features, optionally time-blocked on an event." },
+    { "name": "events", "description": "Calendar events. A recurring series is one master row (`rrule` set) expanded on read; editing one occurrence writes an override row (`recurring_event_id` + `original_start_at`), cancelling one adds to the master's `exdates`. Never edit a recurring row through `PUT /events/{event_id}` from a client: use the occurrence endpoints with a scope." },
+    { "name": "projects", "description": "Projects (pursuits) with a notes document; list views leave the notes out." },
+    { "name": "features", "description": "A project's features. Notes are free text, the shared log agents and Mark write to." }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["health"],
+        "operationId": "getHealth",
+        "summary": "Liveness plus a cheap database round trip",
+        "security": [],
+        "responses": {
+          "200": { "description": "Up, database reachable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } },
+          "503": { "description": "Up, but the database query failed.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } }
+        }
+      }
+    },
+    "/tasks": {
+      "get": {
+        "tags": ["tasks"],
+        "operationId": "listTasks",
+        "summary": "All tasks, oldest first, optionally filtered",
+        "parameters": [
+          { "name": "project_id", "in": "query", "schema": { "type": "string" }, "description": "Only tasks of this project." },
+          { "name": "feature_id", "in": "query", "schema": { "type": "string" }, "description": "Only tasks of this feature." },
+          { "name": "status", "in": "query", "schema": { "type": "string" }, "example": "todo,blocked", "description": "Comma-separated task statuses; any unknown status is a 400." }
+        ],
+        "responses": {
+          "200": { "description": "Tasks, ordered by created_at then id.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Task" } } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "post": {
+        "tags": ["tasks"],
+        "operationId": "createTask",
+        "summary": "Create a task (status todo)",
+        "parameters": [{ "$ref": "#/components/parameters/NexusClient" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TaskCreate" } } } },
+        "responses": {
+          "201": { "description": "The created task.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/tasks/{task_id}": {
+      "parameters": [{ "name": "task_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "get": {
+        "tags": ["tasks"],
+        "operationId": "getTask",
+        "summary": "One task",
+        "responses": {
+          "200": { "description": "The task.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "put": {
+        "tags": ["tasks"],
+        "operationId": "updateTask",
+        "summary": "Update a task (partial, last-write-wins)",
+        "description": "Sets only the fields sent. Moving status to `complete` stamps `completed_at` (re-saving a complete task keeps it); any other status clears it. A body with none of these fields returns the task unchanged.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TaskUpdate" } } } },
+        "responses": {
+          "200": { "description": "The updated task.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "delete": {
+        "tags": ["tasks"],
+        "operationId": "deleteTask",
+        "summary": "Delete a task",
+        "responses": {
+          "200": { "description": "The deleted task.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "tags": ["events"],
+        "operationId": "listEvents",
+        "summary": "Events overlapping a window, recurring series expanded",
+        "description": "Every event with `start_at < end` and `end_at > start`: plain events, override rows, and the unmodified occurrences of each series in the window (virtual rows, see Event). Sorted by start_at.",
+        "parameters": [
+          { "name": "start", "in": "query", "required": true, "schema": { "type": "string", "format": "date-time" }, "description": "Window start (inclusive)." },
+          { "name": "end", "in": "query", "required": true, "schema": { "type": "string", "format": "date-time" }, "description": "Window end (exclusive); must be after start." }
+        ],
+        "responses": {
+          "200": { "description": "The window's events.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Event" } } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "post": {
+        "tags": ["events"],
+        "operationId": "createEvent",
+        "summary": "Create an event or a recurring series",
+        "description": "With `rrule`, creates a series master; its start_at/end_at snap to the rule's first occurrence on or after the given start.",
+        "parameters": [{ "$ref": "#/components/parameters/NexusClient" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EventCreate" } } } },
+        "responses": {
+          "201": { "description": "The created event row.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Event" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/events/{event_id}": {
+      "parameters": [{ "name": "event_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "An event row id (plain event, series master or override), never a virtual occurrence id." }],
+      "put": {
+        "tags": ["events"],
+        "operationId": "updateEvent",
+        "summary": "Update a plain event (partial, last-write-wins)",
+        "description": "For a plain (non-recurring) event: sets only the fields sent, last-write-wins. Sending `rrule` turns it into a series. On an override row it edits that occurrence only (an override can't take an `rrule`). On a series master it acts like `PUT /events/{event_id}/occurrences/{master start}` with scope `all`, a recurring edit that can answer 409. Clients edit recurring rows through the occurrence endpoint.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EventUpdate" } } } },
+        "responses": {
+          "200": { "description": "The updated event row.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Event" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "delete": {
+        "tags": ["events"],
+        "operationId": "deleteEvent",
+        "summary": "Delete an event row",
+        "description": "Deletes a plain event, or a master with its whole series. Deleting an override cancels its occurrence (as `DELETE .../occurrences/{start}?scope=this`, which can answer 409). Tasks time-blocked on a deleted row lose their `event_id`.",
+        "responses": {
+          "200": { "description": "The deleted row.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Event" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/events/{event_id}/occurrences/{original_start}": {
+      "parameters": [
+        { "name": "event_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "The series master's id (an occurrence's `recurring_event_id`)." },
+        { "name": "original_start", "in": "path", "required": true, "schema": { "type": "string", "format": "date-time" }, "description": "The occurrence's `original_start_at`, URL-encoded. Must be an occurrence of the series, else 400." }
+      ],
+      "put": {
+        "tags": ["events"],
+        "operationId": "updateOccurrence",
+        "summary": "Edit one occurrence, it and the following ones, or the whole series",
+        "description": "A recurring edit. `this` writes (or updates) the occurrence's override row and ignores `rrule`. `following` splits the series at this occurrence into two independent series (the same as `all` at the first occurrence). `all` edits the series; time changes move every occurrence by the same wall-clock shift, carrying overrides and exdates along. Fields not sent keep their values. Can answer 409 (see Concurrent edits).",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OccurrenceUpdate" } } } },
+        "responses": {
+          "200": { "description": "`this`: the override row (or the unchanged virtual occurrence for an empty edit), with the series' `rrule`. `following`: the new split-off series' master. `all`: the series master.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Event" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "description": "Unknown series, or the occurrence was cancelled.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "delete": {
+        "tags": ["events"],
+        "operationId": "deleteOccurrence",
+        "summary": "Cancel one occurrence, it and the following ones, or the whole series",
+        "description": "`this` adds the occurrence to the master's exdates (dropping its override). `following` ends the series before it (at the first occurrence, the same as `all`). `all` deletes the series. A series left with no visible occurrence is deleted. Can answer 409 (see Concurrent edits).",
+        "parameters": [{ "name": "scope", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/RecurrenceScope" } }],
+        "responses": {
+          "200": { "description": "The master as updated, or as it was if the series was deleted.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Event" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "tags": ["projects"],
+        "operationId": "listProjects",
+        "summary": "All projects, without their notes",
+        "responses": {
+          "200": { "description": "Projects (unordered).", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ProjectSummary" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "post": {
+        "tags": ["projects"],
+        "operationId": "createProject",
+        "summary": "Create a project",
+        "parameters": [{ "$ref": "#/components/parameters/NexusClient" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectCreate" } } } },
+        "responses": {
+          "201": { "description": "The created project.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Project" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/projects/{project_id}": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "tags": ["projects"],
+        "operationId": "getProject",
+        "summary": "One project, with its notes",
+        "responses": {
+          "200": { "description": "The project.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Project" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "put": {
+        "tags": ["projects"],
+        "operationId": "updateProject",
+        "summary": "Update a project (partial, last-write-wins)",
+        "description": "Sets only the fields sent; `notes` replaces the whole text. A body with none of these fields returns the project unchanged.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectUpdate" } } } },
+        "responses": {
+          "200": { "description": "The updated project.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Project" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "delete": {
+        "tags": ["projects"],
+        "operationId": "deleteProject",
+        "summary": "Delete a project",
+        "description": "Its features are deleted too; its tasks are kept, with `project_id` and `feature_id` cleared.",
+        "responses": {
+          "200": { "description": "The deleted project.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Project" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/projects/{project_id}/notes": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "tags": ["projects"],
+        "operationId": "getProjectNotes",
+        "summary": "A project's notes text",
+        "responses": {
+          "200": { "description": "The notes.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectNotes" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/projects/{project_id}/features": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "tags": ["features"],
+        "operationId": "listFeatures",
+        "summary": "A project's features, without their notes text",
+        "description": "An unknown project gives an empty list.",
+        "responses": {
+          "200": { "description": "Features (unordered).", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/FeatureSummary" } } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "post": {
+        "tags": ["features"],
+        "operationId": "createFeature",
+        "summary": "Add a feature to a project",
+        "parameters": [{ "$ref": "#/components/parameters/NexusClient" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FeatureCreate" } } } },
+        "responses": {
+          "201": { "description": "The created feature.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Feature" } } } },
+          "400": { "description": "Bad input, or no such project (foreign key violation).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/features/{feature_id}": {
+      "parameters": [{ "name": "feature_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+      "get": {
+        "tags": ["features"],
+        "operationId": "getFeature",
+        "summary": "One feature, with its notes",
+        "responses": {
+          "200": { "description": "The feature.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Feature" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "put": {
+        "tags": ["features"],
+        "operationId": "updateFeature",
+        "summary": "Rename a feature or replace its notes (partial, last-write-wins)",
+        "description": "`notes` replaces the whole text: a client that appends reads the feature, appends, and writes it back, and a concurrent writer's change in between is lost. A body with none of these fields returns the feature unchanged.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FeatureUpdate" } } } },
+        "responses": {
+          "200": { "description": "The updated feature.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Feature" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "delete": {
+        "tags": ["features"],
+        "operationId": "deleteFeature",
+        "summary": "Delete a feature",
+        "description": "Its tasks are kept, with `feature_id` cleared.",
+        "responses": {
+          "200": { "description": "The deleted feature.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Feature" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer": { "type": "http", "scheme": "bearer", "description": "The server's NEXUS_API_TOKEN." }
+    },
+    "parameters": {
+      "NexusClient": {
+        "name": "X-Nexus-Client",
+        "in": "header",
+        "required": false,
+        "schema": { "$ref": "#/components/schemas/Client" },
+        "description": "The calling client, stored as the new row's `created_via`. Missing or unrecognized (case-sensitive) stores null; never an error."
+      },
+      "ProjectId": { "name": "project_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+    },
+    "responses": {
+      "BadRequest": { "description": "Bad input: malformed JSON or body, a failed field check, a malformed id, or a constraint violation.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Unauthorized": { "description": "Missing or wrong bearer token.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "No row with that id.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Conflict": { "description": "Recurring edit only: a row the edit was computed from changed in the meantime (after one server-side retry). Nothing was written; refetch and redo the edit.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "This event was changed elsewhere. Try again." } } } },
+      "ServerError": { "description": "Unexpected server or database error; the message carries no details.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": { "error": { "type": "string", "description": "Human-readable message." } },
+        "additionalProperties": false
+      },
+      "Health": {
+        "type": "object",
+        "required": ["status", "db"],
+        "properties": {
+          "status": { "type": "string", "enum": ["ok", "error"] },
+          "db": { "type": "string", "enum": ["connected", "error"] }
+        }
+      },
+      "Client": { "type": "string", "enum": ["desktop", "mobile", "agent"] },
+      "CreatedVia": {
+        "description": "The client that created the row; null for rows created before this was recorded or by a client that didn't say. Read-only.",
+        "type": ["string", "null"],
+        "enum": ["desktop", "mobile", "agent", null],
+        "readOnly": true
+      },
+      "Title": { "type": "string", "pattern": "\\S", "description": "Must contain a non-whitespace character." },
+      "Timestamp": { "type": "string", "format": "date-time" },
+      "NullableTimestamp": { "type": ["string", "null"], "format": "date-time" },
+      "TaskStatus": {
+        "type": "string",
+        "enum": ["todo", "active", "blocked", "complete", "cancelled"],
+        "description": "blocked: needs Mark's attention before work can continue."
+      },
+      "Task": {
+        "type": "object",
+        "required": ["id", "created_at", "updated_at", "title", "description", "status", "due_at", "completed_at", "project_id", "feature_id", "event_id", "created_via"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "updated_at": { "$ref": "#/components/schemas/Timestamp" },
+          "title": { "$ref": "#/components/schemas/Title" },
+          "description": { "type": ["string", "null"] },
+          "status": { "$ref": "#/components/schemas/TaskStatus" },
+          "due_at": { "$ref": "#/components/schemas/NullableTimestamp" },
+          "completed_at": { "allOf": [{ "$ref": "#/components/schemas/NullableTimestamp" }], "description": "Set by the server when status becomes complete." },
+          "project_id": { "type": ["string", "null"], "format": "uuid" },
+          "feature_id": { "type": ["string", "null"], "format": "uuid" },
+          "event_id": { "type": ["string", "null"], "format": "uuid", "description": "The event row this task is time-blocked on (plain event, master or override). Cleared when that row is deleted." },
+          "created_via": { "$ref": "#/components/schemas/CreatedVia" }
+        }
+      },
+      "TaskCreate": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": { "$ref": "#/components/schemas/Title" },
+          "description": { "type": ["string", "null"] },
+          "due_at": { "$ref": "#/components/schemas/NullableTimestamp" },
+          "project_id": { "type": ["string", "null"], "format": "uuid" },
+          "feature_id": { "type": ["string", "null"], "format": "uuid" },
+          "event_id": { "type": ["string", "null"], "format": "uuid", "description": "An event row id, not a virtual occurrence id." }
+        }
+      },
+      "TaskUpdate": {
+        "type": "object",
+        "properties": {
+          "title": { "$ref": "#/components/schemas/Title" },
+          "description": { "type": ["string", "null"] },
+          "due_at": { "$ref": "#/components/schemas/NullableTimestamp" },
+          "project_id": { "type": ["string", "null"], "format": "uuid" },
+          "feature_id": { "type": ["string", "null"], "format": "uuid" },
+          "event_id": { "type": ["string", "null"], "format": "uuid", "description": "An event row id, not a virtual occurrence id." },
+          "status": { "$ref": "#/components/schemas/TaskStatus" }
+        }
+      },
+      "RecurrenceScope": {
+        "type": "string",
+        "enum": ["this", "following", "all"],
+        "description": "this = only the occurrence; following = it and every later one; all = the whole series."
+      },
+      "Event": {
+        "description": "An event row, or a virtual occurrence of a series (list only): a copy of its master with `id` `<master id>_<unix start seconds>`, `recurring_event_id` = the master's id, and `original_start_at` = `start_at`. An all-day event (`all_day` true) runs from midnight of its first day to midnight after its last (exclusive) in its `timezone`.",
+        "type": "object",
+        "required": ["id", "created_at", "updated_at", "title", "description", "start_at", "end_at", "all_day", "category", "timezone", "rrule", "recurrence_end_at", "exdates", "recurring_event_id", "original_start_at", "created_via"],
+        "properties": {
+          "id": { "type": "string", "description": "A row uuid, or `<master id>_<unix seconds>` for a virtual occurrence." },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "updated_at": { "$ref": "#/components/schemas/Timestamp" },
+          "title": { "$ref": "#/components/schemas/Title" },
+          "description": { "type": ["string", "null"] },
+          "start_at": { "$ref": "#/components/schemas/Timestamp" },
+          "end_at": { "allOf": [{ "$ref": "#/components/schemas/Timestamp" }], "description": "After start_at." },
+          "all_day": { "type": ["boolean", "null"] },
+          "category": { "type": ["string", "null"] },
+          "timezone": { "type": "string", "description": "IANA zone the event (and its recurrence) is defined in." },
+          "rrule": { "type": ["string", "null"], "description": "RFC 5545 RRULE body (no `RRULE:` prefix). Set on a master; overrides and virtual occurrences carry their series' rule." },
+          "recurrence_end_at": { "allOf": [{ "$ref": "#/components/schemas/NullableTimestamp" }], "description": "Master only: end of the series' last occurrence, null if endless." },
+          "exdates": { "type": "array", "items": { "$ref": "#/components/schemas/Timestamp" }, "description": "Master only: original starts of cancelled occurrences." },
+          "recurring_event_id": { "type": ["string", "null"], "format": "uuid", "description": "Set on overrides and virtual occurrences: the series master's id." },
+          "original_start_at": { "allOf": [{ "$ref": "#/components/schemas/NullableTimestamp" }], "description": "Set with recurring_event_id: the occurrence's unmodified start, which identifies it to the occurrence endpoints." },
+          "created_via": { "$ref": "#/components/schemas/CreatedVia" }
+        }
+      },
+      "EventCreate": {
+        "type": "object",
+        "required": ["title", "start_at", "end_at"],
+        "properties": {
+          "title": { "$ref": "#/components/schemas/Title" },
+          "description": { "type": ["string", "null"] },
+          "start_at": { "$ref": "#/components/schemas/Timestamp" },
+          "end_at": { "allOf": [{ "$ref": "#/components/schemas/Timestamp" }], "description": "Must be after start_at." },
+          "all_day": { "type": ["boolean", "null"], "description": "If true, start_at and end_at must be midnight in timezone." },
+          "category": { "type": ["string", "null"] },
+          "timezone": { "type": "string", "description": "IANA zone name; defaults to UTC." },
+          "rrule": { "type": ["string", "null"], "description": "RRULE body; makes the event a recurring series. `RRULE:` prefix tolerated." }
+        }
+      },
+      "EventUpdate": {
+        "type": "object",
+        "properties": {
+          "title": { "$ref": "#/components/schemas/Title" },
+          "description": { "type": ["string", "null"] },
+          "start_at": { "$ref": "#/components/schemas/Timestamp" },
+          "end_at": { "$ref": "#/components/schemas/Timestamp" },
+          "all_day": { "type": ["boolean", "null"] },
+          "category": { "type": ["string", "null"] },
+          "timezone": { "type": "string" },
+          "rrule": { "type": ["string", "null"], "description": "New rule for the series; null or \"\" ends recurrence (keeping one event)." }
+        }
+      },
+      "OccurrenceUpdate": {
+        "allOf": [
+          { "$ref": "#/components/schemas/EventUpdate" },
+          {
+            "type": "object",
+            "required": ["scope"],
+            "properties": {
+              "scope": { "$ref": "#/components/schemas/RecurrenceScope" }
+            }
+          }
+        ],
+        "description": "start_at/end_at are the edited occurrence's new times; `following` and `all` move the other occurrences by the same wall-clock shift. rrule is ignored for scope this."
+      },
+      "ProjectType": { "type": "string", "enum": ["coding", "learning", "fitness", "other"] },
+      "ProjectStatus": { "type": "string", "enum": ["planning", "active", "paused", "complete", "archived"] },
+      "ProjectSummary": {
+        "type": "object",
+        "required": ["id", "created_at", "updated_at", "title", "description", "type", "status", "show_tasks_in_main_view", "notes_updated_at"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "updated_at": { "$ref": "#/components/schemas/Timestamp" },
+          "title": { "$ref": "#/components/schemas/Title" },
+          "description": { "type": "string" },
+          "type": { "anyOf": [{ "$ref": "#/components/schemas/ProjectType" }, { "type": "null" }] },
+          "status": { "anyOf": [{ "$ref": "#/components/schemas/ProjectStatus" }, { "type": "null" }] },
+          "show_tasks_in_main_view": { "type": "boolean" },
+          "notes_updated_at": { "allOf": [{ "$ref": "#/components/schemas/NullableTimestamp" }], "description": "Null until the notes are first edited." }
+        }
+      },
+      "Project": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProjectSummary" },
+          {
+            "type": "object",
+            "required": ["notes", "created_via"],
+            "properties": {
+              "notes": { "type": ["string", "null"] },
+              "created_via": { "$ref": "#/components/schemas/CreatedVia" }
+            }
+          }
+        ]
+      },
+      "ProjectCreate": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": { "$ref": "#/components/schemas/Title" },
+          "description": { "type": "string", "description": "Defaults to \"\"." },
+          "type": { "anyOf": [{ "$ref": "#/components/schemas/ProjectType" }, { "const": "" }, { "type": "null" }], "description": "\"\" is stored as null." }
+        }
+      },
+      "ProjectUpdate": {
+        "type": "object",
+        "properties": {
+          "title": { "$ref": "#/components/schemas/Title" },
+          "description": { "type": "string" },
+          "type": { "anyOf": [{ "$ref": "#/components/schemas/ProjectType" }, { "const": "" }, { "type": "null" }], "description": "\"\" is stored as null." },
+          "status": { "anyOf": [{ "$ref": "#/components/schemas/ProjectStatus" }, { "const": "" }, { "type": "null" }], "description": "\"\" is stored as null." },
+          "show_tasks_in_main_view": { "type": "boolean" },
+          "notes": { "type": ["string", "null"], "description": "Replaces the whole text." }
+        }
+      },
+      "ProjectNotes": {
+        "type": "object",
+        "required": ["notes"],
+        "properties": { "notes": { "type": ["string", "null"] } }
+      },
+      "FeatureSummary": {
+        "type": "object",
+        "required": ["id", "created_at", "updated_at", "project_id", "name", "notes_updated_at", "has_notes"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "created_at": { "$ref": "#/components/schemas/Timestamp" },
+          "updated_at": { "$ref": "#/components/schemas/Timestamp" },
+          "project_id": { "type": "string", "format": "uuid" },
+          "name": { "$ref": "#/components/schemas/Title" },
+          "notes_updated_at": { "allOf": [{ "$ref": "#/components/schemas/NullableTimestamp" }], "description": "Null until the notes are first edited." },
+          "has_notes": { "type": "boolean", "description": "Whether the notes text has anything besides whitespace." }
+        }
+      },
+      "Feature": {
+        "allOf": [
+          { "$ref": "#/components/schemas/FeatureSummary" },
+          {
+            "type": "object",
+            "required": ["notes", "created_via"],
+            "properties": {
+              "notes": { "type": ["string", "null"] },
+              "created_via": { "$ref": "#/components/schemas/CreatedVia" }
+            }
+          }
+        ]
+      },
+      "FeatureCreate": {
+        "type": "object",
+        "required": ["name"],
+        "properties": { "name": { "$ref": "#/components/schemas/Title" } }
+      },
+      "FeatureUpdate": {
+        "type": "object",
+        "properties": {
+          "name": { "$ref": "#/components/schemas/Title" },
+          "notes": { "type": ["string", "null"], "description": "Replaces the whole text." }
+        }
+      }
+    }
+  }
+}

@@ -11,14 +11,14 @@ from app import config, create_app
 
 class HealthTest(AppTestCase):
     def test_connected(self):
-        res = self.client.get("/api/health")
+        res = self.client.get("/api/v1/health")
         self.assertEqual((res.status_code, res.get_json()), (200, {"status": "ok", "db": "connected"}))
         self.assertEqual(self.db.queries, ["tasks"])
 
     def test_db_error_is_503(self):
         self.quiet_errors()
         self.db.fail_on = "select"
-        res = self.client.get("/api/health")
+        res = self.client.get("/api/v1/health")
         self.assertEqual((res.status_code, res.get_json()), (503, {"status": "error", "db": "error"}))
 
 
@@ -39,26 +39,30 @@ class ApiTokenTest(AppTestCase):
             {"Authorization": f"Bearer {token}x"},
         ):
             with self.subTest(headers=headers):
-                self.assert_unauthorized(self.client.get("/api/tasks", headers=headers))
-        self.assert_unauthorized(self.client.get("/api/nope"))  # unknown routes too
+                self.assert_unauthorized(self.client.get("/api/v1/tasks", headers=headers))
+        self.assert_unauthorized(self.client.get("/api/v1/nope"))  # unknown routes too
         self.assertEqual(self.db.queries, [])
 
     def test_right_token_allowed(self):
-        res = self.client.get("/api/tasks", headers={"Authorization": f"Bearer {os.environ['NEXUS_API_TOKEN']}"})
+        res = self.client.get("/api/v1/tasks", headers={"Authorization": f"Bearer {os.environ['NEXUS_API_TOKEN']}"})
         self.assertEqual(res.status_code, 200)
 
     def test_health_is_public(self):
+        self.assertEqual(self.client.get("/api/v1/health").status_code, 200)
         self.assertEqual(self.client.get("/api/health").status_code, 200)
+
+    def test_alias_needs_the_token_too(self):
+        self.assert_unauthorized(self.client.get("/api/tasks"))
 
 
 class TrustedHostsTest(AppTestCase):
     def test_local_hosts_allowed(self):
         for host in ("127.0.0.1:5001", "localhost:5001", "127.0.0.1"):
             with self.subTest(host=host):
-                self.assertEqual(self.client.get("/api/tasks", headers={"Host": host}).status_code, 200)
+                self.assertEqual(self.client.get("/api/v1/tasks", headers={"Host": host}).status_code, 200)
 
     def test_other_hosts_rejected(self):
-        res = self.client.get("/api/tasks", headers={"Host": "evil.example:5001"})
+        res = self.client.get("/api/v1/tasks", headers={"Host": "evil.example:5001"})
         self.assertEqual(res.status_code, 400)
         self.assertIn("error", res.get_json())
 

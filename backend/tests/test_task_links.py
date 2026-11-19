@@ -24,22 +24,22 @@ class TaskLinkTest(AppTestCase):
     def weekly_wed(self, rrule="FREQ=WEEKLY;BYDAY=WE"):
         return self.request(
             "POST",
-            "/api/events",
+            "/api/v1/events",
             {"title": "Standup", "start_at": SEP_30, "end_at": "2026-09-30T17:00:00Z", "timezone": LA, "rrule": rrule},
             status=201,
         )
 
     def put_occ(self, master_id, original_start, body):
-        return self.request("PUT", f"/api/events/{master_id}/occurrences/{original_start}", body)
+        return self.request("PUT", f"/api/v1/events/{master_id}/occurrences/{original_start}", body)
 
     def override(self, master_id, original_start, title):
         return self.put_occ(master_id, original_start, {"scope": "this", "title": title})
 
     def task_on(self, event_id):
-        return self.request("POST", "/api/tasks", {"title": "T", "event_id": event_id}, status=201)["id"]
+        return self.request("POST", "/api/v1/tasks", {"title": "T", "event_id": event_id}, status=201)["id"]
 
     def link(self, task_id):
-        return self.request("GET", f"/api/tasks/{task_id}")["event_id"]
+        return self.request("GET", f"/api/v1/tasks/{task_id}")["event_id"]
 
     def split(self, master_id, at_start=OCT_14, **body):
         """A "following" split at `at_start` (moved an hour later by default),
@@ -50,7 +50,7 @@ class TaskLinkTest(AppTestCase):
         return new, spy.call_args.args[0]
 
     def events(self):
-        return self.request("GET", "/api/events?start=2026-09-28T00:00:00Z&end=2026-11-30T00:00:00Z")
+        return self.request("GET", "/api/v1/events?start=2026-09-28T00:00:00Z&end=2026-11-30T00:00:00Z")
 
     def row(self, event_id):
         return next((r for r in self.db.rows if r["id"] == event_id), None)
@@ -68,13 +68,13 @@ class TaskLinkTest(AppTestCase):
     def test_split_moves_the_link_to_the_later_half_when_the_earlier_one_is_past(self):
         m = self.weekly_wed()
         tid = self.task_on(m["id"])
-        self.request("GET", "/api/tasks")  # warm the tasks cache
+        self.request("GET", "/api/v1/tasks")  # warm the tasks cache
         with at(2026, 10, 10):  # the earlier half (Sep 30, Oct 7) is over
             new, ops = self.split(m["id"])
         self.assertIsNotNone(self.row(m["id"]))  # the old master survives, truncated
         self.assertEqual(self.link(tid), new["id"])
         # The cached list was cleared by the edit, not served stale.
-        self.assertEqual([t["event_id"] for t in self.request("GET", "/api/tasks")], [new["id"]])
+        self.assertEqual([t["event_id"] for t in self.request("GET", "/api/v1/tasks")], [new["id"]])
         # Same transaction: relinked after the insert of the new master.
         self.assertEqual(ops[0]["op"], "insert")
         self.assertIn({"op": "relink_tasks", "from": m["id"], "to": new["id"]}, ops[1:])
@@ -93,7 +93,7 @@ class TaskLinkTest(AppTestCase):
 
     def test_cancelled_occurrences_ahead_dont_keep_the_link_on_the_earlier_half(self):
         m = self.weekly_wed()
-        self.request("DELETE", f"/api/events/{m['id']}/occurrences/{OCT_7}?scope=this")
+        self.request("DELETE", f"/api/v1/events/{m['id']}/occurrences/{OCT_7}?scope=this")
         tid = self.task_on(m["id"])
         with at(2026, 10, 1):  # only the cancelled Oct 7 is left before the split
             new, _ = self.split(m["id"])
@@ -152,7 +152,7 @@ class TaskLinkTest(AppTestCase):
         self.quiet_errors()
         with at(2026, 10, 10), mock.patch.object(es, "_apply", side_effect=fail_after_relink):
             self.request(
-                "PUT", f"/api/events/{m['id']}/occurrences/{OCT_14}", {"scope": "following", **AN_HOUR_LATER}, 500
+                "PUT", f"/api/v1/events/{m['id']}/occurrences/{OCT_14}", {"scope": "following", **AN_HOUR_LATER}, 500
             )
         self.db.fail_after_ops = None
         self.assertEqual(self.link(tid), m["id"])
@@ -211,7 +211,7 @@ class TaskLinkTest(AppTestCase):
         # LA is already Thursday: Oct 14's occurrence becomes Thu Oct 15 there.
         m = self.request(
             "POST",
-            "/api/events",
+            "/api/v1/events",
             {
                 "title": "Late",
                 "start_at": "2026-10-01T06:00:00Z",
@@ -252,7 +252,7 @@ class TaskLinkTest(AppTestCase):
         first = self.override(m["id"], SEP_30, "First")
         later = self.override(m["id"], OCT_14, "Later")
         tasks = {"first": self.task_on(first["id"]), "later": self.task_on(later["id"])}
-        self.request("PUT", f"/api/events/{m['id']}", {"rrule": None})
+        self.request("PUT", f"/api/v1/events/{m['id']}", {"rrule": None})
         self.assertEqual(self.row(m["id"])["start_at"], "2026-09-30T16:00:00+00:00")
         self.assertEqual({name: self.link(tid) for name, tid in tasks.items()}, {"first": m["id"], "later": None})
 
@@ -260,7 +260,7 @@ class TaskLinkTest(AppTestCase):
         m = self.weekly_wed()
         ov = self.override(m["id"], OCT_14, "Moved")
         tid = self.task_on(ov["id"])
-        self.request("DELETE", f"/api/events/{m['id']}/occurrences/{OCT_14}?scope=this")
+        self.request("DELETE", f"/api/v1/events/{m['id']}/occurrences/{OCT_14}?scope=this")
         self.assertIsNone(self.link(tid))
 
 

@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Blueprint, Flask
 
 from app.auth import require_api_token
 from app.config import Config, api_token
@@ -23,9 +23,12 @@ def create_app():
     register_error_handlers(app)
     require_api_token(app, api_token())
 
-    app.register_blueprint(health_bp, url_prefix="/api")
-    app.register_blueprint(tasks_bp, url_prefix="/api")
-    app.register_blueprint(events_bp, url_prefix="/api")
-    app.register_blueprint(projects_bp, url_prefix="/api")
+    api = Blueprint("api", __name__)
+    for bp in (health_bp, tasks_bp, events_bp, projects_bp):
+        api.register_blueprint(bp)
+    # /api serves the same routes unversioned, for clients that predate v1.
+    # Keep backend/openapi.json in step with every route (tests/test_openapi.py).
+    app.register_blueprint(api, url_prefix="/api/v1", name="v1")
+    app.register_blueprint(api, url_prefix="/api", name="legacy")
 
     return app
